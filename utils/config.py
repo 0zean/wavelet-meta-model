@@ -1,24 +1,24 @@
 class Config:
-    # ── Triple Barrier ───────────────────────────────────────────────────────
+    # Triple Barrier
     VERTICAL_BARS = 12  # max hold = 12 × 5 min = 1 hour
     BARRIER_MULT = 1.0  # horizontal barriers = ±N × rolling σ
-    VOL_LOOKBACK = 78  # rolling vol window ≈ 1 trading day (78×5m)
+    VOL_LOOKBACK = 78   # rolling vol window ≈ 1 trading day (78×5m)
 
-    # ── Wavelet (causal MODWT, Haar = db1) ───────────────────────────────────
-    WAVELET_J = 4  # decomposition levels → S4 smoothing
-    AR_LAGS = 4  # AR features: S4(t-1) … S4(t-4)
+    # Wavelet (db1 = Haar)
+    WAVELET_J = 4       # decomposition levels → S4 smoothing
+    AR_LAGS = 4         # AR features: S4(t-1) … S4(t-4)
     WAVELET_FILTER = "db1"
 
-    # ── Technical indicators ─────────────────────────────────────────────────
+    # Technical indicators
     RSI_PERIOD = 14
     SIEGEL_WINDOW = 20  # Siegel slope rolling window
 
-    # ── Low-movement day filter (classifier training only) ───────────────────
+    # Low-movement day filter (classifier training only)
     # Bars whose trading day has |VWAP_close − VWAP_open| in the bottom
     # LOW_MOVE_PCTILE are excluded from classifier training.
     LOW_MOVE_PCTILE = 0.20
 
-    # ── Primary: XGBoost Classifier (direction, binary) ──────────────────────
+    # Primary: XGBoost Classifier (direction, binary)
     CLF_PARAMS = dict(
         n_estimators=500,
         max_depth=4,
@@ -30,11 +30,10 @@ class Config:
         tree_method="hist",
         device="cpu",
     )
-    CLF_EARLY_STOP = 40
     # Threshold tuned on val to achieve ≥ target recall before meta-labeling
     CLF_RECALL_TARGET = 0.70
 
-    # ── Primary: XGBoost Regressor (magnitude = |expected % move|) ───────────
+    # Primary: XGBoost Regressor (magnitude = |expected % move|)
     # NOTE: "optimised on directional accuracy" is non-differentiable so we
     # train on MAE (a good proxy: underestimates tend to flip direction) and
     # report directional accuracy as an evaluation metric post-hoc. This is the
@@ -52,9 +51,8 @@ class Config:
         device="cpu",
         objective="reg:squarederror",
     )
-    REG_EARLY_STOP = 40
 
-    # ── Meta-label XGBoost Classifier ────────────────────────────────────────
+    # Meta-label XGBoost Classifier
     META_PARAMS = dict(
         n_estimators=400,
         max_depth=3,
@@ -66,10 +64,9 @@ class Config:
         tree_method="hist",
         device="cpu",
     )
-    META_EARLY_STOP = 40
     META_THRESH = 0.50  # probability cutoff to trade
 
-    # ── Walk-Forward Optimisation ─────────────────────────────────────────────
+    # Walk-Forward Optimisation
     # Expanding-window WFO.  Each fold:
     #   in_sample  = all data up to fold cutoff  (grows each fold)
     #   val        = VAL_BARS  (for early-stopping + meta-model training)
@@ -78,7 +75,7 @@ class Config:
     VAL_BARS = 500
     TEST_BARS = 500
 
-    # ── Backtest ─────────────────────────────────────────────────────────────
+    # Backtest
     # Zero commission, realistic slippage modelled as:
     # entry at next-bar OPEN ± SLIPPAGE_PCT × price
     # SPY @ ~$500, 1 bp ≈ $0.05 ≈ one-way spread / 2
