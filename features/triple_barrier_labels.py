@@ -15,8 +15,8 @@ def triple_barrier_labels(
 
     For each bar t:
       • Compute daily σ = rolling std of log-returns over vol_lookback bars
-      • Upper barrier = close[t] × (1 + barrier_mult × σ[t])
-      • Lower barrier = close[t] × (1 − barrier_mult × σ[t])
+      • Upper barrier = close[t] x (1 + barrier_mult x σ[t])
+      • Lower barrier = close[t] x (1 - barrier_mult x σ[t])
       • Vertical barrier = t + vertical_bars
 
     Touch detection uses HIGH (for upper) and LOW (for lower) within the
