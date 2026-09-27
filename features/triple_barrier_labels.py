@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
 
-from utils.config import config
+from utils.config import RunConfig
 
 
-def bar_volatility(close: pd.Series, span: int = config.VOL_SPAN) -> pd.Series:
+def bar_volatility(close: pd.Series, span: int) -> pd.Series:
     """
     Causal EWM standard deviation of 1-bar log returns (σ per bar).
 
@@ -12,7 +12,7 @@ def bar_volatility(close: pd.Series, span: int = config.VOL_SPAN) -> pd.Series:
 
     Args:
         close (pd.Series): Close prices.
-        span (int, optional): EWM span in bars. Defaults to config.VOL_SPAN.
+        span (int): EWM span in bars (cfg.VOL_SPAN).
 
     Returns:
         pd.Series: Per-bar volatility, NaN during the warm-up period.
@@ -21,18 +21,18 @@ def bar_volatility(close: pd.Series, span: int = config.VOL_SPAN) -> pd.Series:
     return log_ret.ewm(span=span, min_periods=span).std().rename("bar_vol")
 
 
-def barrier_width(vol: pd.Series, mult: float = config.BARRIER_MULT, horizon: int = config.VERTICAL_BARS) -> pd.Series:
+def barrier_width(vol: pd.Series, mult: float, horizon: int) -> pd.Series:
     """
     Horizontal barrier half-width as a fraction of the entry price.
 
     López de Prado sizes barriers with daily σ because his vertical barrier is
-    measured in days. Here the vertical barrier is `horizon` intraday bars, so
-    σ per bar is scaled by √horizon to express volatility over the holding period.
+    measured in days. Here the vertical barrier is `horizon` bars, so σ per bar
+    is scaled by √horizon to express volatility over the holding period.
 
     Args:
         vol (pd.Series): Per-bar volatility (see bar_volatility).
-        mult (float, optional): Barrier multiple of horizon σ. Defaults to config.BARRIER_MULT.
-        horizon (int, optional): Vertical barrier in bars. Defaults to config.VERTICAL_BARS.
+        mult (float): Barrier multiple of horizon σ (cfg.BARRIER_MULT).
+        horizon (int): Vertical barrier in bars (cfg.VERTICAL_BARS).
 
     Returns:
         pd.Series: Barrier width (e.g. 0.002 = ±0.2 %).
@@ -78,7 +78,9 @@ def barrier_exits(
     events: pd.DatetimeIndex,
     width: pd.Series,
     side: pd.Series | None = None,
-    vertical_bars: int = config.VERTICAL_BARS,
+    *,
+    vertical_bars: int,
+    hold_overnight: bool,
 ) -> pd.DataFrame:
     """
     First-touch triple-barrier outcome for each event.
@@ -88,21 +90,25 @@ def barrier_exits(
       • Upper / lower barrier = entry x (1 ± width[t]); touches are detected with
         HIGH / LOW from the entry bar onward. A bar that opens beyond a barrier
         exits at that open (gap fill).
-      • Vertical barrier = close of the `vertical_bars`-th held bar, truncated at
-        the close of the entry session — positions are never held overnight.
-      • If both barriers are touched inside the same bar the order is unknown:
+      • Vertical barrier = close of the `vertical_bars`-th held bar. Without
+        `hold_overnight` it is truncated at the close of the entry session and
+        positions never cross a session; with it (daily bars) the window runs
+        across sessions and a gap through a barrier fills at the next open.
+      • If both barriers are touched inside the same bar and it did not open
+        beyond either, the order is unknown:
         with a known side the adverse barrier is assumed (conservative); without
         a side the bar's close decides the outcome.
 
-    Events whose entry falls in the next session, or whose holding window runs
-    past the end of the data, are dropped.
+    Events whose holding window runs past the end of the data are dropped, and so
+    are events whose entry falls in the next session unless `hold_overnight`.
 
     Args:
         df (pd.DataFrame): OHLC data with a DatetimeIndex.
         events (pd.DatetimeIndex): Event timestamps (subset of df.index).
         width (pd.Series): Barrier half-width per bar (see barrier_width).
         side (pd.Series | None, optional): Position side {-1, +1} per event. Defaults to None.
-        vertical_bars (int, optional): Maximum holding period in bars. Defaults to config.VERTICAL_BARS.
+        vertical_bars (int): Maximum holding period in bars (cfg.VERTICAL_BARS).
+        hold_overnight (bool): Let positions cross session boundaries (cfg.HOLD_OVERNIGHT).
 
     Returns:
         pd.DataFrame: Indexed by event time with columns
@@ -122,8 +128,11 @@ def barrier_exits(
     close = df["close"].to_numpy()
     n = len(df)
 
-    day = df.index.normalize()
-    session_last = pd.Series(np.arange(n), index=df.index).groupby(day).transform("max").to_numpy()
+    if hold_overnight:
+        session_last = np.full(n, n - 1)  # the only "session close" is the end of the data
+    else:
+        day = df.index.normalize()
+        session_last = pd.Series(np.arange(n), index=df.index).groupby(day).transform("max").to_numpy()
 
     t = df.index.get_indexer(events)
     w = width.reindex(events).to_numpy()
@@ -136,6 +145,7 @@ def barrier_exits(
     # Last held bar: vertical barrier or session close, whichever comes first.
     # The final session may be cut off by the end of the data, so a window that
     # would run past it is incomplete rather than truncated at a real close.
+    # With hold_overnight both conditions reduce to e + vertical_bars - 1 <= n - 1.
     last = np.minimum(e + vertical_bars - 1, session_last[e])
     keep = (session_last[t] == session_last[e]) & ((last < n - 1) | (e + vertical_bars - 1 <= n - 1))
     t, e, w, sd, last = t[keep], e[keep], w[keep], sd[keep], last[keep]
@@ -162,7 +172,13 @@ def barrier_exits(
 
     goes_up = touched & (first_up < first_dn)
     goes_dn = touched & (first_dn < first_up)
-    # Same-bar ties: adverse barrier for a known side, the bar's close otherwise
+    # A bar that opens beyond a barrier touched it first: the open is the bar's first print
+    gap_up = tie & (open_[xp] >= ub)
+    gap_dn = tie & (open_[xp] <= lb)
+    goes_up |= gap_up
+    goes_dn |= gap_dn
+    # Remaining same-bar ties: adverse barrier for a known side, the bar's close otherwise
+    tie &= ~(gap_up | gap_dn)
     goes_up |= tie & (sd < 0)
     goes_dn |= tie & (sd > 0)
     tie_close = tie & (sd == 0)
@@ -187,28 +203,31 @@ def barrier_exits(
     )
 
 
-def sample_events(df: pd.DataFrame) -> pd.DataFrame:
+def sample_events(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
     """
     Tradeable events and their barrier widths, using only data up to each event.
 
     σ per bar = causal EWM std of log returns; events come from a symmetric CUSUM
     filter with threshold CUSUM_MULT x σ; barriers are ±BARRIER_MULT x σ x √VERTICAL_BARS.
-    Events on a session's last bar are skipped: their entry would be next session.
+    Unless HOLD_OVERNIGHT, events on a session's last bar are skipped: their entry
+    would be next session.
 
     Args:
         df (pd.DataFrame): OHLC data with a DatetimeIndex.
+        cfg (RunConfig): Run configuration.
 
     Returns:
         pd.DataFrame: Indexed by event time with column `width`.
     """
-    vol = bar_volatility(df["close"])
-    events = cusum_events(df["close"], config.CUSUM_MULT * vol)
-    session_end = pd.Series(df.index.normalize(), index=df.index).shift(-1) != df.index.normalize()
-    events = events[~session_end.loc[events].to_numpy()]
-    return barrier_width(vol).loc[events].to_frame()
+    vol = bar_volatility(df["close"], cfg.VOL_SPAN)
+    events = cusum_events(df["close"], cfg.CUSUM_MULT * vol)
+    if not cfg.HOLD_OVERNIGHT:
+        session_end = pd.Series(df.index.normalize(), index=df.index).shift(-1) != df.index.normalize()
+        events = events[~session_end.loc[events].to_numpy()]
+    return barrier_width(vol, cfg.BARRIER_MULT, cfg.VERTICAL_BARS).loc[events].to_frame()
 
 
-def triple_barrier_labels(df: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
+def triple_barrier_labels(df: pd.DataFrame, events: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
     """
     López de Prado (2018) triple-barrier labels: first-touch outcome of each
     event without a side (see barrier_exits), label = sign(return).
@@ -219,11 +238,14 @@ def triple_barrier_labels(df: pd.DataFrame, events: pd.DataFrame) -> pd.DataFram
     Args:
         df (pd.DataFrame): OHLC data with a DatetimeIndex.
         events (pd.DataFrame): Output of sample_events.
+        cfg (RunConfig): Run configuration.
 
     Returns:
         pd.DataFrame: One row per event with a complete outcome (see barrier_exits for columns).
     """
-    labels = barrier_exits(df, events.index, events["width"])
+    labels = barrier_exits(
+        df, events.index, events["width"], vertical_bars=cfg.VERTICAL_BARS, hold_overnight=cfg.HOLD_OVERNIGHT
+    )
 
     counts = labels["barrier"].value_counts().to_dict()
     print(

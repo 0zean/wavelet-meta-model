@@ -1,10 +1,8 @@
 import pandas as pd
 from pywddff.filters import scaling_filter
 
-from utils.config import config
 
-
-def wavelet_ar_features(series: pd.Series) -> pd.DataFrame:
+def wavelet_ar_features(series: pd.Series, wavelet_filter: str, levels: int, ar_lags: int) -> pd.DataFrame:
     """
     Lagged MODWT scaling (smooth) coefficients S_J of a price series.
 
@@ -16,13 +14,16 @@ def wavelet_ar_features(series: pd.Series) -> pd.DataFrame:
 
     Args:
         series (pd.Series): Input price series (e.g. close)
+        wavelet_filter (str): Wavelet filter name (cfg.WAVELET_FILTER).
+        levels (int): Decomposition depth J (cfg.WAVELET_J).
+        ar_lags (int): Number of lags of S_J (cfg.AR_LAGS).
 
     Returns:
-        pd.DataFrame: S_J lagged 1..AR_LAGS bars, same index as series.
+        pd.DataFrame: S_J lagged 1..ar_lags bars, same index as series.
     """
-    g = scaling_filter(config.WAVELET_FILTER, modwt=True)
+    g = scaling_filter(wavelet_filter, modwt=True)
     smooth = series.astype(float)
-    for j in range(config.WAVELET_J):
+    for j in range(levels):
         smooth = sum(g[n] * smooth.shift(n * 2**j) for n in range(len(g)))
 
-    return pd.DataFrame({f"w_lag_{lag}": smooth.shift(lag) for lag in range(1, config.AR_LAGS + 1)})
+    return pd.DataFrame({f"w_lag_{lag}": smooth.shift(lag) for lag in range(1, ar_lags + 1)})

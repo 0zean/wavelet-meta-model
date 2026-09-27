@@ -118,17 +118,53 @@ filtering, adjustment consistency across cache top-ups, survivorship bias of the
   confirm the WFO-level test now fails; then remove it.
 
 **Done when.**
-- [ ] 5Min run on the legacy CSV with legacy parameters reproduces the pre-refactor `wfo_signals.csv`
+- [x] 5Min run on the legacy CSV with legacy parameters reproduces the pre-refactor `wfo_signals.csv`
       bit-for-bit (embargo = 0) — proves the refactor is behavior-preserving.
-- [ ] Pipeline completes end-to-end on SPY at 5Min, 15Min, 1Hour, 1Day from Alpaca cache.
-- [ ] Tests: daily bars hold overnight and exit at a later session; intraday never does; embargo removes the
+- [x] Pipeline completes end-to-end on SPY at 5Min, 15Min, 1Hour, 1Day from Alpaca cache.
+- [x] Tests: daily bars hold overnight and exit at a later session; intraday never does; embargo removes the
       expected samples; the injected-lookahead WFO test fails when the leak is present.
-- [ ] `grep -r "from utils.config import config"` only hits the entry point / defaults module.
+- [x] `grep -r "from utils.config import config"` only hits the entry point / defaults module (no hits at all).
 
 **Reviewer focus.** Behavior drift hidden in the refactor, daily-bar barrier logic (gap fills, weekend gaps),
 trading-day→bar mapping at half-days, embargo direction.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done, findings fixed). 70 tests pass; ruff clean. Notes:
+- `RunConfig` (utils/config.py) is frozen and passed as `cfg`; no module-level config remains. Low-level
+  functions take explicit arguments (`bar_volatility(close, span)`, `barrier_exits(..., vertical_bars=, hold_overnight=)`).
+  `for_timeframe(tf)` fills the SPEC §2 table incl. WFO windows in trading days; `legacy_5min()` = bar windows
+  2000/1000/500, `EMBARGO=0`. `SEED` is stamped into all XGBoost params on every construction.
+- Regression: `wavelet_meta_model.py data/data.csv` → `wfo_signals.csv` sha1 `402ef202…` on `main` and on this
+  branch (also re-checked after the review fixes; the reviewer reproduced it independently from `git archive main`).
+- `wfo_folds`: split boundaries on session first bars; half-days count as one day; embargo = bars of the last
+  `EMBARGO` sessions (42 after a 13:00 close). Embargo is a gap at the END of each fitting split (SPEC §5 explains
+  why a post-test embargo is a no-op in a forward WFO); reviewer challenged and agreed.
+- Holdout: `run_wfo` raises `HoldoutError` if data reaches `HOLDOUT_START` (`ALLOW_HOLDOUT` to override); with the
+  loader guard, no development label can resolve inside the holdout.
+- Deferred U1 questions resolved: sessions dropped by the data layer are simply absent (not counted as days;
+  an overnight hold steps over them); the 1Hour 15:30 stub is kept as a normal bar (SPEC §2).
+- Tests: `tests/test_runconfig.py` (14) and `tests/test_u2_adversarial.py` (11, reviewer). The WFO causality check
+  now cuts right after an OOS event and is shown to fail with a monkeypatched 1-bar look-ahead feature; a
+  fitting-side test shows train/val targets and meta inputs are unchanged when every bar from the embargo on
+  is perturbed, and that it fails if the embargo is dropped.
+- Review fixes: SEED ignored on direct construction / `dataclasses.replace` and param dicts shared between copies
+  (now copied + stamped in `__post_init__`); `WINDOW_UNIT="bars"` requires explicit bar counts; CSV input with a
+  non-5Min `--timeframe` raises; pre-existing tie bug fixed — a bar that opens beyond a barrier exits there
+  even if it also touches the other barrier (0 cases on real SPY; legacy sha unchanged).
+- End-to-end SPY runs (Alpaca cache, dev window; `--out` to scratch): no fold skipped at any timeframe.
+
+  | tf | range | folds | OOS events | meta Sharpe | primary Sharpe | meta AUC | runtime |
+  |---|---|---|---|---|---|---|---|
+  | 1Day | 2016-01→2025-10 | 14 | 234 | 0.18 | −0.02 | 0.572 | 34 s |
+  | 1Hour | 2016-01→2025-10 | 98 | 2,734 | −0.11 | −0.53 | 0.526 | 82 min* |
+  | 15Min | 2016-01→2025-10 | 108 | 11,547 | −1.06 | −1.27 | 0.495 | 49 min* |
+  | 5Min | 2023-01→2025-10 | 62 | 9,741 | −1.90 | −2.85 | 0.513 | 16 min |
+
+  \* under CPU contention from the test suite / reviewer. 5Min used a shorter range because 238 expanding folds
+  over 10 years would take hours. These are plumbing checks, not findings (single symbol, no DSR, 1Day has
+  only 234 events); buy-and-hold beats every cell.
+- Cost: a full-window run is slow (expanding train, 3 × 500-tree XGBoost + fracdiff ADF search per fold) —
+  1Hour 98 folds took 82 min under CPU contention. U9/U10 will need rolling IS windows and/or caching.
+- Added `--out` to `wavelet_meta_model.py` so runs don't overwrite `results/`.
 
 ---
 

@@ -2,10 +2,10 @@ import pandas as pd
 import xgboost as xgb
 
 from features.triple_barrier_labels import barrier_exits
-from utils.config import config
+from utils.config import RunConfig
 
 
-def make_meta_labels(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.DataFrame) -> pd.Series:
+def make_meta_labels(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.DataFrame, cfg: RunConfig) -> pd.Series:
     """
     Meta-label = 1 if taking the primary model's side on the event would have
     earned more than META_MIN_RET (round-trip slippage), else 0.
@@ -21,13 +21,21 @@ def make_meta_labels(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.D
         df (pd.DataFrame): OHLC data.
         events (pd.DataFrame): Validation events with a `width` column.
         primary_preds (pd.DataFrame): Primary model predictions for those events.
+        cfg (RunConfig): Run configuration.
 
     Returns:
         pd.Series: Meta-labels {0, 1} indexed by event time.
     """
     side = primary_preds["signed_dir"]
-    out = barrier_exits(df, events.index, events["width"], side=side)
-    return (side.loc[out.index] * out["ret"] > config.META_MIN_RET).astype(int).rename("meta_label")
+    out = barrier_exits(
+        df,
+        events.index,
+        events["width"],
+        side=side,
+        vertical_bars=cfg.VERTICAL_BARS,
+        hold_overnight=cfg.HOLD_OVERNIGHT,
+    )
+    return (side.loc[out.index] * out["ret"] > cfg.META_MIN_RET).astype(int).rename("meta_label")
 
 
 def fit_meta_model(
@@ -35,6 +43,7 @@ def fit_meta_model(
     primary_val: pd.DataFrame,
     meta_labels: pd.Series,
     weights: pd.Series,
+    cfg: RunConfig,
 ) -> xgb.XGBClassifier | None:
     """
     Train the meta-label classifier.
@@ -51,6 +60,7 @@ def fit_meta_model(
         primary_val (pd.DataFrame): Primary model predictions
         meta_labels (pd.Series): Meta-labels
         weights (pd.Series): Sample weights (average uniqueness)
+        cfg (RunConfig): Run configuration.
 
     Returns:
         xgb.XGBClassifier | None: Trained meta-model, or None if the labels have a single class.
@@ -61,7 +71,7 @@ def fit_meta_model(
         print("[META]  Warning: only one class in meta-labels — skipping fit")
         return None
 
-    meta = xgb.XGBClassifier(**config.META_PARAMS)
+    meta = xgb.XGBClassifier(**cfg.META_PARAMS)
     meta.fit(X_m, meta_labels, sample_weight=weights.loc[meta_labels.index], verbose=False)
     print(f"[META]  Trained on {len(meta_labels)} val events  (success rate={meta_labels.mean():.3f})")
     return meta
@@ -71,7 +81,7 @@ def meta_predict(
     meta_model: xgb.XGBClassifier | None,
     X_test: pd.DataFrame,
     primary_test: pd.DataFrame,
-    thresh: float = config.META_THRESH,
+    thresh: float,
 ) -> pd.DataFrame:
     """
     Generate meta-model predictions for the test fold.
@@ -81,7 +91,7 @@ def meta_predict(
         meta_model (xgb.XGBClassifier | None): The meta-model. If None, no trades are taken.
         X_test (pd.DataFrame): Test features.
         primary_test (pd.DataFrame): Primary model predictions.
-        thresh (float, optional): Threshold for meta-label. Defaults to config.META_THRESH.
+        thresh (float): Probability cutoff to trade (cfg.META_THRESH).
 
     Returns:
         pd.DataFrame: DataFrame with meta_prob and trade_signal.

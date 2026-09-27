@@ -2,14 +2,14 @@ import numpy as np
 import pandas as pd
 
 from features.triple_barrier_labels import barrier_exits
-from utils.config import config
+from utils.config import RunConfig
 
 
 def simulate_trades(
     df: pd.DataFrame,
     signals: pd.DataFrame,
+    cfg: RunConfig,
     side_col: str = "trade_signal",
-    slippage: float = config.SLIPPAGE_PCT,
 ) -> pd.DataFrame:
     """
     Execute event signals with the same triple-barrier rules used for labeling.
@@ -17,21 +17,29 @@ def simulate_trades(
     Execution logic (see barrier_exits):
       • Signal at event bar t → enter at OPEN of bar t+1
       • Exit at the first barrier touched (adverse barrier on same-bar ties),
-        else at the close of the vertical barrier / session close
+        else at the close of the vertical barrier (or the session close unless HOLD_OVERNIGHT)
       • One position at a time: events arriving while a position is open are skipped
       • Slippage is adverse on every fill: buys at price x (1 + pct), sells at price x (1 - pct)
 
     Args:
         df (pd.DataFrame): OHLC data.
         signals (pd.DataFrame): WFO output with `width` and a side column.
+        cfg (RunConfig): Run configuration (barrier rules and SLIPPAGE_PCT).
         side_col (str, optional): Column holding the side {-1, 0, +1}. Defaults to "trade_signal".
-        slippage (float, optional): One-way slippage. Defaults to config.SLIPPAGE_PCT.
 
     Returns:
         pd.DataFrame: One row per executed trade, indexed by signal time.
     """
     cand = signals[signals[side_col] != 0]
-    exits = barrier_exits(df, cand.index, cand["width"], side=cand[side_col])
+    exits = barrier_exits(
+        df,
+        cand.index,
+        cand["width"],
+        side=cand[side_col],
+        vertical_bars=cfg.VERTICAL_BARS,
+        hold_overnight=cfg.HOLD_OVERNIGHT,
+    )
+    slippage = cfg.SLIPPAGE_PCT
 
     # Greedy non-overlapping selection: a new entry at open[t+1] needs the previous exit at or before bar t
     taken = np.zeros(len(exits), dtype=bool)
@@ -53,8 +61,8 @@ def simulate_trades(
 def equity_curve(
     df: pd.DataFrame,
     trades: pd.DataFrame,
-    init_cash: float = config.INIT_CASH,
-    size: float = config.SIZE,
+    init_cash: float,
+    size: float,
 ) -> pd.Series:
     """
     Bar-by-bar mark-to-market equity: open positions are valued at each close,
@@ -63,8 +71,8 @@ def equity_curve(
     Args:
         df (pd.DataFrame): OHLC data (the span to report).
         trades (pd.DataFrame): Output of simulate_trades, positions relative to df.
-        init_cash (float, optional): Starting equity. Defaults to config.INIT_CASH.
-        size (float, optional): Fraction of equity committed per trade. Defaults to config.SIZE.
+        init_cash (float): Starting equity (cfg.INIT_CASH).
+        size (float): Fraction of equity committed per trade (cfg.SIZE).
 
     Returns:
         pd.Series: Equity indexed like df.
@@ -84,7 +92,7 @@ def equity_curve(
     return pd.Series(equity, index=df.index, name="equity").ffill()
 
 
-def run_backtest(df: pd.DataFrame, signals: pd.DataFrame) -> dict[str, tuple[pd.Series, pd.DataFrame]]:
+def run_backtest(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig) -> dict[str, tuple[pd.Series, pd.DataFrame]]:
     """
     Backtest the meta-filtered signals and, as the benchmark meta-labeling must
     beat, the unfiltered primary signal on the same events.
@@ -92,6 +100,7 @@ def run_backtest(df: pd.DataFrame, signals: pd.DataFrame) -> dict[str, tuple[pd.
     Args:
         df (pd.DataFrame): OHLC data covering the OOS span.
         signals (pd.DataFrame): WFO output.
+        cfg (RunConfig): Run configuration.
 
     Returns:
         dict[str, tuple[pd.Series, pd.DataFrame]]: Strategy name → (equity, trades).
@@ -99,6 +108,6 @@ def run_backtest(df: pd.DataFrame, signals: pd.DataFrame) -> dict[str, tuple[pd.
     print("\n[BACKTEST]  Simulating barrier-exit trades ...")
     results = {}
     for name, col in (("Meta-filtered", "trade_signal"), ("Primary only", "signed_dir")):
-        trades = simulate_trades(df, signals, side_col=col)
-        results[name] = (equity_curve(df, trades), trades)
+        trades = simulate_trades(df, signals, cfg, side_col=col)
+        results[name] = (equity_curve(df, trades, cfg.INIT_CASH, cfg.SIZE), trades)
     return results
