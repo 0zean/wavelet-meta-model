@@ -2,12 +2,14 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
+from utils.config import config
+
 
 def primary_signal(
     clf: xgb.XGBClassifier,
     reg: xgb.XGBRegressor,
     X: pd.DataFrame,
-    thresh: float,
+    thresh: float = config.CLF_THRESH,
 ) -> pd.DataFrame:
     """
     Produce the combined primary signal from classifier + regressor.
@@ -26,7 +28,7 @@ def primary_signal(
         clf (xgb.XGBClassifier): The primary direction classifier.
         reg (xgb.XGBRegressor): The primary magnitude regressor.
         X (pd.DataFrame): The feature matrix.
-        thresh (float): The probability threshold for the classifier.
+        thresh (float, optional): Probability threshold for a long side. Defaults to config.CLF_THRESH.
 
     Returns:
         pd.DataFrame: Dataframe containing model outputs and combined signal + confidence level.

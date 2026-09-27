@@ -12,7 +12,7 @@ def load_ohlcv(path: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with OHLCV data.
     """
-    df = pd.read_csv(path, parse_dates=True)
+    df = pd.read_csv(path)
     df.columns = df.columns.str.lower()
 
     # Find datetime column
@@ -24,10 +24,11 @@ def load_ohlcv(path: str) -> pd.DataFrame:
     df.index = pd.to_datetime(df.index)
     df = df.sort_index()
 
-    # Rename to standard names
-    rename = {c: c for c in ("open", "high", "low", "close", "volume") if c in df.columns}
-    df = df[list(rename.values())].copy()
-    df = df.ffill().dropna()
+    required = ["open", "high", "low", "close", "volume"]
+    missing = set(required) - set(df.columns)
+    if missing:
+        raise ValueError(f"{path}: missing columns {sorted(missing)}")
+    df = df[required].ffill().dropna()
 
     print(f"[DATA]  Loaded {len(df):,} bars  {df.index[0]} → {df.index[-1]}")
     return df
@@ -64,16 +65,9 @@ def make_synthetic_spy(n: int = 5000, seed: int = 42) -> pd.DataFrame:
     volume = rng.integers(50_000, 500_000, n).astype(float)
 
     # DatetimeIndex (market hours only)
-    from pandas.tseries.offsets import BDay
-
-    start = pd.Timestamp("2022-01-03 09:30:00")
-    dates = []
-    day = start
-    while len(dates) < n:
-        for m in range(bars_per_day):
-            dates.append(day + pd.Timedelta(minutes=5 * m))
-        day = (day + BDay(1)).replace(hour=9, minute=30)
-    dates = dates[:n]
+    days = pd.bdate_range("2022-01-03", periods=n_days)
+    offsets = pd.Timedelta(hours=9, minutes=30) + pd.to_timedelta(5 * np.arange(bars_per_day), unit="min")
+    dates = (days.values[:, None] + offsets.values[None, :]).ravel()[:n]
 
     df = pd.DataFrame(
         {

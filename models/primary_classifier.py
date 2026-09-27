@@ -1,81 +1,43 @@
-import numpy as np
 import pandas as pd
 import xgboost as xgb
-from sklearn.metrics import precision_recall_curve, roc_auc_score
+from sklearn.metrics import roc_auc_score
 
 from utils.config import config
-
-
-def threshold_for_recall(
-    y_true: np.ndarray,
-    y_prob: np.ndarray,
-    target_recall: float = config.CLF_RECALL_TARGET,
-) -> float:
-    """
-    Sweep probability thresholds and return the highest threshold that still
-    achieves recall ≥ target_recall on the validation set.
-    Higher threshold = more precise but lower recall; we prefer recall.
-
-    Args:
-        y_true (np.ndarray): True labels
-        y_prob (np.ndarray): Predicted probabilities
-        target_recall (float, optional): Target recall. Defaults to config.CLF_RECALL_TARGET.
-
-    Returns:
-        float: Threshold for recall
-    """
-    precision, recall, thresholds = precision_recall_curve(y_true, y_prob)
-    # precision_recall_curve returns arrays ordered by decreasing threshold;
-    # recall increases as threshold decreases.
-    # We want the *highest* threshold where recall >= target.
-    valid = thresholds[recall[:-1] >= target_recall]
-    if len(valid) == 0:
-        return 0.5  # fallback
-    return float(valid[-1])
 
 
 def fit_primary_classifier(
     X_train: pd.DataFrame,
     y_train: pd.Series,
+    w_train: pd.Series,
     X_val: pd.DataFrame,
     y_val: pd.Series,
     active_mask_train: pd.Series,
-) -> tuple[xgb.XGBClassifier, float]:
+) -> xgb.XGBClassifier:
     """
-    Train the direction classifier (XGBoost) on active-day bars only.
+    Train the direction classifier (XGBoost) on active-day events only.
     Labels: 1 = long signal, 0 = short signal  (triple-barrier ±1 → 0/1 binary;
-    label=0 from TB is excluded - we only train on confirmed directional moves).
+    events with a zero return carry no direction and are excluded).
 
     Args:
-        X_train (pd.DataFrame): Training features
-        y_train (pd.Series): Training labels
+        X_train (pd.DataFrame): Training features (purged event rows)
+        y_train (pd.Series): Training labels {-1, 0, 1}
+        w_train (pd.Series): Sample weights (average uniqueness)
         X_val (pd.DataFrame): Validation features
-        y_val (pd.Series): Validation labels
-        active_mask_train (pd.Series): Active mask for training
+        y_val (pd.Series): Validation labels {-1, 0, 1}
+        active_mask_train (pd.Series): Active-day mask for training rows
 
     Returns:
-        tuple[xgb.XGBClassifier, float]: Fitted classifier and recall-optimised threshold
+        xgb.XGBClassifier: Fitted classifier
     """
-    # Map {-1→0, 1→1} and exclude TB label=0 (vertical barrier / no trend)
-    mask_dir = y_train.isin([-1, 1])
-    y_bin = y_train[mask_dir].map({-1: 0, 1: 1})
-    X_tr = X_train.loc[mask_dir & active_mask_train]
-    y_tr = y_bin.loc[mask_dir & active_mask_train]
-
-    mask_val = y_val.isin([-1, 1])
-    y_val_b = y_val[mask_val].map({-1: 0, 1: 1})
-    X_vl = X_val.loc[mask_val]
+    keep = y_train.isin([-1, 1]) & active_mask_train
+    y_tr = y_train.loc[keep].map({-1: 0, 1: 1})
 
     clf = xgb.XGBClassifier(**config.CLF_PARAMS)
-    clf.fit(
-        X_tr,
-        y_tr,
-        eval_set=[(X_vl, y_val_b)],
-        verbose=False,
-    )
+    clf.fit(X_train.loc[keep], y_tr, sample_weight=w_train.loc[keep], verbose=False)
 
-    val_prob = clf.predict_proba(X_vl)[:, 1]
-    auc = roc_auc_score(y_val_b, val_prob)
-    thresh = threshold_for_recall(y_val_b.values, val_prob)
-    print(f"[CLF]  Val AUC={auc:.4f}  Recall-thresh={thresh:.4f}")
-    return clf, thresh
+    keep_vl = y_val.isin([-1, 1])
+    y_vl = y_val.loc[keep_vl].map({-1: 0, 1: 1})
+    if y_vl.nunique() == 2:
+        auc = roc_auc_score(y_vl, clf.predict_proba(X_val.loc[keep_vl])[:, 1])
+        print(f"[CLF]  Val AUC={auc:.4f}  (train events={len(y_tr)})")
+    return clf

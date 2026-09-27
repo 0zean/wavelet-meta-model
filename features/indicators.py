@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy.stats import siegelslopes
+from numpy.lib.stride_tricks import sliding_window_view
 
 from utils.config import config
 
@@ -71,15 +71,23 @@ def compute_siegel_slope(
     Returns:
         pd.Series: Siegel slope values
     """
-    slopes = np.full(len(series), np.nan)
-    x = np.arange(window)
-    arr = series.values
+    arr = series.to_numpy(dtype=float)
+    slopes = np.full(len(arr), np.nan)
+    if len(arr) < window:
+        return pd.Series(slopes, index=series.index, name="siegel_slope")
 
-    for i in range(window - 1, len(arr)):
-        y = arr[i - window + 1 : i + 1]
-        if np.isnan(y).any():
-            continue
-        slopes[i] = siegelslopes(y, x).slope
+    # Repeated medians over x = 0..w-1: slope = median_i( median_{j != i} (y_j - y_i) / (j - i) )
+    rows = np.arange(window)[:, None]
+    cols = np.array([np.delete(np.arange(window), i) for i in range(window)])  # (w, w-1), j != i
+    dx = (cols - rows).astype(float)
+    windows = sliding_window_view(arr, window)  # (n - w + 1, w), no copy
+    out = slopes[window - 1 :]  # view into slopes; NaN windows stay NaN via np.median
+
+    chunk = 4096
+    for start in range(0, len(windows), chunk):
+        y = windows[start : start + chunk]
+        pair_slopes = (y[:, cols] - y[:, rows]) / dx  # (chunk, w, w-1)
+        out[start : start + chunk] = np.median(np.median(pair_slopes, axis=2), axis=1)
 
     return pd.Series(slopes, index=series.index, name="siegel_slope")
 

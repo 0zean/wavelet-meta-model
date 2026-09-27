@@ -5,38 +5,44 @@ from fracdiff.sklearn import FracdiffStat
 from statsmodels.tsa.stattools import adfuller
 
 
-def fracdiff_fit_transform(
-    train: pd.Series,
-    val: pd.Series,
-    test: pd.Series,
-) -> tuple[pd.Series, pd.Series, pd.Series, FracdiffStat]:
+def fit_fracdiff_d(train: pd.Series) -> FracdiffStat:
     """
-    Fit FracdiffStat on TRAIN only (finds minimum d that passes ADF at 5%),
-    then apply the *same* d to val and test — zero look-ahead leakage.
+    Fit FracdiffStat on TRAIN only: the minimum d whose fixed-window fractional
+    difference passes ADF at 5 %.
 
-    FracdiffStat uses mode="valid" which already discards early rows where
-    the finite-memory filter is unreliable.  We propagate that trimming to
-    val/test manually using fdiff().
+    Raises:
+        RuntimeWarning: FracdiffStat raises this when no d <= 1 is stationary.
 
-    Returns aligned Series for each split + the fitted transformer.
+    Returns:
+        FracdiffStat: Fitted transformer (d in `d_[0]`, window in `window`).
     """
-    X_train = train.values.reshape(-1, 1)
-
     fs = FracdiffStat(mode="valid")
-    Xt = fs.fit_transform(X_train).reshape(-1)
+    Xt = fs.fit_transform(train.to_numpy().reshape(-1, 1)).reshape(-1)
 
-    d_opt = fs.d_[0]
     _, pval, *_ = adfuller(Xt, maxlag=20, autolag="AIC")
-    corr = np.corrcoef(X_train[-Xt.size :, 0], Xt)[0, 1]
-
-    print(f"\n[FRACDIFF] Optimal d  : {d_opt:.4f}")
+    corr = np.corrcoef(train.to_numpy()[-Xt.size :], Xt)[0, 1]
+    print(f"\n[FRACDIFF] Optimal d  : {fs.d_[0]:.4f}")
     print(f"           ADF p-val  : {pval * 100:.4f} %")
     print(f"           Corr (raw) : {corr:.4f}")
+    return fs
 
-    train_fd = pd.Series(Xt, index=train.index[-Xt.size :], name="fd_close")
-    val_arr = fdiff(val.values, d_opt, mode="valid")
-    test_arr = fdiff(test.values, d_opt, mode="valid")
-    val_fd = pd.Series(val_arr, index=val.index[-val_arr.size :], name="fd_close")
-    test_fd = pd.Series(test_arr, index=test.index[-test_arr.size :], name="fd_close")
 
-    return train_fd, val_fd, test_fd, fs
+def fracdiff_transform(close: pd.Series, fs: FracdiffStat) -> pd.Series:
+    """
+    Apply a fitted fixed-window fractional difference to a whole series.
+
+    The filter is causal (bar t uses bars t-window+1 … t), so transforming the
+    continuous series gives the same train values as fitting did, and val/test
+    bars use the preceding split's prices as history instead of losing their
+    first window-1 rows.
+
+    Args:
+        close (pd.Series): Price series.
+        fs (FracdiffStat): Transformer fitted on the train split.
+
+    Returns:
+        pd.Series: Fractionally differenced series; the leading window-1 bars are dropped.
+    """
+    arr = fdiff(close.to_numpy(), fs.d_[0], window=fs.window, mode="valid")
+    # fdiff falls back to np.diff for integer d, so take the length from the output
+    return pd.Series(arr, index=close.index[-arr.size :], name="fd_close")

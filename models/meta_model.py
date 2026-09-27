@@ -1,45 +1,41 @@
-import numpy as np
 import pandas as pd
 import xgboost as xgb
-from sklearn.metrics import f1_score, roc_auc_score
 
+from features.triple_barrier_labels import barrier_exits
 from utils.config import config
 
 
-def make_meta_labels(primary_preds: pd.DataFrame, y_true: pd.Series, thresh: float) -> pd.Series:
+def make_meta_labels(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.DataFrame) -> pd.Series:
     """
-    Meta-label = 1 if the primary model's direction prediction matches the
-    actual triple-barrier label, else 0.
+    Meta-label = 1 if taking the primary model's side on the event would have
+    earned more than META_MIN_RET (round-trip slippage), else 0.
 
-    We define "correct" as:
-    sign(primary_direction) == sign(true_label)  for non-zero labels.
-    Bars where true_label == 0 (vertical barrier hit) are excluded — the
-    meta-model should only learn from cases where there was a clear outcome.
+    The barriers are re-evaluated with the side known (López de Prado 2018, §3.6),
+    so same-bar barrier ties resolve against the position, exactly as in the backtest.
 
     NOTE: Meta-labels are computed on the VALIDATION split using primary model
-    predictions from a model trained on TRAIN — no leakage.
+    predictions from a model trained on TRAIN — no leakage. The caller must pass
+    only events whose exit falls inside the validation split (purged).
 
     Args:
-        primary_preds (pd.DataFrame): Primary model predictions
-        y_true (pd.Series): Triple-barrier labels {-1, 0, 1}
-        thresh (float): Threshold for meta-label
+        df (pd.DataFrame): OHLC data.
+        events (pd.DataFrame): Validation events with a `width` column.
+        primary_preds (pd.DataFrame): Primary model predictions for those events.
 
     Returns:
-        pd.Series: Meta-labels
+        pd.Series: Meta-labels {0, 1} indexed by event time.
     """
-    signed = primary_preds["signed_dir"]  # {-1, +1}
-    mask = y_true.isin([-1, 1])  # exclude TB label=0
-    meta = (signed == y_true).astype(int)
-    meta[~mask] = np.nan
-    meta.name = "meta_label"
-    return meta
+    side = primary_preds["signed_dir"]
+    out = barrier_exits(df, events.index, events["width"], side=side)
+    return (side.loc[out.index] * out["ret"] > config.META_MIN_RET).astype(int).rename("meta_label")
 
 
 def fit_meta_model(
     X_val: pd.DataFrame,
     primary_val: pd.DataFrame,
     meta_labels: pd.Series,
-) -> xgb.XGBClassifier:
+    weights: pd.Series,
+) -> xgb.XGBClassifier | None:
     """
     Train the meta-label classifier.
 
@@ -54,39 +50,20 @@ def fit_meta_model(
         X_val (pd.DataFrame): Validation features
         primary_val (pd.DataFrame): Primary model predictions
         meta_labels (pd.Series): Meta-labels
+        weights (pd.Series): Sample weights (average uniqueness)
 
     Returns:
-        xgb.XGBClassifier: Trained meta-model
+        xgb.XGBClassifier | None: Trained meta-model, or None if the labels have a single class.
     """
-    # Build meta feature set
-    X_meta = pd.concat([X_val, primary_val], axis=1)
+    X_m = pd.concat([X_val, primary_val], axis=1).loc[meta_labels.index]
 
-    valid = meta_labels.dropna().index
-    X_m = X_meta.loc[valid].dropna()
-    y_m = meta_labels.loc[X_m.index].astype(int)
-
-    if y_m.nunique() < 2:
+    if meta_labels.nunique() < 2:
         print("[META]  Warning: only one class in meta-labels — skipping fit")
         return None
 
-    # Small internal train/val split within the val fold for early stopping
-    n_split = int(len(X_m) * 0.75)
-    X_mt, X_mv = X_m.iloc[:n_split], X_m.iloc[n_split:]
-    y_mt, y_mv = y_m.iloc[:n_split], y_m.iloc[n_split:]
-
     meta = xgb.XGBClassifier(**config.META_PARAMS)
-    meta.fit(
-        X_mt,
-        y_mt,
-        eval_set=[(X_mv, y_mv)],
-        verbose=False,
-    )
-
-    meta_prob = meta.predict_proba(X_mv)[:, 1]
-    if y_mv.nunique() == 2:
-        auc = roc_auc_score(y_mv, meta_prob)
-        f1 = f1_score(y_mv, (meta_prob >= config.META_THRESH).astype(int))
-        print(f"[META]  Val AUC={auc:.4f}  F1={f1:.4f}")
+    meta.fit(X_m, meta_labels, sample_weight=weights.loc[meta_labels.index], verbose=False)
+    print(f"[META]  Trained on {len(meta_labels)} val events  (success rate={meta_labels.mean():.3f})")
     return meta
 
 
@@ -101,7 +78,7 @@ def meta_predict(
     Returns a DataFrame with meta_prob and the final trade signal.
 
     Args:
-        meta_model (xgb.XGBClassifier | None): The meta-model. Fallback to primary if None.
+        meta_model (xgb.XGBClassifier | None): The meta-model. If None, no trades are taken.
         X_test (pd.DataFrame): Test features.
         primary_test (pd.DataFrame): Primary model predictions.
         thresh (float, optional): Threshold for meta-label. Defaults to config.META_THRESH.
@@ -109,22 +86,16 @@ def meta_predict(
     Returns:
         pd.DataFrame: DataFrame with meta_prob and trade_signal.
     """
+    result = primary_test.copy()
     if meta_model is None:
-        # Fallback: use primary signal directly
-        result = primary_test.copy()
+        # No meta-model (single-class val fold): take no trades this fold
         result["meta_prob"] = 0.0
         result["trade_signal"] = 0
         return result
 
-    X_meta = pd.concat([X_test, primary_test], axis=1).dropna()
-    meta_prob = pd.Series(meta_model.predict_proba(X_meta)[:, 1], index=X_meta.index, name="meta_prob")
+    X_meta = pd.concat([X_test, primary_test], axis=1)
+    result["meta_prob"] = meta_model.predict_proba(X_meta)[:, 1]
 
     # Final trade signal: only take positions where meta-model approves
-    take_trade = meta_prob >= thresh
-    trade_signal = (primary_test["signed_dir"] * take_trade).reindex(X_test.index).fillna(0)
-    trade_signal.name = "trade_signal"
-
-    result = primary_test.copy()
-    result["meta_prob"] = meta_prob
-    result["trade_signal"] = trade_signal
+    result["trade_signal"] = result["signed_dir"].where(result["meta_prob"] >= thresh, 0)
     return result
