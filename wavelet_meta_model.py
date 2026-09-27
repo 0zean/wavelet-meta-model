@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from data.bars import load_bars
 from utils.data_loader import load_ohlcv, make_synthetic_spy
 from utils.visuals import plot_results
 from wfo.backtest import run_backtest
@@ -27,13 +28,25 @@ from wfo.wfo_engine import run_wfo
 from wfo.wfo_metrics import compute_metrics, signal_diagnostics
 
 
-def main(data_path: str | None = None) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
+def main(
+    data_path: str | None = None,
+    symbol: str | None = None,
+    timeframe: str = "5Min",
+    start: str | None = None,
+    end: str | None = None,
+) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
     """
     Main entry point to run the full pipeline end-to-end.
 
+    Data source, in priority order: a CSV at `data_path`, Alpaca bars for `symbol`
+    (cached, RTH only), else synthetic SPY.
+
     Args:
-        data_path (str | None, optional): Path to a CSV with OHLCV data.
-        If None, synthetic SPY data is used. Defaults to None.
+        data_path (str | None, optional): Path to a CSV with OHLCV data. Defaults to None.
+        symbol (str | None, optional): Ticker to load from Alpaca. Defaults to None.
+        timeframe (str, optional): Alpaca bar timeframe. Defaults to "5Min".
+        start (str | None, optional): First NY trading day (Alpaca only).
+        end (str | None, optional): Day after the last NY trading day (Alpaca only).
 
     Returns:
         tuple[dict, pd.DataFrame, pd.DataFrame]: Backtest results, metrics, WFO signals.
@@ -47,6 +60,13 @@ def main(data_path: str | None = None) -> tuple[dict, pd.DataFrame, pd.DataFrame
         if not Path(data_path).exists():
             raise FileNotFoundError(data_path)
         df = load_ohlcv(data_path)
+    elif symbol:
+        if not (start and end):
+            raise ValueError("--start and --end are required with --symbol")
+        df = load_bars(symbol, timeframe, start, end)
+        if df.empty:
+            raise ValueError(f"No {timeframe} bars for {symbol} in [{start}, {end})")
+        print(f"[DATA]  Alpaca {symbol} {timeframe}: {len(df):,} bars  {df.index[0]} → {df.index[-1]}")
     else:
         print("[DATA]  No data path provided — using synthetic SPY (n=5000)")
         df = make_synthetic_spy(n=5000)
@@ -71,7 +91,13 @@ def main(data_path: str | None = None) -> tuple[dict, pd.DataFrame, pd.DataFrame
 
 
 if __name__ == "__main__":
-    import sys
+    import argparse
 
-    path = sys.argv[1] if len(sys.argv) > 1 else None
-    main(path)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("data_path", nargs="?", default=None, help="OHLCV CSV (overrides --symbol)")
+    ap.add_argument("--symbol")
+    ap.add_argument("--timeframe", default="5Min")
+    ap.add_argument("--start")
+    ap.add_argument("--end")
+    a = ap.parse_args()
+    main(a.data_path, a.symbol, a.timeframe, a.start, a.end)
