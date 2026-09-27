@@ -6,8 +6,8 @@
 ║    1. CUSUM event sampling     (σ-scaled threshold, causal)                  ║
 ║    2. Triple-Barrier labeling  (López de Prado 2018, entry at next open)     ║
 ║    3. Fractional Differencing  (fracdiff, d fit-on-train-only)               ║
-║    4. Causal MODWT features    (db1/Haar, J=4, S4 AR lags)                   ║
-║    5. Technical features       (VWAP, RSI, Siegel slope)                     ║
+║    4. Feature zoo              (registry; causal MODWT S_J core required)    ║
+║    5. Feature selection        (optional clustered MDA, train fold only)     ║
 ║    6. Dual primary models      (XGB classifier + XGB regressor)              ║
 ║    7. Meta-labeling            (XGB classifier on primary OOF preds)         ║
 ║    8. Expanding-window WFO     (purged + embargoed, uniqueness-weighted)     ║
@@ -21,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from data.bars import load_bars
+from features import cache as feature_cache
 from utils.config import RunConfig
 from utils.data_loader import load_ohlcv, make_synthetic_spy
 from utils.visuals import plot_results
@@ -37,6 +38,7 @@ def main(
     end: str | None = None,
     cfg: RunConfig | None = None,
     out_dir: str = "results",
+    market_symbol: str = "SPY",
 ) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
     """
     Main entry point to run the full pipeline end-to-end.
@@ -55,6 +57,7 @@ def main(
         end (str | None, optional): Day after the last NY trading day (Alpaca only).
         cfg (RunConfig | None, optional): Run configuration. Defaults to None (see above).
         out_dir (str, optional): Directory for signals and plots. Defaults to "results".
+        market_symbol (str, optional): Market bars for the 'cross_asset' feature group. Defaults to "SPY".
 
     Returns:
         tuple[dict, pd.DataFrame, pd.DataFrame]: Backtest results, metrics, WFO signals.
@@ -90,8 +93,23 @@ def main(
         f"windows={cfg.INITIAL_TRAIN}/{cfg.VAL}/{cfg.TEST} {cfg.WINDOW_UNIT}  embargo={cfg.EMBARGO}"
     )
 
+    print(f"[CFG]   features={cfg.FEATURE_GROUPS or 'legacy'}  selection={cfg.FEATURE_SELECTION}")
+
+    # Feature context (cross-asset market bars) and cache (Alpaca data only: the key needs a symbol)
+    context = {}
+    if cfg.FEATURE_GROUPS and "cross_asset" in cfg.FEATURE_GROUPS:
+        if not symbol or symbol == market_symbol:
+            raise ValueError(f"'cross_asset' needs an Alpaca --symbol other than the market ({market_symbol})")
+        context["market"] = load_bars(market_symbol, timeframe, start, end)
+
     # Walk-forward optimisation
-    signals = run_wfo(df, cfg)
+    signals = run_wfo(
+        df,
+        cfg,
+        context=context,
+        symbol=symbol if not data_path else None,
+        feature_cache_dir=feature_cache.DEFAULT_ROOT if symbol and not data_path else None,
+    )
 
     # Persist signals first so a later failure doesn't lose the WFO run
     out_path = Path(out_dir) / "wfo_signals.csv"
@@ -119,5 +137,18 @@ if __name__ == "__main__":
     ap.add_argument("--start")
     ap.add_argument("--end")
     ap.add_argument("--out", default="results", help="output directory for signals and plots")
+    ap.add_argument("--features", help="comma-separated feature groups (default: RunConfig default zoo)")
+    ap.add_argument("--select", choices=["none", "cmda"], help="per-fold feature selection")
     a = ap.parse_args()
-    main(a.data_path, a.symbol, a.timeframe, a.start, a.end, out_dir=a.out)
+    overrides = {}
+    if a.features:
+        overrides["FEATURE_GROUPS"] = tuple(g.strip() for g in a.features.split(","))
+    if a.select:
+        overrides["FEATURE_SELECTION"] = a.select
+    cfg = None
+    if overrides:
+        if a.data_path and a.timeframe == "5Min":
+            cfg = RunConfig.legacy_5min(**overrides)
+        else:
+            cfg = RunConfig.for_timeframe(a.timeframe, **overrides)
+    main(a.data_path, a.symbol, a.timeframe, a.start, a.end, cfg=cfg, out_dir=a.out)
