@@ -3,26 +3,25 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 
 from features.triple_barrier_labels import barrier_exits
-from utils.config import config
-
-BARS_PER_YEAR = 252 * config.BARS_PER_DAY
+from utils.config import RunConfig
 
 
-def strategy_metrics(equity: pd.Series, trades: pd.DataFrame) -> pd.Series:
+def strategy_metrics(equity: pd.Series, trades: pd.DataFrame, bars_per_year: int) -> pd.Series:
     """
     Risk-adjusted performance of one equity curve over its own span.
 
     Args:
         equity (pd.Series): Bar-level equity.
         trades (pd.DataFrame): Executed trades (empty for buy-and-hold).
+        bars_per_year (int): Annualisation factor (cfg.bars_per_year).
 
     Returns:
         pd.Series: Metrics.
     """
     rets = equity.pct_change().fillna(0.0)
     total_ret = equity.iloc[-1] / equity.iloc[0] - 1
-    ann_ret = (1 + total_ret) ** (BARS_PER_YEAR / max(len(rets), 1)) - 1
-    vol = rets.std() * np.sqrt(BARS_PER_YEAR)
+    ann_ret = (1 + total_ret) ** (bars_per_year / max(len(rets), 1)) - 1
+    vol = rets.std() * np.sqrt(bars_per_year)
     max_dd = (equity / equity.cummax() - 1).min()
     n_trades = len(trades)
     return pd.Series(
@@ -30,7 +29,7 @@ def strategy_metrics(equity: pd.Series, trades: pd.DataFrame) -> pd.Series:
             "Total Return (%)": total_ret * 100,
             "Annual Return (%)": ann_ret * 100,
             "Annual Volatility (%)": vol * 100,
-            "Sharpe Ratio": rets.mean() * BARS_PER_YEAR / (vol + 1e-12),
+            "Sharpe Ratio": rets.mean() * bars_per_year / (vol + 1e-12),
             "Max Drawdown (%)": max_dd * 100,
             "Calmar Ratio": ann_ret / abs(max_dd) if max_dd < 0 else np.nan,
             "Num Trades": n_trades,
@@ -42,20 +41,23 @@ def strategy_metrics(equity: pd.Series, trades: pd.DataFrame) -> pd.Series:
     )
 
 
-def compute_metrics(df: pd.DataFrame, results: dict[str, tuple[pd.Series, pd.DataFrame]]) -> pd.DataFrame:
+def compute_metrics(
+    df: pd.DataFrame, results: dict[str, tuple[pd.Series, pd.DataFrame]], cfg: RunConfig
+) -> pd.DataFrame:
     """
     Metrics table for each strategy plus buy-and-hold, all over the same OOS span.
 
     Args:
         df (pd.DataFrame): OHLC data covering the OOS span.
         results (dict): Output of run_backtest.
+        cfg (RunConfig): Run configuration.
 
     Returns:
         pd.DataFrame: One column per strategy.
     """
-    cols = {name: strategy_metrics(eq, trades) for name, (eq, trades) in results.items()}
-    bh = config.INIT_CASH * df["close"] / df["close"].iloc[0]
-    cols["Buy-and-Hold"] = strategy_metrics(bh, pd.DataFrame(columns=["pnl_pct", "bars_held"]))
+    cols = {name: strategy_metrics(eq, trades, cfg.bars_per_year) for name, (eq, trades) in results.items()}
+    bh = cfg.INIT_CASH * df["close"] / df["close"].iloc[0]
+    cols["Buy-and-Hold"] = strategy_metrics(bh, pd.DataFrame(columns=["pnl_pct", "bars_held"]), cfg.bars_per_year)
     metrics = pd.DataFrame(cols)
 
     print("\n" + "═" * 70)
@@ -66,7 +68,7 @@ def compute_metrics(df: pd.DataFrame, results: dict[str, tuple[pd.Series, pd.Dat
     return metrics
 
 
-def signal_diagnostics(df: pd.DataFrame, signals: pd.DataFrame) -> pd.Series:
+def signal_diagnostics(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig) -> pd.Series:
     """
     Post-hoc OOS skill of the primary and meta models on every test event
     (evaluation only — outcomes are computed after all predictions are fixed).
@@ -74,13 +76,21 @@ def signal_diagnostics(df: pd.DataFrame, signals: pd.DataFrame) -> pd.Series:
     Args:
         df (pd.DataFrame): OHLC data.
         signals (pd.DataFrame): WFO output.
+        cfg (RunConfig): Run configuration.
 
     Returns:
         pd.Series: Primary hit rate, meta AUC and meta precision.
     """
-    out = barrier_exits(df, signals.index, signals["width"], side=signals["signed_dir"])
+    out = barrier_exits(
+        df,
+        signals.index,
+        signals["width"],
+        side=signals["signed_dir"],
+        vertical_bars=cfg.VERTICAL_BARS,
+        hold_overnight=cfg.HOLD_OVERNIGHT,
+    )
     sig = signals.loc[out.index]
-    success = (sig["signed_dir"] * out["ret"] > config.META_MIN_RET).astype(int)
+    success = (sig["signed_dir"] * out["ret"] > cfg.META_MIN_RET).astype(int)
     approved = sig["trade_signal"] != 0
     diag = pd.Series(
         {

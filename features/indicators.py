@@ -2,8 +2,6 @@ import numpy as np
 import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view
 
-from utils.config import config
-
 
 def compute_vwap(df: pd.DataFrame) -> pd.Series:
     """
@@ -32,13 +30,13 @@ def compute_vwap(df: pd.DataFrame) -> pd.Series:
     return vwap
 
 
-def compute_rsi(close: pd.Series, period: int = config.RSI_PERIOD) -> pd.Series:
+def compute_rsi(close: pd.Series, period: int) -> pd.Series:
     """
     Wilder RSI using exponential smoothing.  Causal: no future data.
 
     Args:
         close (pd.Series): Close prices
-        period (int, optional): RSI lookback period. Defaults to config.RSI_PERIOD.
+        period (int): RSI lookback period (cfg.RSI_PERIOD).
 
     Returns:
         pd.Series: RSI values
@@ -55,10 +53,7 @@ def compute_rsi(close: pd.Series, period: int = config.RSI_PERIOD) -> pd.Series:
     return rsi
 
 
-def compute_siegel_slope(
-    series: pd.Series,
-    window: int = config.SIEGEL_WINDOW,
-) -> pd.Series:
+def compute_siegel_slope(series: pd.Series, window: int) -> pd.Series:
     """
     Rolling Siegel slope.
     Siegel's repeated median slope estimator is a method for robust
@@ -66,7 +61,7 @@ def compute_siegel_slope(
 
     Args:
         series (pd.Series): Input series
-        window (int, optional): Lookback window. Defaults to config.SIEGEL_WINDOW.
+        window (int): Lookback window (cfg.SIEGEL_WINDOW).
 
     Returns:
         pd.Series: Siegel slope values

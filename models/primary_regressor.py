@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
-from utils.config import config
+from utils.config import RunConfig
 
 
 def fit_primary_regressor(
@@ -11,6 +11,7 @@ def fit_primary_regressor(
     w_train: pd.Series,
     X_val: pd.DataFrame,
     ret_val: pd.Series,
+    cfg: RunConfig,
 ) -> xgb.XGBRegressor:
     """
     Train a magnitude regressor on all training events (not day-filtered).
@@ -25,11 +26,12 @@ def fit_primary_regressor(
         w_train (pd.Series): Sample weights (average uniqueness).
         X_val (pd.DataFrame): Validation features.
         ret_val (pd.Series): Realised barrier-exit returns for the validation events.
+        cfg (RunConfig): Run configuration.
 
     Returns:
         xgb.XGBRegressor: Trained regressor.
     """
-    reg = xgb.XGBRegressor(**config.REG_PARAMS)
+    reg = xgb.XGBRegressor(**cfg.REG_PARAMS)
     reg.fit(X_train, ret_train.abs(), sample_weight=w_train, verbose=False)
 
     val_pred = reg.predict(X_val)

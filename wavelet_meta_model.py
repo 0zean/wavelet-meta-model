@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  SPY 5-Minute Strategy Framework                                             ║
+║  Wavelet Meta-Labeling Strategy Framework (1Min … 1Day)                      ║
 ║  ─────────────────────────────────────────────────────────────────────────   ║
 ║  Pipeline:                                                                   ║
 ║    1. CUSUM event sampling     (σ-scaled threshold, causal)                  ║
@@ -10,7 +10,7 @@
 ║    5. Technical features       (VWAP, RSI, Siegel slope)                     ║
 ║    6. Dual primary models      (XGB classifier + XGB regressor)              ║
 ║    7. Meta-labeling            (XGB classifier on primary OOF preds)         ║
-║    8. Expanding-window WFO     (purged, uniqueness-weighted)                 ║
+║    8. Expanding-window WFO     (purged + embargoed, uniqueness-weighted)     ║
 ║    9. Barrier-exit backtest    (next-bar open execution + slippage)          ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -21,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from data.bars import load_bars
+from utils.config import RunConfig
 from utils.data_loader import load_ohlcv, make_synthetic_spy
 from utils.visuals import plot_results
 from wfo.backtest import run_backtest
@@ -34,6 +35,8 @@ def main(
     timeframe: str = "5Min",
     start: str | None = None,
     end: str | None = None,
+    cfg: RunConfig | None = None,
+    out_dir: str = "results",
 ) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
     """
     Main entry point to run the full pipeline end-to-end.
@@ -41,25 +44,33 @@ def main(
     Data source, in priority order: a CSV at `data_path`, Alpaca bars for `symbol`
     (cached, RTH only), else synthetic SPY.
 
+    Without `cfg`, CSV and synthetic data run with RunConfig.legacy_5min() (the
+    pre-U2 behaviour) and Alpaca data with RunConfig.for_timeframe(timeframe).
+
     Args:
         data_path (str | None, optional): Path to a CSV with OHLCV data. Defaults to None.
         symbol (str | None, optional): Ticker to load from Alpaca. Defaults to None.
         timeframe (str, optional): Alpaca bar timeframe. Defaults to "5Min".
         start (str | None, optional): First NY trading day (Alpaca only).
         end (str | None, optional): Day after the last NY trading day (Alpaca only).
+        cfg (RunConfig | None, optional): Run configuration. Defaults to None (see above).
+        out_dir (str, optional): Directory for signals and plots. Defaults to "results".
 
     Returns:
         tuple[dict, pd.DataFrame, pd.DataFrame]: Backtest results, metrics, WFO signals.
     """
     print("╔" + "═" * 58 + "╗")
-    print("║  SPY 5-Minute Strategy  |  Fracdiff + MODWT + Meta-Label ║")
+    print("║  Wavelet Strategy  |  Fracdiff + MODWT + Meta-Label      ║")
     print("╚" + "═" * 58 + "╝\n")
 
     # Load / generate data
     if data_path:
         if not Path(data_path).exists():
             raise FileNotFoundError(data_path)
+        if cfg is None and timeframe != "5Min":
+            raise ValueError("CSV input runs with RunConfig.legacy_5min(); pass a cfg for other timeframes")
         df = load_ohlcv(data_path)
+        cfg = cfg or RunConfig.legacy_5min()
     elif symbol:
         if not (start and end):
             raise ValueError("--start and --end are required with --symbol")
@@ -67,25 +78,33 @@ def main(
         if df.empty:
             raise ValueError(f"No {timeframe} bars for {symbol} in [{start}, {end})")
         print(f"[DATA]  Alpaca {symbol} {timeframe}: {len(df):,} bars  {df.index[0]} → {df.index[-1]}")
+        cfg = cfg or RunConfig.for_timeframe(timeframe)
+        if cfg.TIMEFRAME != timeframe:
+            raise ValueError(f"cfg is for {cfg.TIMEFRAME} but the data is {timeframe}")
     else:
         print("[DATA]  No data path provided — using synthetic SPY (n=5000)")
         df = make_synthetic_spy(n=5000)
+        cfg = cfg or RunConfig.legacy_5min()
+    print(
+        f"[CFG]   {cfg.TIMEFRAME}  vertical={cfg.VERTICAL_BARS} bars  hold_overnight={cfg.HOLD_OVERNIGHT}  "
+        f"windows={cfg.INITIAL_TRAIN}/{cfg.VAL}/{cfg.TEST} {cfg.WINDOW_UNIT}  embargo={cfg.EMBARGO}"
+    )
 
     # Walk-forward optimisation
-    signals = run_wfo(df)
+    signals = run_wfo(df, cfg)
 
     # Persist signals first so a later failure doesn't lose the WFO run
-    out_path = Path("results/wfo_signals.csv")
-    out_path.parent.mkdir(exist_ok=True)
+    out_path = Path(out_dir) / "wfo_signals.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     signals.to_csv(out_path)
     print(f"[OUT]   WFO signals saved to {out_path}")
 
     # Backtest, metrics and plots cover only the OOS span
     df_oos = df.loc[signals.index[0] :]
-    results = run_backtest(df_oos, signals)
-    metrics = compute_metrics(df_oos, results)
-    signal_diagnostics(df, signals)
-    plot_results(df_oos, results, signals)
+    results = run_backtest(df_oos, signals, cfg)
+    metrics = compute_metrics(df_oos, results, cfg)
+    signal_diagnostics(df, signals, cfg)
+    plot_results(df_oos, results, signals, cfg, save_to=str(Path(out_dir) / "strategy_results.png"))
 
     return results, metrics, signals
 
@@ -99,5 +118,6 @@ if __name__ == "__main__":
     ap.add_argument("--timeframe", default="5Min")
     ap.add_argument("--start")
     ap.add_argument("--end")
+    ap.add_argument("--out", default="results", help="output directory for signals and plots")
     a = ap.parse_args()
-    main(a.data_path, a.symbol, a.timeframe, a.start, a.end)
+    main(a.data_path, a.symbol, a.timeframe, a.start, a.end, out_dir=a.out)

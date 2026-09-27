@@ -1,5 +1,7 @@
 import time
+from typing import NamedTuple
 
+import numpy as np
 import pandas as pd
 
 from features.feature_builder import build_features
@@ -8,26 +10,90 @@ from features.triple_barrier_labels import average_uniqueness, sample_events, tr
 from models.meta_model import fit_meta_model, make_meta_labels, meta_predict
 from models.primary_classifier import fit_primary_classifier
 from models.primary_regressor import fit_primary_regressor
-from utils.config import config
+from utils.config import RunConfig
 from utils.movement_filter import make_active_day_mask
 from utils.primary_signal import primary_signal
 
 
-def purged(labels: pd.DataFrame, start: int, end: int) -> pd.DataFrame:
+def purged(labels: pd.DataFrame, start: int, end: int, embargo: int = 0) -> pd.DataFrame:
     """
     Label rows whose event bar t lies in [start, end) AND whose exit is observed
-    before `end` — a label that is resolved by prices in the next split is
-    purged, so no fitting sample peeks into a later split (López de Prado 2018, §7.4).
+    before `end - embargo` — a label that is resolved by prices in the next split
+    is purged, so no fitting sample peeks into a later split (López de Prado 2018, §7.4).
+
+    Embargo (SPEC §5): the splits are walked forward, so the only fitting samples
+    adjacent to a later split are those at the END of this one. Their outcomes
+    are serially correlated with the next split's first outcomes, so samples
+    whose exit falls in the last `embargo` bars before `end` are dropped too.
+    (Train samples never follow a test split here, so no post-test embargo is needed.)
+
+    Args:
+        labels (pd.DataFrame): Label rows with `entry_pos` and `exit_pos`.
+        start (int): First bar of the split.
+        end (int): First bar of the next split.
+        embargo (int, optional): Bars before `end` in which no exit may fall. Defaults to 0.
+
+    Returns:
+        pd.DataFrame: The usable label rows.
     """
     t = labels["entry_pos"] - 1  # an event at bar t enters at open[t+1]
-    return labels[(t >= start) & (t < end) & (labels["exit_pos"] < end)]
+    return labels[(t >= start) & (t < end) & (labels["exit_pos"] < end - embargo)]
 
 
-def run_wfo(df: pd.DataFrame) -> pd.DataFrame:
+class Fold(NamedTuple):
+    train_end: int  # train = [0, train_end)
+    val_end: int  # val = [train_end, val_end)
+    test_end: int  # test = [val_end, test_end)
+    train_embargo: int  # bars before train_end excluded from train exits
+    val_embargo: int  # bars before val_end excluded from val exits
+
+
+def wfo_folds(index: pd.DatetimeIndex, cfg: RunConfig) -> list[Fold]:
+    """
+    Expanding-window fold boundaries as bar positions.
+
+    WINDOW_UNIT="bars": INITIAL_TRAIN/VAL/TEST/EMBARGO are bar counts (legacy).
+    WINDOW_UNIT="days": they count trading sessions present in the data, and every
+    boundary falls on a session's first bar, so a split holds whole sessions
+    (half-days contribute their shorter session). Sessions the data layer dropped
+    (Alpaca holes) do not count as days.
+
+    Args:
+        index (pd.DatetimeIndex): Bar timestamps.
+        cfg (RunConfig): Run configuration.
+
+    Returns:
+        list[Fold]: One entry per fold, in order.
+    """
+    T0, V, TS, E = cfg.INITIAL_TRAIN, cfg.VAL, cfg.TEST, cfg.EMBARGO
+    if cfg.WINDOW_UNIT == "bars":
+        n = len(index)
+        return [Fold(tr, tr + V, tr + V + TS, E, E) for tr in range(T0, n - V - TS + 1, TS)]
+
+    day = index.normalize()
+    starts = np.flatnonzero(np.r_[True, day[1:] != day[:-1]])
+    bounds = np.r_[starts, len(index)]  # bounds[k] = first bar of session k; bounds[-1] = end of data
+    n_sess = len(starts)
+    folds = []
+    for tr in range(T0, n_sess - V - TS + 1, TS):
+        vl, te = tr + V, tr + V + TS
+        folds.append(
+            Fold(
+                int(bounds[tr]),
+                int(bounds[vl]),
+                int(bounds[te]),
+                int(bounds[tr] - bounds[tr - E]),
+                int(bounds[vl] - bounds[vl - E]),
+            )
+        )
+    return folds
+
+
+def run_wfo(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
     """
     Expanding-window Walk-Forward Optimisation on CUSUM events.
 
-    Fold structure (bars, not calendar time):
+    Fold structure (see wfo_folds; windows in trading sessions or bars):
     ┌────────────────────────────────────────────────────────┐
     │ TRAIN (expanding) │  VAL (fixed)  │  TEST (OOS/fixed)  │
     └────────────────────────────────────────────────────────┘
@@ -41,37 +107,35 @@ def run_wfo(df: pd.DataFrame) -> pd.DataFrame:
     At each fold:
       1. Fit FracDiffStat d on train close → transform the continuous series
       2. Purge train/val events whose barrier exit falls in the next split
+         or in the embargo before it
       3. Fit primary classifier (active days) and regressor on train events
       4. Primary signal on val → side-aware meta-labels → fit meta-model on val
       5. Final trade signal on test (OOS) events → store
 
     Args:
         df (pd.DataFrame): Full dataset to perform WFO.
+        cfg (RunConfig): Run configuration.
 
     Raises:
+        HoldoutError: If df reaches HOLDOUT_START and cfg.ALLOW_HOLDOUT is off.
         RuntimeError: If no WFO folds are completed.
 
     Returns:
         pd.DataFrame: OOS predictions for every test event, concatenated across folds.
     """
+    cfg.holdout_guard(df.index)
     N = len(df)
-    T0 = config.INITIAL_TRAIN_BARS
-    V = config.VAL_BARS
-    TS = config.TEST_BARS
 
     print("\n" + "═" * 60)
     print("  Sampling events, labels and causal features on the full dataset")
     print("═" * 60)
-    events = sample_events(df)
-    labels = triple_barrier_labels(df, events)
-    base_feats = build_features(df)
+    events = sample_events(df, cfg)
+    labels = triple_barrier_labels(df, events, cfg)
+    base_feats = build_features(df, cfg)
     event_pos = pd.Series(df.index.get_indexer(events.index), index=events.index)
 
     all_results = []
-    for fold, train_end in enumerate(range(T0, N - V - TS + 1, TS), start=1):
-        val_end = train_end + V
-        test_end = val_end + TS
-
+    for fold, (train_end, val_end, test_end, emb_tr, emb_vl) in enumerate(wfo_folds(df.index, cfg), start=1):
         print(f"\n{'─' * 60}")
         print(f"  FOLD {fold}: train[0:{train_end}]  val[{train_end}:{val_end}]  test[{val_end}:{test_end}]")
         print(f"{'─' * 60}")
@@ -87,8 +151,8 @@ def run_wfo(df: pd.DataFrame) -> pd.DataFrame:
         X_all = base_feats.iloc[:test_end].assign(fd_close=fracdiff_transform(df["close"].iloc[:test_end], fs))
 
         # ── Samples: events with complete features; fitting splits purged ─────
-        lab_tr = purged(labels, 0, train_end)
-        lab_vl = purged(labels, train_end, val_end)
+        lab_tr = purged(labels, 0, train_end, emb_tr)
+        lab_vl = purged(labels, train_end, val_end, emb_vl)
         ev_ts = events[(event_pos >= val_end) & (event_pos < test_end)]
 
         X_tr = X_all.reindex(lab_tr.index).dropna()
@@ -96,7 +160,7 @@ def run_wfo(df: pd.DataFrame) -> pd.DataFrame:
         X_ts = X_all.reindex(ev_ts.index).dropna()
         lab_tr, lab_vl = lab_tr.loc[X_tr.index], lab_vl.loc[X_vl.index]
 
-        if len(X_tr) < config.MIN_TRAIN_EVENTS or len(X_vl) < config.MIN_VAL_EVENTS or X_ts.empty:
+        if len(X_tr) < cfg.MIN_TRAIN_EVENTS or len(X_vl) < cfg.MIN_VAL_EVENTS or X_ts.empty:
             print(f"[WFO]  Fold {fold}: insufficient events (train={len(X_tr)}, val={len(X_vl)}) — skipping")
             continue
 
@@ -104,20 +168,20 @@ def run_wfo(df: pd.DataFrame) -> pd.DataFrame:
         w_vl = average_uniqueness(lab_vl, N)
 
         # ── Active-day mask (train only) ──────────────────────────────────────
-        active_mask = make_active_day_mask(df.iloc[:train_end]).loc[X_tr.index]
+        active_mask = make_active_day_mask(df.iloc[:train_end], cfg.LOW_MOVE_PCTILE).loc[X_tr.index]
 
         # ── Fit primary models ────────────────────────────────────────────────
-        clf = fit_primary_classifier(X_tr, lab_tr["label"], w_tr, X_vl, lab_vl["label"], active_mask)
-        reg = fit_primary_regressor(X_tr, lab_tr["ret"], w_tr, X_vl, lab_vl["ret"])
+        clf = fit_primary_classifier(X_tr, lab_tr["label"], w_tr, X_vl, lab_vl["label"], active_mask, cfg)
+        reg = fit_primary_regressor(X_tr, lab_tr["ret"], w_tr, X_vl, lab_vl["ret"], cfg)
 
         # ── Primary signal on val → meta-labels ──────────────────────────────
-        prim_val = primary_signal(clf, reg, X_vl)
-        meta_lbl = make_meta_labels(df, events.loc[X_vl.index], prim_val)
-        meta_mdl = fit_meta_model(X_vl, prim_val, meta_lbl, w_vl)
+        prim_val = primary_signal(clf, reg, X_vl, cfg.CLF_THRESH)
+        meta_lbl = make_meta_labels(df, events.loc[X_vl.index], prim_val, cfg)
+        meta_mdl = fit_meta_model(X_vl, prim_val, meta_lbl, w_vl, cfg)
 
         # ── Final prediction on OOS test fold ─────────────────────────────────
-        prim_ts = primary_signal(clf, reg, X_ts)
-        result_ts = meta_predict(meta_mdl, X_ts, prim_ts)
+        prim_ts = primary_signal(clf, reg, X_ts, cfg.CLF_THRESH)
+        result_ts = meta_predict(meta_mdl, X_ts, prim_ts, cfg.META_THRESH)
         result_ts["width"] = ev_ts.loc[X_ts.index, "width"]
         result_ts["fold"] = fold
         all_results.append(result_ts)
@@ -127,7 +191,7 @@ def run_wfo(df: pd.DataFrame) -> pd.DataFrame:
         print(f"[WFO]  Fold {fold} done in {elapsed:.1f}s  |  OOS events={len(result_ts)}  approved={trade_ct}")
 
     if not all_results:
-        raise RuntimeError("No WFO folds completed — check INITIAL_TRAIN_BARS vs data length.")
+        raise RuntimeError("No WFO folds completed — check INITIAL_TRAIN/VAL/TEST vs data length.")
 
     combined = pd.concat(all_results).sort_index()
     print(f"\n[WFO]  Total OOS events: {len(combined):,}  |  Approved trades: {(combined['trade_signal'] != 0).sum()}")

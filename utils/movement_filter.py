@@ -1,12 +1,11 @@
 import pandas as pd
 
 from features.indicators import compute_vwap
-from utils.config import config
 
 
 def make_active_day_mask(
     df: pd.DataFrame,
-    pctile: float = config.LOW_MOVE_PCTILE,
+    pctile: float,
 ) -> pd.Series:
     """
     For each trading day, compute |VWAP_last - VWAP_first| as a proxy for
@@ -16,10 +15,11 @@ def make_active_day_mask(
     Returns a boolean Series (True = bar belongs to an *active* day).
     This mask is applied ONLY during classifier training — NOT during
     inference. The meta-model compensates for quiet-period signal degradation.
+    On 1Day bars every day's move is 0 (one bar per day), so every day is kept.
 
     Args:
         df (pd.DataFrame): Input dataframe with ohlc data
-        pctile (float, optional): Percentile of daily movement to use as threshold. Defaults to config.LOW_MOVE_PCTILE.
+        pctile (float): Percentile of daily movement to use as threshold (cfg.LOW_MOVE_PCTILE).
 
     Returns:
         pd.Series: Boolean mask indicating active days

@@ -67,25 +67,39 @@ Companion to [PLAN.md](PLAN.md). Section numbers are referenced from the plan. A
 `RunConfig` is a frozen dataclass passed explicitly (`cfg`) to every function that previously read the
 module-level `config`. `RunConfig.for_timeframe(tf, **overrides)` fills the timeframe-dependent fields:
 
-| tf | bars/day | vertical barrier (default) | vol span (bars) | hold overnight |
-|---|---|---|---|---|
-| 1Min | 390 | 30 bars (30 min) | 390 | no |
-| 5Min | 78 | 12 bars (1 h) | 100 | no |
-| 15Min | 26 | 8 bars (2 h) | 78 | no |
-| 30Min | 13 | 6 bars (3 h) | 65 | no |
-| 1Hour | 7* | 6 bars (≈ session) | 70 | no |
-| 1Day | 1 | 10 bars (2 wk) | 50 | yes |
+| tf | bars/day | vertical barrier (default) | vol span (bars) | hold overnight | WFO train₀ / val / test (trading days) |
+|---|---|---|---|---|---|
+| 1Min | 390 | 30 bars (30 min) | 390 | no | 21 / 10 / 5 |
+| 5Min | 78 | 12 bars (1 h) | 100 | no | 42 / 21 / 10 |
+| 15Min | 26 | 8 bars (2 h) | 78 | no | 126 / 42 / 21 |
+| 30Min | 13 | 6 bars (3 h) | 65 | no | 189 / 63 / 21 |
+| 1Hour | 7* | 6 bars (≈ session) | 70 | no | 252 / 126 / 21 |
+| 1Day | 1 | 10 bars (2 wk) | 50 | yes | 1008 / 504 / 63 |
 
-\* 09:30–16:00 anchored at 09:30 gives six full hours + a 30-min stub; the stub bar is kept and flagged.
+\* 09:30–16:00 anchored at 09:30 gives six full hours + a 30-min stub. The stub is kept as an ordinary bar
+(it is the session close, which the vertical barrier truncates at); its shorter duration is left for a U3
+`calendar` feature to expose rather than a flag column in the bar schema.
+
+WFO windows (U2): the train window grows with bar length so every split clears `MIN_TRAIN_EVENTS = 200` /
+`MIN_VAL_EVENTS = 100`. Measured on SPY 2016-01-04→2025-09-30 (CUSUM events per session: 5Min 15.7, 15Min 5.1,
+30Min 2.5, 1Hour 1.3, 1Day 0.25), the smallest val split is 246 / 168 / 122 / 145 / 126 events and the first
+train split 616 / 654 / 466 / 320 / 233; fold counts 238 / 108 / 104 / 98 / 14. 1Min was not measured (no
+cache yet). A "trading day" is a session **present in the data**: the few sessions the data layer drops
+(§1) are not counted, so a window spanning one is one calendar session longer. U9 moves to exchange-calendar windows.
 
 Timeframe-independent fields (existing semantics): `BARRIER_MULT`, `CUSUM_MULT`, `SLIPPAGE_PCT`,
-`META_MIN_RET = 2·SLIPPAGE_PCT`, `SEED`, model params. WFO windows are in **trading days** (§6).
+`META_MIN_RET = 2·SLIPPAGE_PCT`, `SEED`, model params. WFO windows (`INITIAL_TRAIN`, `VAL`, `TEST`,
+`EMBARGO`) are counted in `WINDOW_UNIT = "days"` (trading sessions; every split boundary is a session's
+first bar) — `"bars"` exists only for the legacy regression. `RunConfig.replace(SEED=…)` also reseeds the
+XGBoost params. `ALLOW_HOLDOUT` (default False): `run_wfo` raises `HoldoutError` if the data reaches
+`HOLDOUT_START`; since the loader also stops there, no label can resolve inside the holdout during development.
 
 **Overnight policy invariant.** `hold_overnight=False` → vertical barrier truncated at the entry session's
 last bar, events on a session's last bar skipped (current behaviour). `True` → no truncation; the next
 session's open is a normal bar (gap-through-barrier fills at that open, as today).
 
-**Regression invariant.** `RunConfig.legacy_5min()` + CSV input reproduces the pre-U2 `wfo_signals.csv` exactly.
+**Regression invariant.** `RunConfig.legacy_5min()` (5Min, bar windows 2000/1000/500, `EMBARGO = 0`) + CSV
+input reproduces the pre-U2 `wfo_signals.csv` exactly (sha1 `402ef202…`, 754 rows).
 
 ---
 
@@ -137,7 +151,12 @@ Model defaults: `logit_l1/l2` (StandardScaler fit inside `fit`), `rf_ldp` (`n_es
 Each sample i has span `[t0_i, t1_i]` = `[event bar, exit bar]`.
 - **Purge:** drop train sample i if its span overlaps any test span.
 - **Embargo:** additionally drop train samples with `t0_i ∈ (max test t1, max test t1 + h]`, `h = ceil(embargo_pct · N_bars)`;
-  default `embargo_pct = 0.01`, or `embargo_days = 1` for WFO splits.
+  default `embargo_pct = 0.01` (k-fold CV, U5).
+- **Embargo in the forward WFO (U2):** train precedes val precedes test, so no fitting sample ever follows the
+  split it is scored against; the embargo instead sits at the **end** of each fitting split: train (val) samples
+  whose exit falls in the last `EMBARGO` trading days before val (test) starts are dropped, i.e. keep
+  `exit_pos < split_end − h`. This removes the fitting outcomes most serially correlated with the next split's
+  first outcomes. Default `EMBARGO = 1` day (h = that session's bar count, shorter after a half-day).
 - **PurgedKFold:** contiguous, unshuffled folds; purge + embargo per test fold.
 - **CPCV(N, k):** N contiguous groups, all C(N,k) test combinations; number of backtest paths
   φ = C(N,k)·k/N = C(N−1,k−1); each group is a test group in exactly φ splits. Default N=10, k=2 → 45 splits, 9 paths.

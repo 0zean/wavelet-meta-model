@@ -2,7 +2,7 @@ import pandas as pd
 import xgboost as xgb
 from sklearn.metrics import roc_auc_score
 
-from utils.config import config
+from utils.config import RunConfig
 
 
 def fit_primary_classifier(
@@ -12,6 +12,7 @@ def fit_primary_classifier(
     X_val: pd.DataFrame,
     y_val: pd.Series,
     active_mask_train: pd.Series,
+    cfg: RunConfig,
 ) -> xgb.XGBClassifier:
     """
     Train the direction classifier (XGBoost) on active-day events only.
@@ -25,6 +26,7 @@ def fit_primary_classifier(
         X_val (pd.DataFrame): Validation features
         y_val (pd.Series): Validation labels {-1, 0, 1}
         active_mask_train (pd.Series): Active-day mask for training rows
+        cfg (RunConfig): Run configuration.
 
     Returns:
         xgb.XGBClassifier: Fitted classifier
@@ -32,7 +34,7 @@ def fit_primary_classifier(
     keep = y_train.isin([-1, 1]) & active_mask_train
     y_tr = y_train.loc[keep].map({-1: 0, 1: 1})
 
-    clf = xgb.XGBClassifier(**config.CLF_PARAMS)
+    clf = xgb.XGBClassifier(**cfg.CLF_PARAMS)
     clf.fit(X_train.loc[keep], y_tr, sample_weight=w_train.loc[keep], verbose=False)
 
     keep_vl = y_val.isin([-1, 1])

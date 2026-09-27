@@ -5,17 +5,17 @@ import numpy as np
 import pandas as pd
 from matplotlib import gridspec
 
-from utils.config import config
-
-ROLL_BARS = 5 * config.BARS_PER_DAY  # 1 week of 5m bars
+from utils.config import RunConfig
 
 
 def plot_results(
     df: pd.DataFrame,
     results: dict[str, tuple[pd.Series, pd.DataFrame]],
     signals: pd.DataFrame,
+    cfg: RunConfig,
     save_to: str = "results/strategy_results.png",
 ) -> None:
+    roll_bars = 5 * cfg.BARS_PER_DAY  # 1 week
     fig = plt.figure(figsize=(18, 12))
     gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.4, wspace=0.3)
     colors = {"Meta-filtered": "steelblue", "Primary only": "gray"}
@@ -25,7 +25,7 @@ def plot_results(
     ax1 = fig.add_subplot(gs[0, :])
     for name, (equity, _) in results.items():
         equity.plot(ax=ax1, label=name, color=colors.get(name), lw=1.5)
-    bh = config.INIT_CASH * (df["close"] / df["close"].iloc[0])
+    bh = cfg.INIT_CASH * (df["close"] / df["close"].iloc[0])
     bh.plot(ax=ax1, label="Buy-and-Hold", color="orange", lw=1.0, linestyle="--")
     ax1.set_title("OOS Equity Curve vs Buy-and-Hold", fontsize=13, fontweight="bold")
     ax1.set_ylabel("Portfolio Value ($)")
@@ -50,11 +50,11 @@ def plot_results(
     ax3.set_ylabel("Count")
     ax3.grid(alpha=0.3, axis="y")
 
-    # 4. Rolling Sharpe (390-bar = 5 days of 5m bars)
+    # 4. Rolling 1-week Sharpe
     ax4 = fig.add_subplot(gs[2, 0])
     roll_ret = meta_equity.pct_change().fillna(0)
-    roll_sharpe = roll_ret.rolling(ROLL_BARS).mean() / (roll_ret.rolling(ROLL_BARS).std() + 1e-9)
-    (roll_sharpe * np.sqrt(252 * config.BARS_PER_DAY)).plot(ax=ax4, color="green", lw=1.0)
+    roll_sharpe = roll_ret.rolling(roll_bars).mean() / (roll_ret.rolling(roll_bars).std() + 1e-9)
+    (roll_sharpe * np.sqrt(cfg.bars_per_year)).plot(ax=ax4, color="green", lw=1.0)
     ax4.axhline(0, color="black", lw=0.5, linestyle="--")
     ax4.set_title("Rolling 1-Week Sharpe (Meta-filtered)", fontsize=11)
     ax4.grid(alpha=0.3)
@@ -62,13 +62,13 @@ def plot_results(
     # 5. Meta-model confidence histogram
     ax5 = fig.add_subplot(gs[2, 1])
     signals["meta_prob"].hist(ax=ax5, bins=40, color="purple", alpha=0.7)
-    ax5.axvline(config.META_THRESH, color="red", lw=1.5, linestyle="--", label=f"Threshold={config.META_THRESH}")
+    ax5.axvline(cfg.META_THRESH, color="red", lw=1.5, linestyle="--", label=f"Threshold={cfg.META_THRESH}")
     ax5.set_title("Meta-Model Confidence Distribution", fontsize=11)
     ax5.set_xlabel("P(trade is profitable)")
     ax5.legend()
     ax5.grid(alpha=0.3)
 
-    plt.suptitle("SPY 5-Minute Strategy: Full WFO Results", fontsize=15, fontweight="bold", y=1.01)
+    plt.suptitle(f"{cfg.TIMEFRAME} Strategy: Full WFO Results", fontsize=15, fontweight="bold", y=1.01)
     Path(save_to).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_to, dpi=150, bbox_inches="tight")
     print(f"\n[PLOT]  Saved to {save_to}")

@@ -16,12 +16,13 @@ from features.feature_builder import build_features
 from features.fractional_diff import fit_fracdiff_d, fracdiff_transform
 from features.indicators import compute_siegel_slope
 from features.triple_barrier_labels import average_uniqueness, barrier_exits, sample_events, triple_barrier_labels
-from utils.config import config
+from utils.config import RunConfig
 from utils.data_loader import load_ohlcv
 from wfo.backtest import equity_curve, simulate_trades
 from wfo.wfo_engine import purged, run_wfo
 
 BOUNDARY = 4250
+CFG = RunConfig.legacy_5min()
 
 
 @pytest.fixture(scope="module")
@@ -45,8 +46,8 @@ def perturb_after(df: pd.DataFrame, start: int, seed: int = 0) -> pd.DataFrame:
 
 
 def test_features_are_causal(df):
-    a = build_features(df).iloc[:BOUNDARY]
-    b = build_features(perturb_after(df, BOUNDARY)).iloc[:BOUNDARY]
+    a = build_features(df, CFG).iloc[:BOUNDARY]
+    b = build_features(perturb_after(df, BOUNDARY), CFG).iloc[:BOUNDARY]
     pd.testing.assert_frame_equal(a, b)
 
 
@@ -58,22 +59,22 @@ def test_fracdiff_is_causal(df):
 
 
 def test_events_and_widths_are_causal(df):
-    a = sample_events(df)
-    b = sample_events(perturb_after(df, BOUNDARY))
+    a = sample_events(df, CFG)
+    b = sample_events(perturb_after(df, BOUNDARY), CFG)
     cut = df.index[BOUNDARY - 1]
     pd.testing.assert_frame_equal(a.loc[:cut], b.loc[:cut])
 
 
 def test_labels_only_depend_on_their_window(df):
-    ev = sample_events(df)
-    a = triple_barrier_labels(df, ev)
-    b = triple_barrier_labels(perturb_after(df, BOUNDARY), ev)
+    ev = sample_events(df, CFG)
+    a = triple_barrier_labels(df, ev, CFG)
+    b = triple_barrier_labels(perturb_after(df, BOUNDARY), ev, CFG)
     done = a.index[a["exit_pos"] < BOUNDARY]
     pd.testing.assert_frame_equal(a.loc[done], b.loc[done])
 
 
 def test_purged_samples_never_reach_next_split(df):
-    labels = triple_barrier_labels(df, sample_events(df))
+    labels = triple_barrier_labels(df, sample_events(df, CFG), CFG)
     for start, end in [(0, 2000), (2000, 3000), (3000, 4000)]:
         rows = purged(labels, start, end)
         t = rows["entry_pos"] - 1
@@ -87,8 +88,8 @@ def test_purged_samples_never_reach_next_split(df):
 
 def test_wfo_predictions_are_causal(df):
     base = df.iloc[:4500]
-    a = run_wfo(base)
-    b = run_wfo(perturb_after(base, BOUNDARY))
+    a = run_wfo(base, CFG)
+    b = run_wfo(perturb_after(base, BOUNDARY), CFG)
     cut = base.index[BOUNDARY - 1]
     cols = ["clf_prob", "magnitude", "meta_prob", "trade_signal", "width"]
     pd.testing.assert_frame_equal(a.loc[:cut, cols], b.loc[:cut, cols])
@@ -99,16 +100,20 @@ def test_wfo_predictions_are_causal(df):
 
 def test_siegel_matches_scipy(df):
     close = df["close"].iloc[:300]
-    w = config.SIEGEL_WINDOW
+    w = CFG.SIEGEL_WINDOW
     ref = [np.nan] * (w - 1) + [siegelslopes(close.to_numpy()[i - w + 1 : i + 1]).slope for i in range(w - 1, 300)]
-    np.testing.assert_allclose(compute_siegel_slope(close).to_numpy(), ref, equal_nan=True)
+    np.testing.assert_allclose(compute_siegel_slope(close, w).to_numpy(), ref, equal_nan=True)
 
 
 def test_modwt_matches_pywddff(df):
     close = df["close"].iloc[:500]
-    coefs = pyw.modwt(x=close.to_numpy(), filter=config.WAVELET_FILTER, J=config.WAVELET_J, remove_bc=True)
+    coefs = pyw.modwt(x=close.to_numpy(), filter=CFG.WAVELET_FILTER, J=CFG.WAVELET_J, remove_bc=True)
     ref = pd.Series(coefs[:, -1], index=close.index[-coefs.shape[0] :]).reindex(close.index).shift(1)
-    np.testing.assert_allclose(wavelet_ar_features(close)["w_lag_1"].to_numpy(), ref.to_numpy(), equal_nan=True)
+    np.testing.assert_allclose(
+        wavelet_ar_features(close, CFG.WAVELET_FILTER, CFG.WAVELET_J, CFG.AR_LAGS)["w_lag_1"].to_numpy(),
+        ref.to_numpy(),
+        equal_nan=True,
+    )
 
 
 # ── Triple barrier mechanics ─────────────────────────────────────────────────
@@ -121,11 +126,13 @@ def make_bars(rows: list[tuple[float, float, float, float]], start: str = "2024-
     return out
 
 
-def one_event(df: pd.DataFrame, width: float, side: float | None = None, vertical_bars: int = 3) -> pd.Series:
+def one_event(
+    df: pd.DataFrame, width: float, side: float | None = None, vertical_bars: int = 3, hold_overnight: bool = False
+) -> pd.Series:
     ev = df.index[[0]]
     w = pd.Series(width, index=df.index)
     s = None if side is None else pd.Series(side, index=ev)
-    return barrier_exits(df, ev, w, side=s, vertical_bars=vertical_bars).iloc[0]
+    return barrier_exits(df, ev, w, side=s, vertical_bars=vertical_bars, hold_overnight=hold_overnight).iloc[0]
 
 
 def test_entry_is_next_open_and_upper_hit():
@@ -169,11 +176,11 @@ def test_average_uniqueness():
 
 
 def test_backtest_slippage_is_adverse_and_equity_compounds(df):
-    events = sample_events(df).iloc[:200]
+    events = sample_events(df, CFG).iloc[:200]
     signals = events.assign(trade_signal=np.where(np.arange(len(events)) % 2, 1, -1))
-    trades = simulate_trades(df, signals)
+    trades = simulate_trades(df, signals, CFG)
     assert (trades["side"] * (trades["entry_fill"] - trades["entry_px"]) > 0).all()  # pay up to enter
     assert (trades["side"] * (trades["exit_fill"] - trades["exit_px"]) < 0).all()  # give up to exit
     assert (trades["entry_pos"].to_numpy()[1:] > trades["exit_pos"].to_numpy()[:-1]).all()  # no overlap
-    eq = equity_curve(df, trades)
-    assert eq.iloc[-1] == pytest.approx(config.INIT_CASH * np.prod(1 + trades["pnl_pct"]))
+    eq = equity_curve(df, trades, CFG.INIT_CASH, CFG.SIZE)
+    assert eq.iloc[-1] == pytest.approx(CFG.INIT_CASH * np.prod(1 + trades["pnl_pct"]))
