@@ -6,7 +6,7 @@ there is no module-level config instance. Build one with:
 
     RunConfig.for_timeframe("1Hour")          # timeframe-scaled defaults
     RunConfig.for_timeframe("1Day", SEED=7)   # ... with overrides
-    RunConfig.legacy_5min()                   # pre-U2 behaviour (bar-based WFO windows, no embargo)
+    RunConfig.legacy_5min()                   # pre-U2 behaviour (bar windows, no embargo, legacy features)
 """
 
 from dataclasses import dataclass, field, replace
@@ -28,6 +28,18 @@ _XGB_BASE = {
     "device": "cpu",
 }
 _PARAM_FIELDS = ("CLF_PARAMS", "REG_PARAMS", "META_PARAMS")
+
+# SPEC §3: the default feature zoo (features/groups.py). 'wavelet_core' is required in every set;
+# 'intraday' is skipped on 1Day; 'wavelet_ext', 'structural', 'calendar' and 'cross_asset' are opt-in.
+DEFAULT_FEATURE_GROUPS = (
+    "wavelet_core",
+    "trend",
+    "mean_reversion",
+    "volatility",
+    "microstructure",
+    "intraday",
+    "fracdiff",
+)
 
 
 @dataclass(frozen=True)
@@ -78,6 +90,15 @@ class RunConfig:
     # Technical indicators
     RSI_PERIOD: int = 14
     SIEGEL_WINDOW: int = 20  # Siegel slope rolling window
+
+    # Feature zoo (SPEC §3). None = the legacy pre-U3 feature matrix (legacy_5min regression only).
+    FEATURE_GROUPS: tuple[str, ...] | None = DEFAULT_FEATURE_GROUPS
+    # "cmda": clustered MDA on each fold's purged train events keeps a feature subset
+    # (wavelet_core always kept); "none": use every column.
+    FEATURE_SELECTION: Literal["none", "cmda"] = "none"
+    CMDA_TREES: int = 100  # random-forest size used to score permutation importance
+    CMDA_SPLITS: int = 4  # purged k-fold splits inside the train window
+    CV_EMBARGO_PCT: float = 0.01  # purged-CV embargo as a fraction of the train bars (SPEC §5)
 
     # Low-movement day filter (classifier training only)
     # Bars whose trading day has |VWAP_close − VWAP_open| in the bottom
@@ -141,6 +162,12 @@ class RunConfig:
         # Own copies of the param dicts (copies made by replace() never share them) with the seed stamped in
         for name in _PARAM_FIELDS:
             object.__setattr__(self, name, {**getattr(self, name), "random_state": self.SEED})
+        if self.FEATURE_GROUPS is not None:
+            object.__setattr__(self, "FEATURE_GROUPS", tuple(self.FEATURE_GROUPS))
+        if self.FEATURE_SELECTION not in ("none", "cmda"):
+            raise ValueError(f"FEATURE_SELECTION must be 'none' or 'cmda', got {self.FEATURE_SELECTION!r}")
+        if self.FEATURE_SELECTION == "cmda" and self.FEATURE_GROUPS is None:
+            raise ValueError("FEATURE_SELECTION='cmda' needs FEATURE_GROUPS (the legacy matrix has no wavelet_core)")
         if self.WINDOW_UNIT not in ("days", "bars"):
             raise ValueError(f"WINDOW_UNIT must be 'days' or 'bars', got {self.WINDOW_UNIT!r}")
         for name in ("INITIAL_TRAIN", "VAL", "TEST", "VERTICAL_BARS", "BARS_PER_DAY"):
@@ -180,9 +207,12 @@ class RunConfig:
 
     @classmethod
     def legacy_5min(cls, **overrides) -> "RunConfig":
-        """Pre-U2 behaviour: 5Min, bar-based windows 2000/1000/500, no embargo (regression invariant)."""
+        """Pre-U2 behaviour: 5Min, bar windows 2000/1000/500, no embargo, legacy features (regression invariant)."""
         return cls.for_timeframe(
-            "5Min", WINDOW_UNIT="bars", INITIAL_TRAIN=2000, VAL=1000, TEST=500, EMBARGO=0, **overrides
+            "5Min",
+            **{"WINDOW_UNIT": "bars", "INITIAL_TRAIN": 2000, "VAL": 1000, "TEST": 500, "EMBARGO": 0}
+            | {"FEATURE_GROUPS": None}
+            | overrides,
         )
 
     def replace(self, **overrides) -> "RunConfig":

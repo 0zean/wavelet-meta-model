@@ -4,8 +4,8 @@ from typing import NamedTuple
 import numpy as np
 import pandas as pd
 
-from features.feature_builder import build_features
-from features.fractional_diff import fit_fracdiff_d, fracdiff_transform
+from features.feature_builder import FeatureSet
+from features.selection import clustered_mda
 from features.triple_barrier_labels import average_uniqueness, sample_events, triple_barrier_labels
 from models.meta_model import fit_meta_model, make_meta_labels, meta_predict
 from models.primary_classifier import fit_primary_classifier
@@ -38,6 +38,16 @@ def purged(labels: pd.DataFrame, start: int, end: int, embargo: int = 0) -> pd.D
     """
     t = labels["entry_pos"] - 1  # an event at bar t enters at open[t+1]
     return labels[(t >= start) & (t < end) & (labels["exit_pos"] < end - embargo)]
+
+
+def build_features(df: pd.DataFrame, cfg: RunConfig, fset: FeatureSet) -> pd.DataFrame:
+    """Static features for the whole series (module-level so tests can inject a leak)."""
+    return fset.build(df)
+
+
+def select_features(X_tr, lab_tr, w_tr, cfg: RunConfig, n_bars: int):
+    """Clustered MDA on the fold's purged train events (module-level so tests can spy on its inputs)."""
+    return clustered_mda(X_tr, lab_tr, w_tr, cfg, n_bars)
 
 
 class Fold(NamedTuple):
@@ -89,7 +99,14 @@ def wfo_folds(index: pd.DatetimeIndex, cfg: RunConfig) -> list[Fold]:
     return folds
 
 
-def run_wfo(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
+def run_wfo(
+    df: pd.DataFrame,
+    cfg: RunConfig,
+    *,
+    context: dict[str, pd.DataFrame] | None = None,
+    symbol: str | None = None,
+    feature_cache_dir=None,
+) -> pd.DataFrame:
     """
     Expanding-window Walk-Forward Optimisation on CUSUM events.
 
@@ -101,20 +118,24 @@ def run_wfo(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
     0             train_end         val_end              test_end
 
     Once, on the full series (all causal — bar t uses bars <= t):
-      • CUSUM events + barrier widths, and the non-fracdiff features
+      • CUSUM events + barrier widths, and the static feature groups (cfg.FEATURE_GROUPS)
       • Triple-barrier outcomes (TARGETS, read only through `purged`)
 
     At each fold:
-      1. Fit FracDiffStat d on train close → transform the continuous series
+      1. Fit the per-fold feature groups (fracdiff d) on train bars before its embargo → transform the series
       2. Purge train/val events whose barrier exit falls in the next split
          or in the embargo before it
-      3. Fit primary classifier (active days) and regressor on train events
+      3. Optional clustered-MDA feature selection on the purged train events only
+         (cfg.FEATURE_SELECTION = "cmda"); fit primary classifier (active days) and regressor on train events
       4. Primary signal on val → side-aware meta-labels → fit meta-model on val
       5. Final trade signal on test (OOS) events → store
 
     Args:
         df (pd.DataFrame): Full dataset to perform WFO.
         cfg (RunConfig): Run configuration.
+        context (dict | None): Extra aligned inputs for feature groups, e.g. {"market": SPY bars}.
+        symbol (str | None): Symbol name; with feature_cache_dir enables the feature cache.
+        feature_cache_dir (path | None): Feature cache root (features.cache).
 
     Raises:
         HoldoutError: If df reaches HOLDOUT_START and cfg.ALLOW_HOLDOUT is off.
@@ -131,7 +152,8 @@ def run_wfo(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
     print("═" * 60)
     events = sample_events(df, cfg)
     labels = triple_barrier_labels(df, events, cfg)
-    base_feats = build_features(df, cfg)
+    fset = FeatureSet(cfg, context=context, symbol=symbol, cache_dir=feature_cache_dir)
+    base_feats = build_features(df, cfg, fset)
     event_pos = pd.Series(df.index.get_indexer(events.index), index=events.index)
 
     all_results = []
@@ -142,13 +164,14 @@ def run_wfo(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
 
         t0 = time.time()
 
-        # ── Features: fracdiff d fit on train, applied causally to the series ──
+        # ── Features: per-fold groups (fracdiff d) fit on train bars before the embargo ──
+        # (fitting on the embargo bars would make every train feature depend on them)
         try:
-            fs = fit_fracdiff_d(df["close"].iloc[:train_end])
+            states = fset.fit(df.iloc[: train_end - emb_tr])
         except RuntimeWarning as e:  # FracdiffStat raises this when no d <= 1 is stationary
             print(f"[WFO]  Fold {fold}: fracdiff failed ({e}) — skipping")
             continue
-        X_all = base_feats.iloc[:test_end].assign(fd_close=fracdiff_transform(df["close"].iloc[:test_end], fs))
+        X_all = base_feats.iloc[:test_end].join(fset.transform(df.iloc[:test_end], states))
 
         # ── Samples: events with complete features; fitting splits purged ─────
         lab_tr = purged(labels, 0, train_end, emb_tr)
@@ -158,6 +181,9 @@ def run_wfo(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
         X_tr = X_all.reindex(lab_tr.index).dropna()
         X_vl = X_all.reindex(lab_vl.index).dropna()
         X_ts = X_all.reindex(ev_ts.index).dropna()
+        n_nan = len(lab_tr) - len(X_tr) + len(lab_vl) - len(X_vl) + len(ev_ts) - len(X_ts)
+        if n_nan:
+            print(f"[WFO]  Fold {fold}: {n_nan} events dropped for NaN features (warm-up or gaps)")
         lab_tr, lab_vl = lab_tr.loc[X_tr.index], lab_vl.loc[X_vl.index]
 
         if len(X_tr) < cfg.MIN_TRAIN_EVENTS or len(X_vl) < cfg.MIN_VAL_EVENTS or X_ts.empty:
@@ -166,6 +192,11 @@ def run_wfo(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
 
         w_tr = average_uniqueness(lab_tr, N)
         w_vl = average_uniqueness(lab_vl, N)
+
+        # ── Feature selection on purged train events only ─────────────────────
+        if cfg.FEATURE_SELECTION == "cmda":
+            kept = select_features(X_tr, lab_tr, w_tr, cfg, train_end).kept
+            X_tr, X_vl, X_ts = X_tr[kept], X_vl[kept], X_ts[kept]
 
         # ── Active-day mask (train only) ──────────────────────────────────────
         active_mask = make_active_day_mask(df.iloc[:train_end], cfg.LOW_MOVE_PCTILE).loc[X_tr.index]

@@ -106,21 +106,59 @@ input reproduces the pre-U2 `wfo_signals.csv` exactly (sha1 `402ef202…`, 754 r
 ## §3 Feature registry (U3)
 
 ```python
-@feature_group(name: str, required: bool = False, intraday_only: bool = False, per_fold: bool = False)
-def group(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame: ...
+@feature_group(name, required=False, intraday_only=False, per_fold=False, needs=(), level_check=True)
+def group(df: pd.DataFrame, cfg: RunConfig, context: dict) -> pd.DataFrame: ...
+
+
+@feature_group(name, per_fold=True)
+class Group:
+    def fit(train_df, cfg) -> state: ...
+    def transform(df, state, cfg) -> pd.DataFrame: ...
 ```
-- Returns columns prefixed `{name}__` indexed like `df`; NaN during warm-up.
-- `per_fold=True` groups (e.g. fracdiff) receive a `fit(train_df) -> state` / `transform(df, state)` pair instead.
-- `build_features(df, cfg, groups)` raises if `wavelet_core` is absent; skips `intraday_only` groups on 1Day with a log line.
-- **Invariant:** only stationary transforms (returns, ratios, z-scores, fracdiff); raw price levels are rejected
-  by a check that the column is not ≥ 0.99 correlated with `close` on the fixture.
-- Feature cache key: `(symbol, tf, group, adjustment, source-hash of the group function)`.
+- Registry in `features/registry.py`; groups in `features/groups.py`; `FeatureSet` / `build_features(df, cfg, groups,
+  *, context, symbol, cache_dir)` in `features/feature_builder.py`.
+- Returns columns prefixed `{name}__` indexed like `df`; NaN during warm-up (≤ 200 bars for the whole zoo at 5Min–1Day; max(200, VOL_SPAN) — 390 at 1Min).
+  Events whose features are NaN are dropped by `run_wfo` with a per-fold count logged.
+- `per_fold=True` groups (fracdiff) are fit on each fold's train bars **before the train embargo**
+  (`[0, train_end − embargo)`) and applied to the continuous series.
+- `needs=("market",)` groups read `context["market"]` (bars of the market symbol, default SPY).
+- `resolve_groups` **raises** if `wavelet_core` is absent, a name is unknown or repeated; skips `intraday_only`
+  groups on 1Day with a log line. A group needing a context key that was not supplied raises.
+- **Invariant:** only stationary transforms. Every static group's output is checked at build time: aligned index,
+  prefix, no ±inf, and no column with |corr(column, close)| ≥ 0.99 (raw price level). Exempt: per-fold fracdiff
+  (by design it keeps memory; LdP reports corr ≈ 0.99 at the minimum stationary d) and `calendar` (deterministic
+  encodings can trend with a short sample). The guard only catches near-verbatim levels (e.g. SPY 1Day `log(close)` has
+  |ρ| = 0.985 and passes): it is a backstop; stationarity of a new group is a review item.
+- `cfg.FEATURE_GROUPS` default = `wavelet_core, trend, mean_reversion, volatility, microstructure, intraday,
+  fracdiff` (covers the legacy matrix's information). `None` = the legacy matrix (`legacy_features` + `fd_close`), used
+  only by `RunConfig.legacy_5min()` for the regression invariant: its `w_lag_*` are raw S_J levels.
 
-**Clustered MDA** (López de Prado 2020, ch.6): cluster features by `1 − |ρ|` (ONC or hierarchical with silhouette),
-permute cluster-wise, score = drop in purged-CV neg-log-loss. Run on the training window only; keep clusters with
-mean importance > 0 at 1 s.e.
+| group | columns | notes |
+|---|---|---|
+| `wavelet_core` (required) | `s{J}_lag_k = log(S_J[t−k] / close[t])`, k = 1..AR_LAGS | causal MODWT smooth of close (legacy lags, made stationary) |
+| `wavelet_ext` | per filter db1/db2/la8 on log close: relative detail energies `e1..eJ`, `vr = log(E_J/E_1)`, `slope = ΔS_J / σ_bar` | energy window 4·2^J bars |
+| `trend` | `ret_1`, `mom_h`, `mom_4h` (h = VERTICAL_BARS), Siegel slope / close, `sma_dist_20/50`, `ema_dist_20` (log), ADX(14), (+DI−−DI)/100 | |
+| `mean_reversion` | RSI, Bollinger %b(20, 2), z-score of close vs 50-bar mean | |
+| `volatility` | EWM σ (VOL_SPAN), Parkinson / Garman–Klass (20), log(high/low), σ₂₀/σ_VOL_SPAN, vol-of-vol (50-bar std of log σ₂₀) | |
+| `microstructure` | log(1+volume), volume z-score (window max(20, bars/day)), log Amihud (20), Roll spread (20), Corwin–Schultz (20-bar mean) | |
+| `structural` | CUSUM filter S+/S− in threshold units, DF t-stat (50), SADF-lite = max DF t over windows 50/100/200 | entropy not implemented |
+| `calendar` | day-of-week, month (sin/cos) | |
+| `intraday` (intraday_only) | log(close/session VWAP), time of day of the bar close (sin/cos), `bar_frac` = scheduled bar length / timeframe (1Hour 15:30 stub = 0.5) | assumes a 16:00 close; early closes not known from bars |
+| `cross_asset` (needs market) | market return and σ, 50-bar beta and corr, residual return, relative h-bar momentum | market close = last market bar stamped ≤ t |
+| `fracdiff` (per_fold) | `fracdiff__close`: fixed-window fracdiff, minimum ADF-stationary d fit on train | |
 
----
+**Feature cache** (`features/cache.py`, root `data/cache/features/{symbol}/{tf}/{group}/{key}.npz`, used when the WFO
+has a symbol — Alpaca input). Key = sha256 over (group, symbol, timeframe, source hash of every `features/*.py`,
+numpy/pandas/scipy/pywddff/fracdiff versions, all RunConfig fields except a listed set of model/WFO/backtest fields, data hash of the bars' timestamps + OHLCV(+vwap),
+and the data hash of any context frame). The data hash subsumes range and adjustment. Plain numpy arrays, atomic
+write, index re-verified on load. Per-fold groups are not cached.
+
+**Clustered MDA** (López de Prado 2020, ch.6; `features/selection.py`, `cfg.FEATURE_SELECTION = "cmda"`): on each
+fold's purged, embargoed train events only (directional labels ±1). Cluster features by `1 − |ρ|` (average-linkage
+hierarchical, k ∈ [2, 10] by silhouette); `PurgedKFold(CMDA_SPLITS=4, embargo = ceil(CV_EMBARGO_PCT · train bars))`;
+single-threaded random forest (`CMDA_TREES=100`, `max_features=1`, balanced_subsample, min_weight_fraction_leaf 0.05); importance =
+drop in weighted neg-log-loss when a cluster's columns are permuted jointly; keep clusters with mean − 1 s.e. > 0.
+`wavelet_core` columns are always kept; `cmda` with the legacy matrix (`FEATURE_GROUPS=None`) raises. Selection is applied to the train, val and test matrices of that fold.
 
 ## §4 Primary and model protocols (U4, U6)
 
@@ -157,7 +195,8 @@ Each sample i has span `[t0_i, t1_i]` = `[event bar, exit bar]`.
   whose exit falls in the last `EMBARGO` trading days before val (test) starts are dropped, i.e. keep
   `exit_pos < split_end − h`. This removes the fitting outcomes most serially correlated with the next split's
   first outcomes. Default `EMBARGO = 1` day (h = that session's bar count, shorter after a half-day).
-- **PurgedKFold:** contiguous, unshuffled folds; purge + embargo per test fold.
+- **PurgedKFold** (`validation/purged_cv.py`, minimal version added in U3 for clustered MDA): contiguous, unshuffled
+  folds; keep train i only if `t1_i < min test t0` or `t0_i > max test t1 + h`.
 - **CPCV(N, k):** N contiguous groups, all C(N,k) test combinations; number of backtest paths
   φ = C(N,k)·k/N = C(N−1,k−1); each group is a test group in exactly φ splits. Default N=10, k=2 → 45 splits, 9 paths.
 - **Selection metric:** sample-weighted neg-log-loss (default) or Brier. AUC/F1/accuracy reported only.

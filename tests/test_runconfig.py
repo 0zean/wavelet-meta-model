@@ -10,7 +10,6 @@ import pandas as pd
 import pytest
 
 from data.bars import HOLDOUT_START, HoldoutError
-from features.feature_builder import build_features
 from features.triple_barrier_labels import barrier_exits, sample_events, triple_barrier_labels
 from utils.config import TIMEFRAME_DEFAULTS, RunConfig
 from utils.data_loader import load_ohlcv
@@ -265,8 +264,8 @@ def test_wfo_causality_test_catches_one_bar_lookahead(df, monkeypatch):
     base = df.iloc[:4500]
     _wfo_prefix_diff(base)  # clean
 
-    def leaky(d, cfg):
-        return build_features(d, cfg).assign(leak=np.log(d["close"]).diff().shift(-1))  # next bar's return
+    def leaky(d, cfg, fset):
+        return fset.build(d).assign(leak=np.log(d["close"]).diff().shift(-1))  # next bar's return
 
     monkeypatch.setattr("wfo.wfo_engine.build_features", leaky)
     with pytest.raises(AssertionError, match="are different"):

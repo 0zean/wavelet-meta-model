@@ -188,15 +188,48 @@ trading-day→bar mapping at half-days, embargo direction.
 - Stationarity guard: non-stationary raw levels are rejected by the registry (only returns/ratios/fracdiff).
 
 **Done when.**
-- [ ] Parametrized causality test runs over **every registered feature** (future-perturbation, SPEC §8).
-- [ ] Any feature set lacking `wavelet_core` raises.
-- [ ] `build_features(df, cfg, groups=[...])` works at 5Min and 1Day (intraday-only groups auto-skipped on 1Day with a log line).
-- [ ] Clustered MDA runs on one fold and its selection uses no val/test rows (test asserts index subset).
-- [ ] Feature build time for 10y of 5Min on one symbol recorded; cache features keyed by (symbol, tf, group, code hash).
+- [x] Parametrized causality test runs over **every registered feature** (future-perturbation, SPEC §8).
+- [x] Any feature set lacking `wavelet_core` raises.
+- [x] `build_features(df, cfg, groups=[...])` works at 5Min and 1Day (intraday-only groups auto-skipped on 1Day with a log line).
+- [x] Clustered MDA runs on one fold and its selection uses no val/test rows (test asserts index subset).
+- [x] Feature build time for 10y of 5Min on one symbol recorded; cache features keyed by (symbol, tf, group, code hash).
 
 **Reviewer focus.** Hidden lookahead in rolling/EWM/normalization, cross-asset alignment, selection leakage, NaN warm-up handling.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done, findings fixed). 108 tests pass; ruff clean. Notes:
+- Registry `features/registry.py`, groups `features/groups.py` (11: `wavelet_core` (required), `wavelet_ext`, `trend`,
+  `mean_reversion`, `volatility`, `microstructure`, `structural`, `calendar`, `intraday` (intraday-only), `cross_asset`
+  (needs market bars), `fracdiff` (per fold)), `FeatureSet`/`build_features` in `features/feature_builder.py`. Column
+  list and formulas in SPEC §3. `cfg.FEATURE_GROUPS` default = wavelet_core, trend, mean_reversion, volatility,
+  microstructure, intraday, fracdiff; CLI `--features a,b,c` and `--select cmda`.
+- **Decision:** `wavelet_core` = `log(S_J[t−k]/close[t])`, not the raw S_J lags — the raw lags are price levels
+  (|ρ| ≈ 1 with close) and violate the SPEC §3 stationarity invariant. The pre-U3 matrix survives only as
+  `FEATURE_GROUPS=None` (`legacy_5min()`), so the regression holds: sha1 `402ef202…` re-checked after the review fixes.
+- VWAP deviation / time of day / bar length are a separate `intraday` group (so "skip on 1Day" is per group); the 1Hour
+  15:30 stub gets `bar_frac = 0.5` (U2 deferral closed). Entropy (structural) not implemented.
+- Tests `tests/test_features.py` (49): SPEC §8 causality (random-walk + truncation, 3 seeded cuts) parametrized over every
+  registered group at 5Min and every non-intraday group at 1Day; a sensitivity check; registry errors; stationarity
+  guard; MODWT details vs pywddff (db1/db2/la8); Roll/Parkinson/EWM σ on known processes; cross-asset alignment;
+  cache hit/miss/invalidation; PurgedKFold property test; CMDA keeps the informative cluster; CMDA in the WFO sees only
+  purged train rows and its inputs/importances are identical when bars from the train embargo on are perturbed
+  (4 seeds + an embargo-only ramp; mutation-checked).
+- Build time, SPY 5Min 2016-01-04→2025-09-30 (190,402 bars, all 10 static groups, 63 cols): 1.8 s cold, 0.1 s cached
+  (111 MB). Cache key = (group, symbol, tf, `features/*.py` source + numpy/pandas/scipy/pywddff/fracdiff versions,
+  feature-relevant cfg fields, data hash, context data hash); used for Alpaca input.
+- End-to-end: SPY 1Day default zoo 14 folds / 234 OOS events (meta AUC 0.499); AAPL 1Day `wavelet_core,trend,
+  cross_asset,fracdiff` + CMDA completes (5 folds, 6–18 of 20 features kept per fold).
+- Review fixes: (BREAKING) fracdiff d was fit on train bars incl. the embargo, so train features — and CMDA — depended
+  on embargo bars (no val/test leak); now fit on `[0, train_end − embargo)`, and the test that passed by seed luck now
+  uses several seeds + a ramp. (SEVERE) `--select cmda` on the legacy matrix dropped every column and crashed; `cmda`
+  now requires `FEATURE_GROUPS` and CMDA raises without `wavelet_core` columns. (MINOR, fixed) per-fold count of events
+  dropped for NaN features logged; library versions in the cache key; CMDA forest single-threaded (bit-reproducible);
+  SPEC warm-up statement corrected (390 bars at 1Min).
+- Deferred MINORs: the |ρ| ≥ 0.99 guard only catches near-verbatim levels (SPY 1Day `log(close)` has ρ = 0.985) — it is a
+  backstop, stationarity of new groups stays a review item; zero-volume session-start bars / a market session missing
+  for ≥ 50 bars would NaN `vwap_dev` / `corr_50` (0 cases in the cache; now logged as dropped events, not silent).
+- Deferred (U9/U10): fracdiff's ADF search dominates per-fold cost — fitting d on a 5-year 5Min train took 18 min.
+  Full-window 5Min WFO needs rolling IS windows or a cached/coarser d search.
+- `validation/purged_cv.py` is a minimal PurgedKFold for CMDA; U5 extends it (CPCV, sklearn adapter).
 
 ---
 
