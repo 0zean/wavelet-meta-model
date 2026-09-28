@@ -8,7 +8,7 @@
 ║    3. Fractional Differencing  (fracdiff, d fit-on-train-only)               ║
 ║    4. Feature zoo              (registry; causal MODWT S_J core required)    ║
 ║    5. Feature selection        (optional clustered MDA, train fold only)     ║
-║    6. Dual primary models      (XGB classifier + XGB regressor)              ║
+║    6. Primary signal zoo       (XGB clf + reg, or a fixed rule; --primary)   ║
 ║    7. Meta-labeling            (XGB classifier on primary OOF preds)         ║
 ║    8. Expanding-window WFO     (purged + embargoed, uniqueness-weighted)     ║
 ║    9. Barrier-exit backtest    (next-bar open execution + slippage)          ║
@@ -22,6 +22,8 @@ import pandas as pd
 
 from data.bars import load_bars
 from features import cache as feature_cache
+from primaries import REGISTRY as PRIMARIES
+from primaries.diagnostics import primary_diagnostics
 from utils.config import RunConfig
 from utils.data_loader import load_ohlcv, make_synthetic_spy
 from utils.visuals import plot_results
@@ -94,6 +96,7 @@ def main(
     )
 
     print(f"[CFG]   features={cfg.FEATURE_GROUPS or 'legacy'}  selection={cfg.FEATURE_SELECTION}")
+    print(f"[CFG]   primary={cfg.PRIMARY} {cfg.PRIMARY_PARAMS or ''}")
 
     # Feature context (cross-asset market bars) and cache (Alpaca data only: the key needs a symbol)
     context = {}
@@ -122,6 +125,10 @@ def main(
     results = run_backtest(df_oos, signals, cfg)
     metrics = compute_metrics(df_oos, results, cfg)
     signal_diagnostics(df, signals, cfg)
+    diag = primary_diagnostics(df, signals, cfg, symbol=symbol or "")
+    diag.to_csv(Path(out_dir) / "primary_diagnostics.csv", index=False)
+    print("\n[DIAG]  Primary diagnostics (all folds)")
+    print(diag.iloc[-1].drop(["symbol", "timeframe", "fold"]).to_string())
     plot_results(df_oos, results, signals, cfg, save_to=str(Path(out_dir) / "strategy_results.png"))
 
     return results, metrics, signals
@@ -129,6 +136,7 @@ def main(
 
 if __name__ == "__main__":
     import argparse
+    import json
 
     ap = argparse.ArgumentParser()
     ap.add_argument("data_path", nargs="?", default=None, help="OHLCV CSV (overrides --symbol)")
@@ -139,12 +147,18 @@ if __name__ == "__main__":
     ap.add_argument("--out", default="results", help="output directory for signals and plots")
     ap.add_argument("--features", help="comma-separated feature groups (default: RunConfig default zoo)")
     ap.add_argument("--select", choices=["none", "cmda"], help="per-fold feature selection")
+    ap.add_argument("--primary", choices=sorted(PRIMARIES), help="primary signal (default ml_xgb)")
+    ap.add_argument("--primary-params", help='fixed rule parameters as JSON, e.g. \'{"fast": 10, "slow": 40}\'')
     a = ap.parse_args()
     overrides = {}
     if a.features:
         overrides["FEATURE_GROUPS"] = tuple(g.strip() for g in a.features.split(","))
     if a.select:
         overrides["FEATURE_SELECTION"] = a.select
+    if a.primary:
+        overrides["PRIMARY"] = a.primary
+    if a.primary_params:
+        overrides["PRIMARY_PARAMS"] = json.loads(a.primary_params)
     cfg = None
     if overrides:
         if a.data_path and a.timeframe == "5Min":

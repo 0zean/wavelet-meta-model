@@ -247,14 +247,49 @@ Test rule-based primaries alongside the current ML primary.
 - Rule primaries with parameters get **no tuning on test**; parameters either fixed or tuned in train only.
 
 **Done when.**
-- [ ] Each primary passes the causality test and a synthetic-data sanity test (e.g., `sma_cross` is long in a
+- [x] Each primary passes the causality test and a synthetic-data sanity test (e.g., `sma_cross` is long in a
       monotone uptrend, `bollinger_mr` fades a spike).
-- [ ] WFO runs with any primary via config switch; output schema unchanged apart from `primary` column.
-- [ ] Diagnostics table for SPY 5Min / 1Day × all primaries saved (development window only).
+- [x] WFO runs with any primary via config switch; output schema unchanged apart from `primary` column.
+- [x] Diagnostics table for SPY 5Min / 1Day × all primaries saved (development window only). *1Day saved; 5Min
+      deferred to U9/U10 by user decision (runtime, see notes).*
 
 **Reviewer focus.** Side determined with information after event time, primaries silently producing all-one-side, tuning leakage.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done: no BREAKING/SEVERE; MINORs fixed). 5Min diagnostics deferred to U9/U10. 143 tests pass; ruff clean. Notes:
+- `primaries/`: `base.py` (protocol, `@primary` registry, `make_primary(cfg)`, `check_signal`, `rule_frame`), `ml_xgb.py`
+  (pre-U4 classifier + regressor), `rules.py` (`sma_cross`, `bollinger_mr`, `wavelet_trend` slope/level,
+  `donchian_breakout`), `diagnostics.py`. Config `PRIMARY` (default `ml_xgb`) / `PRIMARY_PARAMS`; CLI `--primary`,
+  `--primary-params`. Formulas and contract in SPEC §4.
+- **Decision:** the protocol returns the full primary frame via `signal()` (it is also the meta-model's input);
+  `side()` is a helper over its `signed_dir`. Rule frames have `clf_prob` = NaN and |score| as magnitude/confidence.
+- **Decision:** diagnostics (n_events, long_share, precision net of costs, opportunity, recall, turnover, net_bp; per fold
+  + all) are computed post hoc from the signal frame into `primary_diagnostics.csv` per run, not added as signal
+  columns — the schema criterion allows only `primary`, and outcomes should not sit next to the signals.
+- Regression: legacy CSV run → `wfo_signals.csv` with the `primary` column stripped = sha1 `402ef202…`. SPY 1Day
+  `ml_xgb` output is bit-identical to `main` (sha1 `5b82e1d2…`, meta AUC 0.5065 — the U3 note's 0.499 was stale).
+- Tests `tests/test_primaries.py` (35): SPEC §8 causality per rule (random walk + truncation, 3 cuts) and for ml_xgb;
+  a leaky rule is caught; WFO-level causality with a rule primary (mutation-checked: Donchian `shift(-1)` fails both);
+  rules ignore labels; synthetic sanity (trend rules follow monotone/noisy trends, Donchian breakout strength > 1,
+  Bollinger fades spikes, ml_xgb learns a planted side); hand formulas per rule; registry/param errors; WFO with every
+  primary (schema + rule sides passed through); hand-computed diagnostics (tie bar, sub-cost exit, mixed sides).
+- Review fixes (all MINOR): diagnostics test now catches tie/cost/net_bp mutations; rule window params must be
+  ints ≥ 2 (JSON `20.0` failed only inside fold 1); exact-formula tests; one-sided warning at < 10% / > 90% long on
+  val or test (was only at exactly 0/100%).
+- SPY 1Day dev window (14 folds, 234 OOS events; `results/primary_diagnostics.csv`):
+
+  | primary | long share | precision | recall | turnover | net bp/event | meta AUC | meta Sharpe | primary Sharpe |
+  |---|---|---|---|---|---|---|---|---|
+  | ml_xgb | 0.75 | 0.530 | 0.535 | 0.24 | +0.6 | 0.507 | 0.12 | −0.12 |
+  | sma_cross | 0.56 | 0.457 | 0.461 | 0.09 | −38.3 | 0.474 | −0.18 | −0.50 |
+  | bollinger_mr | 0.48 | 0.432 | 0.435 | 0.22 | −39.5 | 0.588 | −0.21 | −0.96 |
+  | wavelet_trend | 0.50 | 0.551 | 0.556 | 0.17 | +30.7 | 0.545 | 0.94 | 0.64 |
+  | donchian_breakout | 0.58 | 0.547 | 0.552 | 0.22 | +29.0 | 0.527 | −0.07 | 0.81 |
+
+  Buy-and-hold Sharpe 0.69. 234 events, single symbol, no DSR: plumbing evidence, not findings.
+- 5Min (SPY 2023-01→2025-10, 62 folds) was stopped at 9–17 folds after ~2 h of contended CPU: 5 parallel runs each
+  refit fracdiff + meta XGB per fold. Rule-primary diagnostics do not need the WFO fits and could be computed directly;
+  `ml_xgb` needs the full WFO (≈ 16 min alone, U2). **Deferred to U9/U10** (user decision): rerun once rolling IS
+  windows / cached fracdiff d make 5Min WFO affordable.
 
 ---
 
@@ -439,4 +474,5 @@ too small to be meaningful, inner CV leaking across window boundaries.
 - Alternative bars (dollar/volume/tick) — Alpaca trades endpoint makes this feasible; big data cost.
 - Deep sequence models (TCN/LSTM/transformers) beyond a cheap screen.
 - Point-in-time universe (delisted names) to remove survivorship bias.
+- (U9/U10) SPY 5Min × all primaries diagnostics deferred from U4 — full-window 5Min WFO too slow before rolling IS / d caching.
 - Removal of unused deps (`dill`, `pyfts`, `pyyaml`, `requests`) — `pyyaml` becomes used in U10.

@@ -27,6 +27,8 @@ DEFAULT_ROOT = Path(__file__).resolve().parent.parent / "data" / "cache" / "feat
 _NON_FEATURE_FIELDS = {
     "CLF_PARAMS",
     "REG_PARAMS",
+    "PRIMARY",
+    "PRIMARY_PARAMS",
     "META_PARAMS",
     "SEED",
     "CLF_THRESH",

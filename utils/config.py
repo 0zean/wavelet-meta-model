@@ -109,6 +109,12 @@ class RunConfig:
     # overriding any random_state passed in the params.
     SEED: int = SEED
 
+    # Primary signal (SPEC §4, primaries/): "ml_xgb" (the classifier + regressor below), "sma_cross",
+    # "bollinger_mr", "wavelet_trend", "donchian_breakout". PRIMARY_PARAMS are the rule's fixed
+    # parameters (constructor kwargs; never tuned); ml_xgb takes none and uses CLF_/REG_PARAMS.
+    PRIMARY: str = "ml_xgb"
+    PRIMARY_PARAMS: dict = field(default_factory=dict)
+
     # Primary: XGBoost Classifier (direction, binary)
     CLF_PARAMS: dict = field(default_factory=lambda: {**_XGB_BASE, "learning_rate": 0.02, "eval_metric": "auc"})
     # Every event gets a side, so the threshold only splits long from short;
@@ -162,6 +168,7 @@ class RunConfig:
         # Own copies of the param dicts (copies made by replace() never share them) with the seed stamped in
         for name in _PARAM_FIELDS:
             object.__setattr__(self, name, {**getattr(self, name), "random_state": self.SEED})
+        object.__setattr__(self, "PRIMARY_PARAMS", dict(self.PRIMARY_PARAMS))
         if self.FEATURE_GROUPS is not None:
             object.__setattr__(self, "FEATURE_GROUPS", tuple(self.FEATURE_GROUPS))
         if self.FEATURE_SELECTION not in ("none", "cmda"):
