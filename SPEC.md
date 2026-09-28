@@ -163,13 +163,42 @@ drop in weighted neg-log-loss when a cluster's columns are permuted jointly; kee
 ## §4 Primary and model protocols (U4, U6)
 
 ```python
-class Primary(Protocol):
+class Primary(Protocol):  # primaries/base.py; registered with @primary(name)
     name: str
 
-    def fit(self, df, feats, events, labels, weights, cfg) -> "Primary": ...  # no-op for fixed rules
-    def side(self, df, feats, events, cfg) -> pd.Series: ...  # {-1,+1}, index = events
+    def fit(self, df, X, labels, weights, cfg, *, val=None) -> "Primary": ...  # no-op for fixed rules
+    def signal(self, df, X, cfg) -> pd.DataFrame: ...  # PRIMARY_COLUMNS, index = X.index (the events)
+
+
+side(p, df, X, cfg) = p.signal(df, X, cfg)["signed_dir"]  # {-1,+1}
 ```
-Invariant: `side` at event t uses only rows ≤ t (causality test §8).
+- `cfg.PRIMARY` (default `ml_xgb`) selects the primary; `cfg.PRIMARY_PARAMS` are its constructor kwargs (fixed per
+  experiment, unknown keys raise). CLI: `--primary NAME --primary-params '{"k": v}'`.
+- In each WFO fold a fresh instance is fit on the purged train events with `df = bars[:train_end]`
+  (`val` is for logging only), then `signal` is called on val events with `bars[:val_end]` and on test events with
+  `bars[:test_end]`. `check_signal` raises unless the frame has exactly `PRIMARY_COLUMNS`, the events' index and
+  sides in {−1, +1}. The frame is also the primary's meta-model input.
+- `PRIMARY_COLUMNS = clf_prob, direction, signed_dir, magnitude, signal, confidence`. Rules: `clf_prob` = NaN,
+  `magnitude` = `confidence` = |score|, `signal` = side·|score|; score 0 → long; a NaN score at an event raises.
+- WFO output = primary frame + `meta_prob, trade_signal, width, fold, primary`. With `primary` dropped, the legacy
+  run still reproduces sha1 `402ef202…` (§2).
+
+| primary | params (default) | score (sign = side) |
+|---|---|---|
+| `ml_xgb` | — (CLF_/REG_PARAMS) | XGB classifier P(long) ≥ CLF_THRESH; magnitude from the \|ret\| regressor (pre-U4 pipeline) |
+| `sma_cross` | fast 20, slow 50 | log(SMA_fast / SMA_slow) / σ_bar |
+| `bollinger_mr` | window 20 | −(close − mean_w) / std_w |
+| `wavelet_trend` | mode `slope` \| `level` | (S_J[t] − S_J[t−1]) / σ_bar, or (log close − S_J) / σ_bar; S_J = causal MODWT smooth of log close |
+| `donchian_breakout` | window 20 | (close − mid) / half-width of the previous `window` bars' channel (> 1 = breakout) |
+
+σ_bar = EWM σ (VOL_SPAN); a zero denominator keeps the numerator's sign. Rule parameters are never tuned.
+
+**Diagnostics** (`primaries/diagnostics.py`, post hoc on OOS events, per fold + all; `primary_diagnostics.csv` per run):
+`n_events`, `long_share`, `precision` = P(side·ret > META_MIN_RET), `opportunity` = P(either side would), `recall` =
+precision | opportunity, `turnover` = share of consecutive events whose side flips, `net_bp` = mean side-return net of
+round-trip slippage. Returns use the backtest's barrier rules with each side (adverse same-bar ties).
+
+Invariant: the primary frame at event t uses only bars ≤ t (causality test §8).
 
 ```python
 class ZooModel(Protocol):

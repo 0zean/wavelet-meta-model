@@ -274,10 +274,11 @@ def test_wfo_causality_test_catches_one_bar_lookahead(df, monkeypatch):
 
 def _fit_targets(d: pd.DataFrame, cfg: RunConfig, monkeypatch) -> dict[str, list[pd.DataFrame]]:
     """Run the WFO recording what each model is fitted on: train targets/weights, and every meta-model input."""
+    import primaries.ml_xgb as ml
     import wfo.wfo_engine as eng
 
     rec: dict[str, list[pd.DataFrame]] = {}
-    fit_clf, fit_meta = eng.fit_primary_classifier, eng.fit_meta_model
+    fit_clf, fit_meta = ml.fit_primary_classifier, eng.fit_meta_model
 
     def clf(X_tr, y_tr, w_tr, *args):
         rec["train"] = [y_tr.to_frame(), w_tr.to_frame()]
@@ -287,7 +288,7 @@ def _fit_targets(d: pd.DataFrame, cfg: RunConfig, monkeypatch) -> dict[str, list
         rec["val"] = [X_vl, prim, lbl.to_frame(), w.to_frame()]
         return fit_meta(X_vl, prim, lbl, w, cfg)
 
-    monkeypatch.setattr(eng, "fit_primary_classifier", clf)
+    monkeypatch.setattr(ml, "fit_primary_classifier", clf)
     monkeypatch.setattr(eng, "fit_meta_model", meta)
     eng.run_wfo(d, cfg)
     return rec

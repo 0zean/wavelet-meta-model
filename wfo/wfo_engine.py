@@ -8,11 +8,10 @@ from features.feature_builder import FeatureSet
 from features.selection import clustered_mda
 from features.triple_barrier_labels import average_uniqueness, sample_events, triple_barrier_labels
 from models.meta_model import fit_meta_model, make_meta_labels, meta_predict
-from models.primary_classifier import fit_primary_classifier
-from models.primary_regressor import fit_primary_regressor
+from primaries import check_signal, make_primary
 from utils.config import RunConfig
-from utils.movement_filter import make_active_day_mask
-from utils.primary_signal import primary_signal
+
+ONE_SIDED_SHARE = 0.10  # warn when a split's long share falls outside [10%, 90%]
 
 
 def purged(labels: pd.DataFrame, start: int, end: int, embargo: int = 0) -> pd.DataFrame:
@@ -126,7 +125,8 @@ def run_wfo(
       2. Purge train/val events whose barrier exit falls in the next split
          or in the embargo before it
       3. Optional clustered-MDA feature selection on the purged train events only
-         (cfg.FEATURE_SELECTION = "cmda"); fit primary classifier (active days) and regressor on train events
+         (cfg.FEATURE_SELECTION = "cmda"); fit the primary (cfg.PRIMARY, primaries/) on train events —
+         a no-op for fixed rules; ml_xgb fits its classifier (active days) and regressor
       4. Primary signal on val → side-aware meta-labels → fit meta-model on val
       5. Final trade signal on test (OOS) events → store
 
@@ -142,9 +142,11 @@ def run_wfo(
         RuntimeError: If no WFO folds are completed.
 
     Returns:
-        pd.DataFrame: OOS predictions for every test event, concatenated across folds.
+        pd.DataFrame: OOS predictions for every test event, concatenated across folds
+            (primary frame, meta_prob, trade_signal, width, fold, primary).
     """
     cfg.holdout_guard(df.index)
+    make_primary(cfg)  # fail fast on an unknown primary or bad PRIMARY_PARAMS
     N = len(df)
 
     print("\n" + "═" * 60)
@@ -198,23 +200,25 @@ def run_wfo(
             kept = select_features(X_tr, lab_tr, w_tr, cfg, train_end).kept
             X_tr, X_vl, X_ts = X_tr[kept], X_vl[kept], X_ts[kept]
 
-        # ── Active-day mask (train only) ──────────────────────────────────────
-        active_mask = make_active_day_mask(df.iloc[:train_end], cfg.LOW_MOVE_PCTILE).loc[X_tr.index]
-
-        # ── Fit primary models ────────────────────────────────────────────────
-        clf = fit_primary_classifier(X_tr, lab_tr["label"], w_tr, X_vl, lab_vl["label"], active_mask, cfg)
-        reg = fit_primary_regressor(X_tr, lab_tr["ret"], w_tr, X_vl, lab_vl["ret"], cfg)
+        # ── Fit the primary on purged train events (bars up to the train end) ─
+        prim = make_primary(cfg).fit(df.iloc[:train_end], X_tr, lab_tr, w_tr, cfg, val=(X_vl, lab_vl))
 
         # ── Primary signal on val → meta-labels ──────────────────────────────
-        prim_val = primary_signal(clf, reg, X_vl, cfg.CLF_THRESH)
+        prim_val = check_signal(prim.signal(df.iloc[:val_end], X_vl, cfg), X_vl, prim.name)
         meta_lbl = make_meta_labels(df, events.loc[X_vl.index], prim_val, cfg)
         meta_mdl = fit_meta_model(X_vl, prim_val, meta_lbl, w_vl, cfg)
 
         # ── Final prediction on OOS test fold ─────────────────────────────────
-        prim_ts = primary_signal(clf, reg, X_ts, cfg.CLF_THRESH)
+        prim_ts = check_signal(prim.signal(df.iloc[:test_end], X_ts, cfg), X_ts, prim.name)
         result_ts = meta_predict(meta_mdl, X_ts, prim_ts, cfg.META_THRESH)
         result_ts["width"] = ev_ts.loc[X_ts.index, "width"]
         result_ts["fold"] = fold
+        result_ts["primary"] = prim.name
+        shares = {"val": (prim_val["signed_dir"] > 0).mean(), "test": (prim_ts["signed_dir"] > 0).mean()}
+        print(f"[PRIM]  {prim.name}: long share val={shares['val']:.3f}  test={shares['test']:.3f}")
+        for split, sh in shares.items():
+            if not ONE_SIDED_SHARE <= sh <= 1 - ONE_SIDED_SHARE:
+                print(f"[PRIM]  Warning: fold {fold} {split} sides are {sh:.1%} long (one-sided primary)")
         all_results.append(result_ts)
 
         elapsed = time.time() - t0
