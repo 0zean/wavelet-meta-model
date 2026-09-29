@@ -106,6 +106,16 @@ class RunConfig:
     PBO_BLOCKS: int = 16  # CSCV blocks S
     SELECTION_METRIC: Literal["neg_log_loss", "brier"] = "neg_log_loss"
 
+    # Model zoo (SPEC §4, U6; models/zoo.py). "legacy" = the pre-U6 fixed-parameter XGBoost (no search, no
+    # calibration); any other zoo model runs its purged-CV HP search + calibration inside its fitting rows.
+    META_MODEL: str = "legacy"
+    # Direction classifier of the ml_xgb primary; must stay "legacy" for rule primaries (they fit nothing).
+    PRIMARY_MODEL: str = "legacy"
+    ZOO_CV_SPLITS: int = 4  # inner PurgedKFold splits for the zoo's HP search and calibration choice
+    # Meta-model training rows: "val" = the val split with the train-fit primary (pre-U6); "oof" = train+val
+    # events with purged k-fold out-of-fold primary signals (primary refit on train+val for test).
+    META_TRAIN: Literal["val", "oof"] = "val"
+
     # Low-movement day filter (classifier training only)
     # Bars whose trading day has |VWAP_close − VWAP_open| in the bottom
     # LOW_MOVE_PCTILE are excluded from classifier training.
@@ -189,6 +199,17 @@ class RunConfig:
             raise ValueError(f"PBO_BLOCKS must be an even integer >= 2; got {self.PBO_BLOCKS}")
         if self.SELECTION_METRIC not in ("neg_log_loss", "brier"):
             raise ValueError(f"SELECTION_METRIC must be 'neg_log_loss' or 'brier', got {self.SELECTION_METRIC!r}")
+        from models.zoo import REGISTRY as ZOO
+
+        for name in ("META_MODEL", "PRIMARY_MODEL"):
+            if getattr(self, name) not in ZOO:
+                raise ValueError(f"{name} must be one of {sorted(ZOO)}, got {getattr(self, name)!r}")
+        if self.PRIMARY_MODEL != "legacy" and self.PRIMARY != "ml_xgb":
+            raise ValueError(f"PRIMARY_MODEL applies only to the ml_xgb primary (PRIMARY={self.PRIMARY!r})")
+        if self.META_TRAIN not in ("val", "oof"):
+            raise ValueError(f"META_TRAIN must be 'val' or 'oof', got {self.META_TRAIN!r}")
+        if self.ZOO_CV_SPLITS < 2:
+            raise ValueError("ZOO_CV_SPLITS must be >= 2")
         if self.WINDOW_UNIT not in ("days", "bars"):
             raise ValueError(f"WINDOW_UNIT must be 'days' or 'bars', got {self.WINDOW_UNIT!r}")
         for name in ("INITIAL_TRAIN", "VAL", "TEST", "VERTICAL_BARS", "BARS_PER_DAY"):

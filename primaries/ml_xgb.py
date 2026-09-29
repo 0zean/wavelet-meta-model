@@ -14,7 +14,8 @@ from utils.primary_signal import primary_signal
 class MlXgb:
     """
     Classifier on active-day train events (side), regressor on all train events (|move|).
-    Hyper-parameters come from cfg.CLF_PARAMS / REG_PARAMS / CLF_THRESH, so it takes no PRIMARY_PARAMS.
+    The classifier is cfg.PRIMARY_MODEL (models/zoo.py; "legacy" = XGBoost CLF_PARAMS); the regressor uses
+    REG_PARAMS and the side threshold CLF_THRESH, so it takes no PRIMARY_PARAMS.
     """
 
     def __init__(self, **params):
@@ -23,13 +24,12 @@ class MlXgb:
         self.clf = self.reg = None
 
     def fit(self, df, X, labels, weights, cfg: RunConfig, *, val=None) -> "MlXgb":
-        if val is None:
-            raise ValueError("ml_xgb needs val=(X_val, labels_val) (validation logging)")
-        X_vl, lab_vl = val
-        # Active-day mask from the train bars only (df ends at the train split's end)
+        X_vl, lab_vl = val if val is not None else (None, None)  # val is for logging only
+        y_vl, r_vl = (None, None) if lab_vl is None else (lab_vl["label"], lab_vl["ret"])
+        # Active-day mask from the fitting bars only (df ends at the fitting split's end)
         active = make_active_day_mask(df, cfg.LOW_MOVE_PCTILE).loc[X.index]
-        self.clf = fit_primary_classifier(X, labels["label"], weights, X_vl, lab_vl["label"], active, cfg)
-        self.reg = fit_primary_regressor(X, labels["ret"], weights, X_vl, lab_vl["ret"], cfg)
+        self.clf = fit_primary_classifier(X, labels["label"], weights, X_vl, y_vl, active, cfg, labels)
+        self.reg = fit_primary_regressor(X, labels["ret"], weights, X_vl, r_vl, cfg)
         return self
 
     def signal(self, df, X: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:

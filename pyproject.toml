@@ -19,6 +19,7 @@ dependencies = [
     "setuptools==81.0.0",
     "alpaca-py>=0.44.0",
     "python-dotenv>=1.2.3",
+    "lightgbm>=4.7.0",
 ]
 
 [dependency-groups]

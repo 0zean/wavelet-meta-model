@@ -356,15 +356,75 @@ Test rule-based primaries alongside the current ML primary.
 - Out of scope unless a cheap screen shows promise: deep sequence models (TCN/LSTM). Noted as stretch.
 
 **Done when.**
-- [ ] All zoo models run through the same WFO with a config switch; calibration curve + Brier reported OOS.
-- [ ] Model comparison table on development window for SPY 5Min/1Day: OOS log-loss, Brier, AUC, meta precision, and
-      CPCV Sharpe distribution; each row logged as a trial.
-- [ ] Deterministic given seed (two runs identical).
+- [x] All zoo models run through the same WFO with a config switch; calibration curve + Brier reported OOS.
+- [x] Model comparison table on development window for SPY 5Min/1Day: OOS log-loss, Brier, AUC, meta precision, and
+      CPCV Sharpe distribution; each row logged as a trial. *(5Min CPCV on a shorter window — see notes.)*
+- [x] Deterministic given seed (two runs identical).
 
 **Reviewer focus.** Hyper-parameter tuning touching val/test, calibration fit on the same rows it's evaluated on,
 class-imbalance handling, scaling fit leakage for linear models.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done, findings fixed). 250 tests pass (3 min 40 s); ruff clean. Notes:
+- Modules: `models/zoo.py` (registry, `make_model(name, cfg, role)`, `inner_cv`, `_Tuned` purged-CV HP search +
+  sigmoid/isotonic calibration by cross-fitted Brier, `ScaledLogit`, serial-predict forests, `legacy`),
+  `models/compare.py` (WFO row + CPCV path Sharpes → `results/model_zoo/comparison_*.csv`, `calibration_*.csv`,
+  `trials.jsonl`). Config `META_MODEL`, `PRIMARY_MODEL` (ml_xgb's classifier), `ZOO_CV_SPLITS=4`, `META_TRAIN`
+  (`val`|`oof`); all default to pre-U6 behaviour; excluded from the feature-cache key. CLI `--meta-model`,
+  `--primary-model`, `--meta-train`. OOS meta log-loss / Brier / AUC + `meta_calibration.csv`; skipped folds in
+  `signals.attrs` and `wfo_run.json`. Dependency: `lightgbm` 4.7. Conventions in SPEC §4.
+- Regression: legacy CSV run still sha1 `402ef202…`. Determinism: two SPY 1Day comparisons (rf_ldp, lightgbm) identical
+  except timestamps; `test_wfo_runs_with_zoo_models_and_is_deterministic` reruns 4 WFO configs.
+- Tests `tests/test_zoo.py` (34): every model learns/bounded/deterministic; legacy == pre-U6 XGB; HP-search fits see only
+  the fitting rows and pick the best (ties → first); calibration fit on OOF (memorizing forest on noise stays at the
+  base rate); stored CV scores, calibration Briers, refit and calibrator recomputed independently with unequal weights;
+  output clipping; weighted scaler inside fit; weight routing; all-NaN column dropped; single-class → skip; WFO switch +
+  causality with tuned meta and OOF; OOF primary purged/partitioned; CMDA inside each OOF split; primary-fit skip.
+- Review (no BREAKING) — SEVERE fixed: `META_TRAIN="oof"` + `cmda` + ml_xgb selected features on train labels before
+  the OOF primary scored those same events → selection now runs inside each OOF split (test + mutant check). MINORs fixed:
+  five weighting/calibration/clip mutants survived the tests → new recomputation tests kill all five; skipped folds
+  only in `attrs` → `wfo_run.json`; a primary `ZooFitError` aborted the WFO → fold skipped + recorded; a CPCV failure
+  marked valid WFO metrics as an error → `cpcv_error`. Reviewer simulation: the cross-fitted calibration choice shows no
+  optimism (fresh − CV Brier within 1 SE).
+- SPY 1Day, 2016-01→2025-10, 14 folds, 234 OOS events, `wavelet_trend` primary. CPCV (45 splits, 9 paths) does not depend
+  on META_TRAIN. Buy-and-hold Sharpe 0.69; primary-only 0.64.
+
+  | meta model | log-loss val / oof | Brier val / oof | AUC val / oof | precision val / oof | Sharpe val / oof | CPCV SR mean ± sd (min) |
+  |---|---|---|---|---|---|---|
+  | legacy | 0.940 / 0.866 | 0.316 / 0.298 | 0.545 / 0.531 | 0.580 / 0.596 | 0.94 / 0.60 | 0.47 ± 0.17 (0.26) |
+  | logit_l1 | 0.701 / 0.681 | 0.254 / 0.244 | 0.433 / 0.575 | 0.556 / 0.600 | 0.59 / 0.88 | 0.74 ± 0.23 (0.31) |
+  | logit_l2 | 0.873 / 0.682 | 0.270 / 0.244 | 0.529 / 0.576 | 0.571 / 0.597 | 0.46 / 1.07 | 0.49 ± 0.16 (0.32) |
+  | rf_ldp | 0.695 / 0.678 | 0.251 / 0.242 | 0.542 / 0.579 | 0.565 / 0.620 | −0.15 / 0.60 | 0.82 ± 0.17 (0.54) |
+  | extra_trees | 0.707 / 0.682 | 0.256 / 0.245 | 0.529 / 0.568 | 0.544 / 0.603 | −0.23 / 0.32 | 0.88 ± 0.15 (0.62) |
+  | xgb | 0.711 / 0.693 | 0.258 / 0.250 | 0.475 / 0.540 | 0.534 / 0.552 | −0.02 / −0.07 | 0.20 ± 0.11 (0.03) |
+  | lightgbm | 0.766 / 0.695 | 0.272 / 0.251 | 0.470 / 0.522 | 0.549 / 0.535 | −0.08 / 0.45 | 0.14 ± 0.08 (−0.00) |
+
+  A/B (recorded): `oof` (≈ 4× the meta rows) improves OOS log-loss and Brier for every model and AUC for every tuned
+  model. Only rf_ldp / extra_trees / logit_* reach log-loss < ln 2 = 0.693, and only barely. `legacy` is badly
+  overconfident (0.87–0.94). 234 events, one symbol, no DSR (21 trials so far): plumbing evidence, not findings.
+- Primary-model zoo (ml_xgb, `legacy` meta, `val`): every calibrated classifier goes long on every test event in all 84 zoo fold-tests (6 models × 14; P(long)
+  sits at the up-move base rate > CLF_THRESH = 0.5), so CPCV path Sharpes collapse to ≈ 1.05 ± 0.0–0.1, i.e. SPY
+  buy-and-hold on event days. `legacy` (uncalibrated) keeps mixed sides: CPCV 0.05 ± 0.27. A calibrated primary needs a
+  side threshold relative to the train base rate — **deferred to U7/U11** (sizing/threshold choice; not tuned here).
+- SPY 5Min, `wavelet_trend` primary, `val`. Full CPCV on 2023-01→2025-10 (~12k events × 45 splits × inner search) did not
+  finish one model in 2.5 h and was stopped, so the WFO table covers 2023-01→2025-10 and CPCV a shorter 2025-01→2025-10
+  window (its own WFO row is in `trials.jsonl`). The full-window 5Min reliability curves were overwritten by the short run
+  (filenames lacked dates, now fixed); its log-loss / Brier are in `trials.jsonl`.
+
+  | meta model | WFO 2023-01→2025-10 (62 folds, 9,741 events): log-loss | Brier | AUC | precision | Sharpe | CPCV 2025 (1,825 WFO events): SR mean ± sd (min) |
+  |---|---|---|---|---|---|---|
+  | legacy | 0.891 | 0.315 | 0.502 | 0.463 | −2.67 | −2.49 ± 0.62 (−3.07) |
+  | logit_l1 | 0.698 | 0.252 | 0.509 | 0.489 | −0.76 | −0.14 ± 0.81 (−1.90) |
+  | logit_l2 | 0.698 | 0.252 | 0.498 | 0.469 | −1.21 | −0.12 ± 0.73 (−0.91) |
+  | rf_ldp | 0.698 | 0.252 | 0.500 | 0.477 | −1.17 | −1.26 ± 1.87 (−3.75) |
+  | extra_trees | 0.696 | 0.251 | 0.508 | 0.481 | −1.54 | −1.23 ± 1.52 (−2.52) |
+  | xgb | 0.697 | 0.252 | 0.500 | 0.462 | −2.07 | −1.79 ± 1.51 (−4.98) |
+  | lightgbm | 0.697 | 0.252 | 0.499 | 0.467 | −1.49 | −1.78 ± 1.51 (−4.93) |
+
+  Primary-only Sharpe −2.65, buy-and-hold 1.47. No 5Min meta-model beats a constant (log-loss ≥ ln 2); calibration mostly
+  just shrinks P toward the base rate. It approves fewer trades than `legacy` (27–32% vs 42%), which lifts Sharpe from −2.7
+  to between −0.8 and −2.1. That comes from abstaining, not from skill (AUC ≈ 0.50). 35 trials logged (stage U6). The
+  `oof` A/B was not run at 5Min (cost).
+- Stretch not done: `sequential_bootstrap_bagging`, deep sequence models.
 
 ---
 
