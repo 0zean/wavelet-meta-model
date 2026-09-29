@@ -10,11 +10,13 @@ from validation.scoring import brier, neg_log_loss
 
 def strategy_metrics(equity: pd.Series, trades: pd.DataFrame, bars_per_year: int) -> pd.Series:
     """
-    Risk-adjusted performance of one equity curve over its own span.
+    Risk-adjusted performance of one equity curve over its own span. Equity attrs from the backtest:
+    `turnover` (Σ traded notional / equity), `avg_position` (mean |bet size| over the closes with a position; the
+    same definition in both position modes) and, for POSITION_MODE="average", `exposure` (share of bars held).
 
     Args:
         equity (pd.Series): Bar-level equity.
-        trades (pd.DataFrame): Executed trades (empty for buy-and-hold).
+        trades (pd.DataFrame): Executed trades or bets (empty for buy-and-hold).
         bars_per_year (int): Annualisation factor (cfg.bars_per_year).
 
     Returns:
@@ -38,7 +40,11 @@ def strategy_metrics(equity: pd.Series, trades: pd.DataFrame, bars_per_year: int
             "Win Rate (%)": (trades["pnl_pct"] > 0).mean() * 100 if n_trades else np.nan,
             "Avg Trade (bp)": trades["pnl_pct"].mean() * 1e4 if n_trades else np.nan,
             "Avg Bars Held": trades["bars_held"].mean() if n_trades else np.nan,
-            "Exposure (%)": trades["bars_held"].sum() / len(equity) * 100 if n_trades else 0.0,
+            "Exposure (%)": equity.attrs["exposure"] * 100
+            if "exposure" in equity.attrs
+            else (trades["bars_held"].sum() / len(equity) * 100 if n_trades else 0.0),
+            "Avg Bet Size": equity.attrs.get("avg_position", np.nan),  # mean |size| over held closes
+            "Turnover (x/yr)": equity.attrs.get("turnover", 0.0) * bars_per_year / max(len(equity), 1),
         }
     )
 

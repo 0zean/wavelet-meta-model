@@ -180,8 +180,8 @@ side(p, df, X, cfg) = p.signal(df, X, cfg)["signed_dir"]  # {-1,+1}
   sides in {−1, +1}. The frame is also the primary's meta-model input.
 - `PRIMARY_COLUMNS = clf_prob, direction, signed_dir, magnitude, signal, confidence`. Rules: `clf_prob` = NaN,
   `magnitude` = `confidence` = |score|, `signal` = side·|score|; score 0 → long; a NaN score at an event raises.
-- WFO output = primary frame + `meta_prob, trade_signal, width, fold, primary`. With `primary` dropped, the legacy
-  run still reproduces sha1 `402ef202…` (§2).
+- WFO output = primary frame + `meta_prob, trade_signal, width, fold, primary, bet_size` (§7). With `primary` and
+  `bet_size` dropped, the legacy run still reproduces sha1 `402ef202…` (§2).
 
 | primary | params (default) | score (sign = side) |
 |---|---|---|
@@ -309,13 +309,42 @@ Invariant (tested): the Bailey & López de Prado (2014) example — SR 2.5/√25
 
 ## §7 Bet sizing and risk (U7, U8)
 
-p = calibrated meta-probability, τ = `META_THRESH`. All sizers return m ∈ [0,1], m = 0 if p < τ; sign from the primary side.
-- `fixed`: m = 1.
+p = calibrated meta-probability, τ = `META_THRESH` ∈ (0, 1). `sizing/sizers.py`; every sizer returns m ∈ [0, 1],
+non-decreasing in p, with m = 0 for p < τ; the sign comes from the primary side. `linear` and `ecdf` also start at 0 at
+p = τ; `fixed`, `kelly_capped` and (for τ > ½) `ldp_sigmoid` jump at τ.
+- `fixed`: m = 1 (pre-U7).
 - `linear`: m = clip((p − τ)/(1 − τ), 0, 1).
 - `ldp_sigmoid`: z = (p − 1/2)/√(p(1−p)), m = max(0, 2Φ(z) − 1).
-- `ecdf`: m = F̂_train(p), F̂ = ECDF of the train-window OOF meta-probabilities.
-- `kelly_capped`: f* = p − (1−p)/b, b = mean win / mean loss of train-window OOF approved trades; m = clip(λ·f*, 0, 1), λ = 0.25.
-- Post-processing: average over active bets (López de Prado 10.4), then discretize m ← round(m/step)·step, step = 0.1.
+- `ecdf`: m = F̂(p), F̂ = right-continuous ECDF of the train-window OOF meta-probabilities **that reach τ** (so m is
+  the bet's rank among the train fold's approved bets; ranking against all OOF p would floor every size at F̂(τ)).
+- `kelly_capped`: f* = p − (1−p)/b, m = clip(λ·f*, 0, 1), λ = `KELLY_FRACTION` = 0.25; b = mean win / mean loss of
+  the net returns (side barrier return − 2·`SLIPPAGE_PCT`; win ⇔ net > 0, the meta-label at the default
+  `META_MIN_RET`) of the train-window OOF events with p ≥ τ.
+- **Train-window inputs** (`ecdf`, `kelly_capped`): per WFO fold, `meta_model.oof_meta_prob` = purged k-fold
+  (`ZOO_CV_SPLITS`, `CV_EMBARGO_PCT`) over the meta-model's own fitting events (val, or train+val for
+  `META_TRAIN="oof"`); a fresh `META_MODEL` (with its inner search + calibration) per split. Test events are never
+  used. Computed only when a sizer needs it. No approved OOF event (ecdf), no approved win or loss (kelly) or a
+  single-class OOF split → the sizer is unfit: the fold takes no trades, listed in `signals.attrs["sizer_skipped_folds"]`
+  (and `wfo_run.json`).
+- WFO column `bet_size` = raw m of `SIZER` on approved test events (0 elsewhere, and in skipped folds);
+  `run_wfo(..., sizers=(...))` adds `bet_size:<name>` for extra sizers on the same signals (sizer comparison).
+- **Post-processing** in the backtest (`wfo/backtest.py`), per `POSITION_MODE`:
+  - `single` (default, pre-U7): one position at a time; each bet's m is discretized, m ← round(m/step)·step
+    (`SIZE_STEP` = 0.1, half to even; 0 = off, otherwise 1/k for an integer k so m = 1 stays whole); m = 0 is no bet and does not block later events. A trade commits
+    `SIZE`·m of equity at the entry fill. With `fixed` this is bit-identical to the U6 backtest.
+  - `average` (López de Prado 10.4): every bet with raw m > 0 is live from open[t+1] to its own side-aware barrier
+    exit; target exposure f = discretize(mean side·m over live bets). Changes are evaluated at each entry / exit
+    (per bar: the open (entries, gap exits), then intrabar barrier exits in bet order, then vertical exits at the
+    close; exits sharing a phase and price are one change; the running mean is rounded to 1e-12 so float residue
+    never leaves a phantom position at step 0) and traded
+    only when f changes: shares = f·`SIZE`·equity / fill, equity marked at the reference price, fill with adverse
+    slippage, so every notional change (resizes included) pays `SLIPPAGE_PCT`. Non-overlapping bets reproduce
+    `single`.
+- Metrics add `Avg Bet Size` = mean |size| over the closes at which a position is held (same definition in both
+  modes) and `Turnover (x/yr)` = Σ |traded notional| / equity at the fill, annualized. The approval threshold in
+  `Sizer.size` is compared in p's own dtype, exactly as `trade_signal` (legacy meta-probabilities are float32).
+  CLI `--sizer`, `--size-step`, `--position-mode`; comparison `python -m sizing.compare` (one WFO, every
+  sizer × mode → `trials.jsonl`, stage `U7`).
 
 **Risk layer**, applied in order at decision time t (info ≤ close[t], fill at open[t+1]):
 1. Vol target: notional = m · equity · min(1, σ_target / σ_hold,t), σ_hold = bar σ · √vertical_bars; σ_target default 0.5% per trade.

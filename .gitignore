@@ -15,3 +15,4 @@ wheels/
 # Market data cache
 data/cache/
 results/model_zoo/
+results/sizing/
