@@ -7,9 +7,10 @@ import pandas as pd
 from features.feature_builder import FeatureSet
 from features.selection import clustered_mda
 from features.triple_barrier_labels import average_uniqueness, sample_events, triple_barrier_labels
-from models.meta_model import fit_meta_model, make_meta_labels, meta_predict
+from models.meta_model import fit_meta_model, make_meta_labels, meta_predict, oof_meta_prob, side_returns
 from models.zoo import ZooFitError, inner_cv
 from primaries import check_signal, make_primary
+from sizing import SizerFitError, make_sizer
 from utils.config import RunConfig
 
 ONE_SIDED_SHARE = 0.10  # warn when a split's long share falls outside [10%, 90%]
@@ -72,6 +73,34 @@ def oof_primary(
     return pd.concat(frames).loc[X.index]
 
 
+def fold_sizers(names, meta_mdl, df, events, X_fit, prim_fit, meta_lbl, w_fit, lab_fit, cfg: RunConfig) -> dict:
+    """
+    Fit each named sizer (SPEC §7) on the fold's train-window inputs: out-of-fold meta-probabilities of the
+    meta-model's fitting events and their side returns (computed once, only if a sizer needs them). Returns
+    name → fitted sizer, or None where it cannot be fit (no meta-model, a single-class OOF split, SizerFitError):
+    that sizer then takes no trades in the fold.
+    """
+    sizers = {n: make_sizer(n, cfg) for n in names}
+    if meta_mdl is None:
+        return dict.fromkeys(names)
+    p_oof = ret = None
+    if any(sz.needs_train for sz in sizers.values()):
+        try:
+            p_oof = oof_meta_prob(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit)
+        except ZooFitError as e:
+            print(f"[SIZE]  OOF meta-probabilities failed ({e}) — train-fit sizers skip this fold")
+            return {n: (sz if not sz.needs_train else None) for n, sz in sizers.items()}
+        ret = side_returns(df, events.loc[p_oof.index], prim_fit.loc[p_oof.index], cfg).loc[p_oof.index]
+    out = {}
+    for n, sz in sizers.items():
+        try:
+            out[n] = sz.fit(p_oof, ret) if sz.needs_train else sz
+        except SizerFitError as e:
+            print(f"[SIZE]  {e} — no trades for this sizer in the fold")
+            out[n] = None
+    return out
+
+
 class Fold(NamedTuple):
     train_end: int  # train = [0, train_end)
     val_end: int  # val = [train_end, val_end)
@@ -128,6 +157,7 @@ def run_wfo(
     context: dict[str, pd.DataFrame] | None = None,
     symbol: str | None = None,
     feature_cache_dir=None,
+    sizers: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """
     Expanding-window Walk-Forward Optimisation on CUSUM events.
@@ -154,7 +184,8 @@ def run_wfo(
          meta-labels → fit cfg.META_MODEL on val; "oof" = purged out-of-fold primary signals on train+val
          events → meta-model on all of them, primary refit on train+val. A zoo meta/primary model runs its
          HP search + calibration by purged CV inside its own fitting rows (models/zoo.py).
-      5. Final trade signal on test (OOS) events → store
+      5. Bet sizers (cfg.SIZER, plus `sizers`) fit on the fitting events' OOF meta-probabilities (sizing/)
+      6. Final trade signal and bet size on test (OOS) events → store
 
     Args:
         df (pd.DataFrame): Full dataset to perform WFO.
@@ -162,6 +193,7 @@ def run_wfo(
         context (dict | None): Extra aligned inputs for feature groups, e.g. {"market": SPY bars}.
         symbol (str | None): Symbol name; with feature_cache_dir enables the feature cache.
         feature_cache_dir (path | None): Feature cache root (features.cache).
+        sizers (tuple[str, ...]): Extra sizers to evaluate alongside cfg.SIZER (column `bet_size:<name>`).
 
     Raises:
         HoldoutError: If df reaches HOLDOUT_START and cfg.ALLOW_HOLDOUT is off.
@@ -169,7 +201,8 @@ def run_wfo(
 
     Returns:
         pd.DataFrame: OOS predictions for every test event, concatenated across folds
-            (primary frame, meta_prob, trade_signal, width, fold, primary).
+            (primary frame, meta_prob, trade_signal, width, fold, primary, bet_size). `bet_size` ∈ [0, 1] is
+            cfg.SIZER's raw size (0 where no trade), before active-bet averaging and discretization (backtest).
     """
     cfg.holdout_guard(df.index)
     make_primary(cfg)  # fail fast on an unknown primary or bad PRIMARY_PARAMS
@@ -184,7 +217,9 @@ def run_wfo(
     base_feats = build_features(df, cfg, fset)
     event_pos = pd.Series(df.index.get_indexer(events.index), index=events.index)
 
+    size_names = tuple(dict.fromkeys((cfg.SIZER, *sizers)))
     all_results, meta_skipped, primary_skipped = [], [], []
+    sizer_skipped = {n: [] for n in size_names}
     for fold, (train_end, val_end, test_end, emb_tr, emb_vl) in enumerate(wfo_folds(df.index, cfg), start=1):
         print(f"\n{'─' * 60}")
         print(f"  FOLD {fold}: train[0:{train_end}]  val[{train_end}:{val_end}]  test[{val_end}:{test_end}]")
@@ -263,6 +298,15 @@ def run_wfo(
         result_ts["width"] = ev_ts.loc[X_ts.index, "width"]
         result_ts["fold"] = fold
         result_ts["primary"] = prim.name
+        fitted = fold_sizers(size_names, meta_mdl, df, events, X_fit, prim_fit, meta_lbl, w_fit, lab_fit, cfg)
+        for n, sz in fitted.items():
+            col = "bet_size" if n == cfg.SIZER else f"bet_size:{n}"
+            if sz is None:
+                result_ts[col] = 0.0
+                if meta_mdl is not None:
+                    sizer_skipped[n].append(fold)
+            else:
+                result_ts[col] = np.where(result_ts["trade_signal"] != 0, sz.size(result_ts["meta_prob"]), 0.0)
         shares = {cfg.META_TRAIN: (prim_fit["signed_dir"] > 0).mean(), "test": (prim_ts["signed_dir"] > 0).mean()}
         print(f"[PRIM]  {prim.name}: long share " + "  ".join(f"{k}={v:.3f}" for k, v in shares.items()))
         for split, sh in shares.items():
@@ -280,8 +324,13 @@ def run_wfo(
     combined = pd.concat(all_results).sort_index()
     combined.attrs["meta_skipped_folds"] = meta_skipped  # folds whose meta-model could not be fit (no trades)
     combined.attrs["primary_skipped_folds"] = primary_skipped  # folds dropped: primary could not be fit
+    combined.attrs["sizer_skipped_folds"] = sizer_skipped[cfg.SIZER]  # sizer could not be fit (no trades)
+    for n in size_names[1:]:
+        combined.attrs[f"sizer_skipped_folds:{n}"] = sizer_skipped[n]
     if primary_skipped:
         print(f"[WFO]  Primary skipped in {len(primary_skipped)} fold(s): {primary_skipped} (no OOS rows)")
+    if sizer_skipped[cfg.SIZER]:
+        print(f"[WFO]  Sizer {cfg.SIZER} skipped in folds {sizer_skipped[cfg.SIZER]} (no trades there)")
     if meta_skipped:
         print(f"[WFO]  Meta-model skipped in {len(meta_skipped)} fold(s): {meta_skipped} (no trades there)")
     print(f"\n[WFO]  Total OOS events: {len(combined):,}  |  Approved trades: {(combined['trade_signal'] != 0).sum()}")

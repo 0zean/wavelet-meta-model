@@ -11,7 +11,8 @@
 ║    6. Primary signal zoo       (XGB clf + reg, or a fixed rule; --primary)   ║
 ║    7. Meta-labeling            (XGB classifier on primary OOF preds)         ║
 ║    8. Expanding-window WFO     (purged + embargoed, uniqueness-weighted)     ║
-║    9. Barrier-exit backtest    (next-bar open execution + slippage)          ║
+║    9. Bet sizing               (calibrated p → size; sizing/, --sizer)       ║
+║   10. Barrier-exit backtest    (next-bar open, slippage, fractional sizes)   ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
@@ -26,6 +27,7 @@ from features import cache as feature_cache
 from models.zoo import REGISTRY as ZOO
 from primaries import REGISTRY as PRIMARIES
 from primaries.diagnostics import primary_diagnostics
+from sizing import REGISTRY as SIZERS
 from utils.config import RunConfig
 from utils.data_loader import load_ohlcv, make_synthetic_spy
 from utils.visuals import plot_results
@@ -100,6 +102,7 @@ def main(
     print(f"[CFG]   features={cfg.FEATURE_GROUPS or 'legacy'}  selection={cfg.FEATURE_SELECTION}")
     print(f"[CFG]   primary={cfg.PRIMARY} {cfg.PRIMARY_PARAMS or ''}")
     print(f"[CFG]   models: meta={cfg.META_MODEL} primary={cfg.PRIMARY_MODEL}  meta_train={cfg.META_TRAIN}")
+    print(f"[CFG]   sizing: {cfg.SIZER} step={cfg.SIZE_STEP} positions={cfg.POSITION_MODE}")
 
     # Feature context (cross-asset market bars) and cache (Alpaca data only: the key needs a symbol)
     context = {}
@@ -162,6 +165,9 @@ if __name__ == "__main__":
     ap.add_argument("--meta-model", choices=sorted(ZOO), help="meta-model (models/zoo.py; default legacy)")
     ap.add_argument("--primary-model", choices=sorted(ZOO), help="ml_xgb direction classifier (default legacy)")
     ap.add_argument("--meta-train", choices=["val", "oof"], help="meta-model training rows (default val)")
+    ap.add_argument("--sizer", choices=sorted(SIZERS), help="bet sizer (sizing/; default fixed)")
+    ap.add_argument("--size-step", type=float, help="bet-size discretization step (default 0.1, 0 = off)")
+    ap.add_argument("--position-mode", choices=["single", "average"], help="one position or active-bet averaging")
     a = ap.parse_args()
     overrides = {}
     if a.features:
@@ -172,8 +178,15 @@ if __name__ == "__main__":
         overrides["PRIMARY"] = a.primary
     if a.primary_params:
         overrides["PRIMARY_PARAMS"] = json.loads(a.primary_params)
-    for arg, name in (("meta_model", "META_MODEL"), ("primary_model", "PRIMARY_MODEL"), ("meta_train", "META_TRAIN")):
-        if getattr(a, arg):
+    for arg, name in (
+        ("meta_model", "META_MODEL"),
+        ("primary_model", "PRIMARY_MODEL"),
+        ("meta_train", "META_TRAIN"),
+        ("sizer", "SIZER"),
+        ("size_step", "SIZE_STEP"),
+        ("position_mode", "POSITION_MODE"),
+    ):
+        if getattr(a, arg) is not None:
             overrides[name] = getattr(a, arg)
     cfg = None
     if overrides:

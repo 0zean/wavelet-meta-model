@@ -461,4 +461,4 @@ def test_cli_writes_skipped_folds_sidecar(daily, tmp_path, monkeypatch):
     monkeypatch.setattr(app, "plot_results", lambda *a, **k: None)
     app.main(cfg=cfg, out_dir=str(tmp_path))
     run = json.loads((tmp_path / "wfo_run.json").read_text())
-    assert run == {"meta_skipped_folds": [], "primary_skipped_folds": []}
+    assert run == {"meta_skipped_folds": [], "primary_skipped_folds": [], "sizer_skipped_folds": []}

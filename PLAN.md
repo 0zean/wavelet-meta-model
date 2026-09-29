@@ -440,13 +440,64 @@ class-imbalance handling, scaling fit leakage for linear models.
 - Backtest supports **fractional** position size and (for U8) concurrent positions.
 
 **Done when.**
-- [ ] Unit tests: each sizer is monotone in p, bounded in [0, 1], and zero at/below threshold; ECDF uses train-fold p only.
-- [ ] Backtest with `fixed` sizer reproduces U6 results exactly; fractional sizing P&L verified by a hand-computed 3-trade example.
-- [ ] Sizer comparison (dev window, a few cells) logged as trials.
+- [x] Unit tests: each sizer is monotone in p, bounded in [0, 1], and zero below threshold (`linear`/`ecdf` also at it);
+      ECDF uses train-fold p only.
+- [x] Backtest with `fixed` sizer reproduces U6 results exactly; fractional sizing P&L verified by a hand-computed 3-trade example.
+- [x] Sizer comparison (dev window, a few cells) logged as trials.
 
 **Reviewer focus.** ECDF/Kelly inputs drawn from test data, size applied at the wrong bar, turnover cost from resizing not charged.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done, findings fixed). 293 tests pass (4 min 6 s); ruff clean. Notes:
+- Modules: `sizing/sizers.py` (registry, `make_sizer`, `discretize`, `SizerFitError`; `fixed`, `linear`, `ldp_sigmoid`,
+  `ecdf`, `kelly_capped`), `models/meta_model.py` (`side_returns`, `oof_meta_prob`: purged k-fold OOF meta-probs of the
+  meta-model's own fitting events, computed only when a sizer needs them), `wfo_engine.fold_sizers` (WFO column
+  `bet_size`; `run_wfo(..., sizers=)` adds `bet_size:<name>`; unfit sizer → no-trade fold in
+  `attrs["sizer_skipped_folds"]` / `wfo_run.json`), `wfo/backtest.py` (fractional sizes in `single` mode;
+  `simulate_positions` = active-bet averaging with concurrent bets, costs on every notional change; turnover /
+  exposure / avg-position attrs), `sizing/compare.py` (one WFO per cell, every sizer × mode → `results/sizing/`).
+  Config `SIZER="fixed"`, `SIZE_STEP=0.1` (0 or 1/k), `KELLY_FRACTION=0.25`, `POSITION_MODE="single"`; all default to
+  pre-U7 behaviour; excluded from the feature-cache key. CLI `--sizer`, `--size-step`, `--position-mode`. SPEC §7.
+- SPEC refinement: `ecdf` ranks p against the train OOF probabilities **≥ τ** (ranking against all of them would floor
+  every approved size at F̂(τ) ≈ ½).
+- Regression: legacy CSV run → `wfo_signals.csv` with `primary,bet_size` stripped = sha1 `402ef202…`; with `fixed`, the
+  new backtest's equity and trades are **bit-identical** to `git show main:wfo/backtest.py` on those signals (195 / 345
+  trades), re-checked after the review fixes.
+- Tests `tests/test_sizing.py` (43): monotone/bounded/zero-below-τ for 3 values of τ; formulas; unfit sizers raise; ECDF
+  a function of train inputs; discretize; hand-computed 3-trade fractional example (equity at 8 bars, rel 1e-12);
+  zero-size bets skipped without blocking; fixed == verbatim pre-U7 equity loop (bitwise); averaging hand example
+  (resize at open, exit at close, every change charged, turnover, exposure); opposite sides net to flat; sub-step
+  changes do not trade; sized backtest causal in both modes and a size at event t first moves equity at t+1; WFO size
+  columns, determinism, adding sizers changes nothing else; sizer inputs = purged fitting events of the fold (both
+  META_TRAIN), OOF models never trained on the event or overlapping spans; sizer fit failure = counted no-trade fold;
+  WFO + sizer causal; 5 review regressions.
+- Review (no BREAKING / SEVERE). MINORs fixed: (1) same-bar exits filled at the close before an earlier intrabar barrier
+  (infeasible order) → per-bar phases open → intrabar barriers → vertical closes (reviewer repro 10,077.91 → 10,018.01,
+  test); (2) `SIZE_STEP=0` left a float-residue phantom position (0.3 − 0.1 − 0.2) → mean rounded to 1e-12, sum reset
+  when no bet is live (test); (3) a step not dividing 1 silently de-levered `fixed` and the primary-only benchmark →
+  `SIZE_STEP` must be 0 or 1/k (test); (4) `Avg Bet Size` meant different things per mode → mean |size| over held closes
+  in both (test); (5) float32 legacy `meta_prob` tied at a non-default τ: `trade_signal` set but `bet_size` 0 → threshold
+  compared in p's own dtype (test). Reviewer checks that held: slippage cost = slip × turnover to 0.1% in log equity;
+  averaging == single on 40 random non-overlapping configurations.
+- Sizer comparison: `wavelet_trend` primary, 50 trials (stage U7) in `results/sizing/trials.jsonl` (5 cells × 5 sizers × 2
+  modes); 50 pre-review trials (same cells, pre-fix engine) kept in `results/sizing/pre_review/` — both count for DSR.
+  OOS Sharpe (single / average); `fixed`/single = the U6 row:
+
+  | cell (meta, train) | fixed | linear | ldp_sigmoid | ecdf | kelly_capped | primary-only | B&H |
+  |---|---|---|---|---|---|---|---|
+  | SPY 1Day (logit_l2, oof) | 1.07 / 0.88 | 0.69 / 0.46 | 0.51 / 0.51 | 0.77 / 0.67 | 0.49 / 0.28 | 0.64 | 0.69 |
+  | SPY 1Day (rf_ldp, oof) | 0.60 / 0.75 | 0.75 / 0.60 | 0.61 / 0.55 | 0.70 / 0.57 | 0.14 / −0.28 | 0.64 | 0.69 |
+  | QQQ 1Day (logit_l2, oof) | −0.28 / 0.39 | 0.06 / 0.60 | 0.08 / 0.73 | 0.32 / 0.72 | 0.53 / 0.45 | 0.28 | 0.64 |
+  | IWM 1Day (logit_l2, oof) | −0.43 / −0.39 | 0.43* / 0.28* | 0.43* / 0.19* | −0.62 / −0.23 | none | −0.12 | 0.30 |
+  | SPY 5Min 2025-01→10 (logit_l1, val) | −2.11 / −1.65 | −3.10 / −1.98 | −1.85 / −0.47 | −0.41 / −0.19 | none | −1.64 | 2.55 |
+
+  \* 3 trades at size 0.1. "none" = every Kelly size rounds to 0 (no trades). Sizes are small because calibrated p sits
+  near τ: mean size 0.19–0.26 for `linear`/`ldp_sigmoid`, 0.54–0.66 for `ecdf`, ≤ 0.1 for `kelly_capped` (λ = ¼ of
+  an edge of a few %). At 5Min `ecdf`/`kelly_capped` are unfit in 4 of 12 folds (no approved OOF event or no win/loss),
+  counted and traded flat. Sizing lowers vol and turnover roughly in proportion to size; it does not
+  create skill where the meta-model has none (IWM, 5Min: AUC ≤ 0.5). No cell/sizer is significant: 50 trials, a few
+  hundred events per 1Day cell, no DSR yet. Averaging helps QQQ, hurts SPY logit_l2: noise at this sample size.
+- Deferred to U11 (not sizing): a side threshold for calibrated zoo *primaries* relative to the train base rate (U6).
+- Out of scope here: vol targeting, caps and the risk layer (U8).
 
 ---
 

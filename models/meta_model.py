@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from features.triple_barrier_labels import barrier_exits
@@ -26,6 +27,11 @@ def make_meta_labels(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.D
     Returns:
         pd.Series: Meta-labels {0, 1} indexed by event time.
     """
+    return (side_returns(df, events, primary_preds, cfg) > cfg.META_MIN_RET).astype(int).rename("meta_label")
+
+
+def side_returns(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.DataFrame, cfg: RunConfig) -> pd.Series:
+    """Gross barrier-exit return of taking the primary's side on each event (side-aware ties, as in the backtest)."""
     side = primary_preds["signed_dir"]
     out = barrier_exits(
         df,
@@ -35,7 +41,7 @@ def make_meta_labels(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.D
         vertical_bars=cfg.VERTICAL_BARS,
         hold_overnight=cfg.HOLD_OVERNIGHT,
     )
-    return (side.loc[out.index] * out["ret"] > cfg.META_MIN_RET).astype(int).rename("meta_label")
+    return (side.loc[out.index] * out["ret"]).rename("side_ret")
 
 
 def fit_meta_model(
@@ -90,6 +96,38 @@ def fit_meta_model(
         print(f"[META]  {describe(meta)}")
     print(f"[META]  Trained on {len(meta_labels)} events  (success rate={meta_labels.mean():.3f})")
     return meta
+
+
+def oof_meta_prob(
+    X_fit: pd.DataFrame,
+    primary_fit: pd.DataFrame,
+    meta_labels: pd.Series,
+    weights: pd.Series,
+    cfg: RunConfig,
+    spans: pd.DataFrame,
+) -> pd.Series:
+    """
+    Out-of-fold meta-probabilities of the meta-model's own fitting events (the train-window inputs of the `ecdf`
+    and `kelly_capped` sizers, SPEC §7): over a purged k-fold of their spans (ZOO_CV_SPLITS, CV_EMBARGO_PCT) a fresh
+    cfg.META_MODEL (with its own inner HP search + calibration) is fit on each purged train split and predicts its
+    test split. Same rows and features as fit_meta_model. A single-class train split raises ZooFitError.
+    """
+    X_m = pd.concat([X_fit, primary_fit], axis=1).loc[meta_labels.index]
+    spans = spans.loc[meta_labels.index]
+    y, w = meta_labels.to_numpy(), weights.loc[meta_labels.index].to_numpy()
+    out = pd.Series(np.nan, index=meta_labels.index, name="oof_meta_prob")
+    for i, (train, test) in enumerate(inner_cv(spans, cfg).split(X_m)):
+        if np.unique(y[train]).size < 2:
+            raise ZooFitError(f"OOF meta split {i}: single-class purged train set ({train.size} rows)")
+        m = make_model(cfg.META_MODEL, cfg, role="meta")
+        if cfg.META_MODEL == "legacy":
+            m.fit(X_m.iloc[train], y[train], w[train])
+        else:
+            m.fit(X_m.iloc[train], y[train], w[train], inner_cv(spans.iloc[train], cfg))
+        out.iloc[test] = m.predict_proba(X_m.iloc[test])
+    if out.isna().any():
+        raise RuntimeError(f"OOF meta: {int(out.isna().sum())} events without a prediction")
+    return out
 
 
 def meta_predict(

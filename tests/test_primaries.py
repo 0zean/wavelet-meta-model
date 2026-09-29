@@ -20,7 +20,7 @@ CFG5 = RunConfig.for_timeframe("5Min")
 CFGD = RunConfig.for_timeframe("1Day")
 RULES = sorted(n for n in REGISTRY if n != "ml_xgb")
 GROUPS = ["wavelet_core", "trend", "volatility"]  # static groups only: no per-fold fit needed
-WFO_COLUMNS = [*PRIMARY_COLUMNS, "meta_prob", "trade_signal", "width", "fold", "primary"]
+WFO_COLUMNS = [*PRIMARY_COLUMNS, "meta_prob", "trade_signal", "width", "fold", "primary", "bet_size"]
 
 
 @pytest.fixture(scope="module")

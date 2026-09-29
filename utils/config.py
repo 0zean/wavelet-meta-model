@@ -175,7 +175,17 @@ class RunConfig:
     # SPY @ ~$500, 1 bp ≈ $0.05 ≈ one-way spread / 2
     SLIPPAGE_PCT: float = SLIPPAGE_PCT
     INIT_CASH: float = 10_000
-    SIZE: float = 1.0  # fraction of equity per trade
+    SIZE: float = 1.0  # fraction of equity per trade at bet size m = 1 (notional = SIZE · m · equity)
+
+    # Bet sizing (SPEC §7, U7; sizing/). SIZER maps the calibrated meta-probability to m ∈ [0, 1]: "fixed" (m = 1,
+    # pre-U7), "linear", "ldp_sigmoid", "ecdf", "kelly_capped" (the last two fit on train-window OOF meta-probs).
+    SIZER: str = "fixed"
+    SIZE_STEP: float = 0.1  # sizes are discretized to multiples of this (0 = off)
+    KELLY_FRACTION: float = 0.25  # λ of kelly_capped
+    # "single": one position at a time, events arriving while it is open are skipped (pre-U7);
+    # "average": every approved bet is live over its own barrier window, position = discretized mean signed
+    # size of the active bets (López de Prado §10.4), resized at each bet's entry / exit.
+    POSITION_MODE: Literal["single", "average"] = "single"
 
     # Holdout (SPEC §9): the WFO refuses data on/after data.bars.HOLDOUT_START unless True
     ALLOW_HOLDOUT: bool = False
@@ -208,6 +218,21 @@ class RunConfig:
             raise ValueError(f"PRIMARY_MODEL applies only to the ml_xgb primary (PRIMARY={self.PRIMARY!r})")
         if self.META_TRAIN not in ("val", "oof"):
             raise ValueError(f"META_TRAIN must be 'val' or 'oof', got {self.META_TRAIN!r}")
+        from sizing import REGISTRY as SIZERS
+
+        if self.SIZER not in SIZERS:
+            raise ValueError(f"SIZER must be one of {sorted(SIZERS)}, got {self.SIZER!r}")
+        if not (
+            self.SIZE_STEP == 0
+            or (0 < self.SIZE_STEP <= 1 and abs(1 / self.SIZE_STEP - round(1 / self.SIZE_STEP)) < 1e-9)
+        ):
+            raise ValueError(f"SIZE_STEP must be 0 (off) or 1/k for an integer k (m = 1 stays 1), got {self.SIZE_STEP}")
+        if not 0 < self.KELLY_FRACTION <= 1:
+            raise ValueError(f"KELLY_FRACTION must be in (0, 1], got {self.KELLY_FRACTION}")
+        if self.POSITION_MODE not in ("single", "average"):
+            raise ValueError(f"POSITION_MODE must be 'single' or 'average', got {self.POSITION_MODE!r}")
+        if not 0 < self.META_THRESH < 1:
+            raise ValueError(f"META_THRESH must be in (0, 1), got {self.META_THRESH}")
         if self.ZOO_CV_SPLITS < 2:
             raise ValueError("ZOO_CV_SPLITS must be >= 2")
         if self.WINDOW_UNIT not in ("days", "bars"):
