@@ -9,8 +9,8 @@ def fit_primary_regressor(
     X_train: pd.DataFrame,
     ret_train: pd.Series,
     w_train: pd.Series,
-    X_val: pd.DataFrame,
-    ret_val: pd.Series,
+    X_val: pd.DataFrame | None,
+    ret_val: pd.Series | None,
     cfg: RunConfig,
 ) -> xgb.XGBRegressor:
     """
@@ -24,8 +24,8 @@ def fit_primary_regressor(
         X_train (pd.DataFrame): Training features (purged event rows).
         ret_train (pd.Series): Realised barrier-exit returns for the training events.
         w_train (pd.Series): Sample weights (average uniqueness).
-        X_val (pd.DataFrame): Validation features.
-        ret_val (pd.Series): Realised barrier-exit returns for the validation events.
+        X_val (pd.DataFrame | None): Validation features (logging only; None skips it).
+        ret_val (pd.Series | None): Realised barrier-exit returns for the validation events.
         cfg (RunConfig): Run configuration.
 
     Returns:
@@ -34,6 +34,8 @@ def fit_primary_regressor(
     reg = xgb.XGBRegressor(**cfg.REG_PARAMS)
     reg.fit(X_train, ret_train.abs(), sample_weight=w_train, verbose=False)
 
+    if X_val is None:
+        return reg
     val_pred = reg.predict(X_val)
     mae = np.abs(val_pred - ret_val.abs()).mean()
     naive = np.abs(ret_train.abs().median() - ret_val.abs()).mean()

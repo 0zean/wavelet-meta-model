@@ -207,9 +207,38 @@ class ZooModel(Protocol):
     def fit(self, X, y, sample_weight, cv: PurgedKFold) -> "ZooModel": ...  # HP search + calibration inside
     def predict_proba(self, X) -> np.ndarray: ...  # calibrated P(y=1)
 ```
-Model defaults: `logit_l1/l2` (StandardScaler fit inside `fit`), `rf_ldp` (`n_estimators=500`,
-`max_features="sqrt"`, `class_weight="balanced_subsample"`, `max_samples=avg_uniqueness`, `min_weight_fraction_leaf=0.05`),
-`extra_trees`, `xgb` (current params), `lightgbm`. Calibration: isotonic vs sigmoid chosen by purged-CV Brier.
+`models/zoo.py`; `make_model(name, cfg, role)` (role `meta` | `primary`), `cv = inner_cv(labels, cfg)` =
+`PurgedKFold(ZOO_CV_SPLITS=4, ceil(CV_EMBARGO_PCT · bars spanned))` bound to the fitting rows' spans
+[event bar, exit bar]. Inside `fit`, on the given rows only:
+1. HP search: for each grid point, purged-CV OOF P(y=1) (`purged_cv_predict`: fresh clone per split, train-row
+   weights), mean per-split `selection_score(SELECTION_METRIC)` with test-row weights; best wins, ties → first point.
+2. Calibration: sigmoid (Platt on logit p) and isotonic are each cross-fitted on the winner's OOF predictions over the
+   same splits; lower mean weighted Brier wins, ties → sigmoid.
+3. Refit the winner on all rows; fit the chosen calibrator on all OOF predictions. `predict_proba` = calibrator(raw),
+   clipped to [`PROB_CLIP` = 1e-3, 1 − 1e-3]. Columns all-NaN in the fitting rows (a rule's `clf_prob`) are dropped;
+   any other NaN raises. A single-class fitting set or inner train split raises `ZooFitError`; the meta-model then
+   skips the fold (no trades, listed in `signals.attrs["meta_skipped_folds"]`, excluded from OOS meta scoring).
+
+| model | grid | fixed |
+|---|---|---|
+| `logit_l1` / `logit_l2` | C ∈ {0.01, 0.1, 1} | weighted StandardScaler fit inside `fit`; saga (L1) / lbfgs (L2) |
+| `rf_ldp` | max_features ∈ {1, sqrt} | 500 trees, `balanced_subsample`, `max_samples` = mean weight (= avg uniqueness), `min_weight_fraction_leaf=0.05` |
+| `extra_trees` | min_weight_fraction_leaf ∈ {0.01, 0.05} | 500 trees, sqrt, `balanced_subsample` |
+| `xgb` | max_depth ∈ {2, 4} | META_PARAMS (meta) / CLF_PARAMS (primary) |
+| `lightgbm` | num_leaves ∈ {7, 31} | 300 trees, lr 0.03, bagging 0.8, colsample 0.8, deterministic |
+| `legacy` | — | pre-U6 XGBoost (META_PARAMS / CLF_PARAMS), no search, no calibration (regression path) |
+
+Forests predict single-threaded (threaded prediction sums trees in completion order → last-bit nondeterminism).
+
+**Config switches** (CLI `--meta-model`, `--primary-model`, `--meta-train`): `META_MODEL` (default `legacy`),
+`PRIMARY_MODEL` (ml_xgb's direction classifier, default `legacy`; any other value with a rule primary raises),
+`META_TRAIN`: `val` (pre-U6: primary fit on train, meta on val) or `oof` (fitting events = train+val purged at the
+val end with its embargo; primary frames are purged k-fold OOF over those events (`wfo_engine.oof_primary`, df ends at
+the val end); the meta-model trains on all of them; the primary is refit on all of them for test).
+**OOS scoring** (`wfo_metrics.signal_diagnostics`, `meta_outcomes`, `calibration_table`): meta log-loss (p clipped to
+`PROB_CLIP`), Brier and AUC on scored folds; `meta_calibration.csv` = 10-bin reliability curve.
+**Comparison** (`python -m models.compare`): per model a WFO row + CPCV path-Sharpe distribution, appended to
+`trials.jsonl` (stage `U6`).
 
 ---
 
@@ -327,4 +356,4 @@ n_obs, psr, wfe, n_oos_windows, error_path`. Stored as append-only `results/ledg
 
 ## §10 Dependencies
 
-Add: `alpaca-py`, `python-dotenv`, `lightgbm`, `joblib`, `scipy` (explicit). `pyyaml` becomes used (U10).
+Add: `alpaca-py`, `python-dotenv`, `lightgbm` (added U6), `joblib`, `scipy` (explicit). `pyyaml` becomes used (U10).

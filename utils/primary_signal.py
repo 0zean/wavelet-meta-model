@@ -2,9 +2,11 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
+from models.zoo import ZooModel
+
 
 def primary_signal(
-    clf: xgb.XGBClassifier,
+    clf: ZooModel,
     reg: xgb.XGBRegressor,
     X: pd.DataFrame,
     thresh: float,
@@ -12,7 +14,7 @@ def primary_signal(
     """
     Produce the combined primary signal from classifier + regressor.
 
-    direction  = clf.predict_proba > thresh → {0, 1}
+    direction  = clf.predict_proba ≥ thresh → {0, 1}
     signed_dir = direction x 2 - 1          → {-1, +1}
     magnitude  = |reg.predict|              → ≥ 0
 
@@ -23,7 +25,7 @@ def primary_signal(
     as a feature, allowing it to learn when the combined signal is reliable.
 
     Args:
-        clf (xgb.XGBClassifier): The primary direction classifier.
+        clf (ZooModel): The primary direction classifier (predict_proba = P(long), 1-D).
         reg (xgb.XGBRegressor): The primary magnitude regressor.
         X (pd.DataFrame): The feature matrix.
         thresh (float): Probability threshold for a long side (cfg.CLF_THRESH).
@@ -31,7 +33,7 @@ def primary_signal(
     Returns:
         pd.DataFrame: Dataframe containing model outputs and combined signal + confidence level.
     """
-    clf_prob = clf.predict_proba(X)[:, 1]
+    clf_prob = clf.predict_proba(X)
     direction = (clf_prob >= thresh).astype(int)
     signed_dir = direction * 2 - 1
     magnitude = np.abs(reg.predict(X))

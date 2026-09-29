@@ -16,12 +16,14 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
+import json
 from pathlib import Path
 
 import pandas as pd
 
 from data.bars import load_bars
 from features import cache as feature_cache
+from models.zoo import REGISTRY as ZOO
 from primaries import REGISTRY as PRIMARIES
 from primaries.diagnostics import primary_diagnostics
 from utils.config import RunConfig
@@ -29,7 +31,7 @@ from utils.data_loader import load_ohlcv, make_synthetic_spy
 from utils.visuals import plot_results
 from wfo.backtest import run_backtest
 from wfo.wfo_engine import run_wfo
-from wfo.wfo_metrics import compute_metrics, signal_diagnostics
+from wfo.wfo_metrics import calibration_table, compute_metrics, meta_outcomes, signal_diagnostics
 
 
 def main(
@@ -97,6 +99,7 @@ def main(
 
     print(f"[CFG]   features={cfg.FEATURE_GROUPS or 'legacy'}  selection={cfg.FEATURE_SELECTION}")
     print(f"[CFG]   primary={cfg.PRIMARY} {cfg.PRIMARY_PARAMS or ''}")
+    print(f"[CFG]   models: meta={cfg.META_MODEL} primary={cfg.PRIMARY_MODEL}  meta_train={cfg.META_TRAIN}")
 
     # Feature context (cross-asset market bars) and cache (Alpaca data only: the key needs a symbol)
     context = {}
@@ -118,13 +121,21 @@ def main(
     out_path = Path(out_dir) / "wfo_signals.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     signals.to_csv(out_path)
-    print(f"[OUT]   WFO signals saved to {out_path}")
+    # meta_prob is a placeholder 0 in folds whose meta-model was skipped: the CSV alone cannot tell them apart
+    (Path(out_dir) / "wfo_run.json").write_text(json.dumps({k: list(v) for k, v in signals.attrs.items()}))
+    print(f"[OUT]   WFO signals saved to {out_path} (skipped folds in wfo_run.json)")
 
     # Backtest, metrics and plots cover only the OOS span
     df_oos = df.loc[signals.index[0] :]
     results = run_backtest(df_oos, signals, cfg)
     metrics = compute_metrics(df_oos, results, cfg)
     signal_diagnostics(df, signals, cfg)
+    o = meta_outcomes(df, signals, cfg)
+    o = o[o["scored"]]
+    calib = calibration_table(o["success"], o["meta_prob"])
+    calib.to_csv(Path(out_dir) / "meta_calibration.csv", index=False)
+    print("\n[DIAG]  Meta calibration (OOS)")
+    print(calib.round(4).to_string(index=False))
     diag = primary_diagnostics(df, signals, cfg, symbol=symbol or "")
     diag.to_csv(Path(out_dir) / "primary_diagnostics.csv", index=False)
     print("\n[DIAG]  Primary diagnostics (all folds)")
@@ -136,7 +147,6 @@ def main(
 
 if __name__ == "__main__":
     import argparse
-    import json
 
     ap = argparse.ArgumentParser()
     ap.add_argument("data_path", nargs="?", default=None, help="OHLCV CSV (overrides --symbol)")
@@ -149,6 +159,9 @@ if __name__ == "__main__":
     ap.add_argument("--select", choices=["none", "cmda"], help="per-fold feature selection")
     ap.add_argument("--primary", choices=sorted(PRIMARIES), help="primary signal (default ml_xgb)")
     ap.add_argument("--primary-params", help='fixed rule parameters as JSON, e.g. \'{"fast": 10, "slow": 40}\'')
+    ap.add_argument("--meta-model", choices=sorted(ZOO), help="meta-model (models/zoo.py; default legacy)")
+    ap.add_argument("--primary-model", choices=sorted(ZOO), help="ml_xgb direction classifier (default legacy)")
+    ap.add_argument("--meta-train", choices=["val", "oof"], help="meta-model training rows (default val)")
     a = ap.parse_args()
     overrides = {}
     if a.features:
@@ -159,6 +172,9 @@ if __name__ == "__main__":
         overrides["PRIMARY"] = a.primary
     if a.primary_params:
         overrides["PRIMARY_PARAMS"] = json.loads(a.primary_params)
+    for arg, name in (("meta_model", "META_MODEL"), ("primary_model", "PRIMARY_MODEL"), ("meta_train", "META_TRAIN")):
+        if getattr(a, arg):
+            overrides[name] = getattr(a, arg)
     cfg = None
     if overrides:
         if a.data_path and a.timeframe == "5Min":

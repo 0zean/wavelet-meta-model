@@ -219,12 +219,10 @@ def test_registry_and_params():
     assert a.PRIMARY_PARAMS == {"x": 1}
 
 
-def test_unfitted_ml_primary_and_missing_val_raise(df):
+def test_unfitted_ml_primary_raises(df):
     p = make_primary(CFG5)
     with pytest.raises(RuntimeError, match="before fit"):
         p.signal(df, df.iloc[:5], CFG5)
-    with pytest.raises(ValueError, match="val="):
-        p.fit(df, df.iloc[:5], None, None, CFG5)
 
 
 def test_check_signal_and_rule_frame_reject_bad_output():
