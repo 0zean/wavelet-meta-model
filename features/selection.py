@@ -8,7 +8,6 @@ importance. Clusters whose mean importance exceeds 0 by one standard error are k
 'wavelet_core' columns are always kept.
 """
 
-import math
 from typing import NamedTuple
 
 import numpy as np
@@ -20,7 +19,7 @@ from sklearn.metrics import log_loss, silhouette_score
 
 from features.registry import REQUIRED_GROUP
 from utils.config import RunConfig
-from validation.purged_cv import PurgedKFold
+from validation.purged_cv import PurgedKFold, embargo_bars
 
 MAX_CLUSTERS = 10
 
@@ -88,7 +87,7 @@ def clustered_mda(
     varying = [c for c in X.columns if X[c].std() > 0]
     clusters = cluster_features(X[varying])
     rng = np.random.default_rng(cfg.SEED)
-    cv = PurgedKFold(cfg.CMDA_SPLITS, embargo=math.ceil(cfg.CV_EMBARGO_PCT * n_bars))
+    cv = PurgedKFold(cfg.CMDA_SPLITS, embargo=embargo_bars(cfg.CV_EMBARGO_PCT, n_bars))
 
     scores = {k: [] for k in clusters}
     Xv, wv = X.to_numpy(), w.to_numpy()

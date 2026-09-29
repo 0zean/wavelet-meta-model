@@ -306,14 +306,38 @@ Test rule-based primaries alongside the current ML primary.
 - Scoring: weighted neg-log-loss / Brier (probabilistic) as primary selection metrics; F1/AUC reported, not selected on.
 
 **Done when.**
-- [ ] Splitters: no train sample's `[t0, t1]` overlaps any test sample's span or embargo (property test over random event sets).
-- [ ] CPCV: split count = C(N,k), each group is tested in exactly φ = C(N−1,k−1) splits, and φ full paths are reconstructed (test).
-- [ ] PBO on pure-noise strategy matrix ≈ ≥0.5; on a matrix with one genuinely dominant strategy → low (tests).
-- [ ] DSR reproduces the worked example in Bailey & López de Prado (2014) to 3 decimals.
+- [x] Splitters: no train sample's `[t0, t1]` overlaps any test sample's span or embargo (property test over random event sets).
+- [x] CPCV: split count = C(N,k), each group is tested in exactly φ = C(N−1,k−1) splits, and φ full paths are reconstructed (test).
+- [x] PBO on pure-noise strategy matrix ≈ ≥0.5; on a matrix with one genuinely dominant strategy → low (tests).
+- [x] DSR reproduces the worked example in Bailey & López de Prado (2014) to 3 decimals.
 
 **Reviewer focus.** Off-by-one in purging/embargo, PSR/DSR formula (kurtosis convention: raw vs excess), PBO rank logic.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done, findings fixed). 216 tests pass; ruff clean. Notes:
+- Modules: `validation/purged_cv.py` (`purged_train`, `PurgedKFold`, `CombinatorialPurgedCV` with `path_splits` /
+  `assemble_paths` / `from_cfg`, `bind()` → scikit-learn `cv=` adapter, `embargo_bars`), `validation/stats.py`
+  (`sharpe_ratio`, `return_moments`, `psr`, `expected_max_sharpe`, `dsr`, `min_track_record_length`), `validation/pbo.py`
+  (CSCV PBO, vectorized via block moments; also P(OOS loss) and the IS→OOS degradation slope), `validation/scoring.py`
+  (`neg_log_loss`, `brier`, `selection_score` (higher = better), report-only `score_report`, `purged_cv_predict/score`).
+  Config: `CPCV_GROUPS=10`, `CPCV_TEST_GROUPS=2`, `PBO_BLOCKS=16`, `SELECTION_METRIC="neg_log_loss"` (validated; excluded
+  from the feature-cache key). Conventions in SPEC §5–6.
+- Purge is per contiguous test run (CPCV test sets are non-contiguous), with the embargo after each run; exact vs a
+  per-sample brute force (40 seeded property cases in the suite; reviewer: 1,500 configs, 0 mismatches). `PurgedKFold`
+  output is identical to `main` (reviewer: 3,000 configs); SPY 1Day `--select cmda` `wfo_signals.csv` is bit-identical to
+  `main` (sha1 `79bf64c2…`); legacy CSV run still sha1 `402ef202…`.
+- DSR example (Bailey & López de Prado 2014): SR₀ = 0.1132, DSR = 0.9004, N = 46 → 0.9505 — matched to 4 decimals.
+  Raw kurtosis; excess would give 0.9018. PSR calibration under the null (5.0% ± 1.2% false positives), E[max SR] vs
+  Monte Carlo (≤ 3%), MinTRL inverts PSR.
+- PBO: noise ≈ 0.5 for N = 2, 3, 5, 9, 20; one dominant strategy < 0.05; reverting IS winners > 0.9; hand-computed
+  2-block examples pin rank direction, tie averaging and the median rule.
+- Tests: `tests/test_validation.py` (73).
+- Review (no BREAKING/SEVERE) — MINORs fixed: (1) odd-N PBO noise baseline was (N+1)/(2N) because λ = 0 counted as
+  overfit → λ = 0 now counts ½ (pinned by test); (2) `ceil(0.07·100)` = 8 from float error → `embargo_bars` rounds first
+  and clustered MDA uses it (identical to the old `ceil` for every n ≤ 400,000 at the default 0.01); (3) a flat non-zero
+  column scored ~1e7 instead of ±inf (cancellation) → block moments are shifted by each column's first value;
+  (4) CPCV / PBO config fields now validated. `PBO_BLOCKS` / `SELECTION_METRIC` are consumed from U6/U9 on.
+- For U6: `purged_cv_predict` passes `sample_weight=` to `fit`, which an sklearn `Pipeline` rejects (loud error) — U6's
+  scaled logit models must route weights (`logisticregression__sample_weight`) or implement ZooModel.fit directly.
 
 ---
 

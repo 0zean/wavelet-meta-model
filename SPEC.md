@@ -224,11 +224,21 @@ Each sample i has span `[t0_i, t1_i]` = `[event bar, exit bar]`.
   whose exit falls in the last `EMBARGO` trading days before val (test) starts are dropped, i.e. keep
   `exit_pos < split_end − h`. This removes the fitting outcomes most serially correlated with the next split's
   first outcomes. Default `EMBARGO = 1` day (h = that session's bar count, shorter after a half-day).
-- **PurgedKFold** (`validation/purged_cv.py`, minimal version added in U3 for clustered MDA): contiguous, unshuffled
-  folds; keep train i only if `t1_i < min test t0` or `t0_i > max test t1 + h`.
-- **CPCV(N, k):** N contiguous groups, all C(N,k) test combinations; number of backtest paths
-  φ = C(N,k)·k/N = C(N−1,k−1); each group is a test group in exactly φ splits. Default N=10, k=2 → 45 splits, 9 paths.
-- **Selection metric:** sample-weighted neg-log-loss (default) or Brier. AUC/F1/accuracy reported only.
+- **Splitters** (`validation/purged_cv.py`, U5): spans are integer bar positions, samples sorted by t0.
+  `purged_train(t0, t1, test, h)` splits `test` into runs of consecutive indices; for each run with hull [a, b]
+  (a = min t0, b = max t1) a train sample is kept only if `t1_i < a` or `t0_i > b + h`. Because samples are sorted by
+  t0, overlapping a run's hull ⇔ overlapping one of its spans, so this equals the per-sample definition (property-tested
+  against brute force). `embargo_bars(pct, n_bars) = ceil(pct · n_bars)` (product rounded to 1e-9 first; also used by clustered MDA). `splitter.bind(t0, t1)` is a scikit-learn
+  `cv=` object (rows of X in span order).
+- **PurgedKFold(n_splits, embargo):** contiguous, unshuffled folds (`np.array_split` sizes). Used by clustered MDA (U3).
+- **CombinatorialPurgedCV(N, k, embargo):** N contiguous groups, all C(N,k) test combinations in `itertools.combinations`
+  order; number of backtest paths φ = C(N,k)·k/N = C(N−1,k−1); each group is a test group in exactly φ splits. Path p
+  takes group g from the p-th split (in enumeration order) that tests g (`path_splits()`; `assemble_paths` stitches
+  per-split OOS outputs into φ full-length paths). Defaults `CPCV_GROUPS=10`, `CPCV_TEST_GROUPS=2` → 45 splits, 9 paths;
+  `from_cfg(cfg, n_bars)` embargo = `ceil(CV_EMBARGO_PCT · n_bars)`.
+- **Selection metric** (`validation/scoring.py`, `cfg.SELECTION_METRIC`): sample-weighted neg-log-loss (default) or
+  −Brier, higher is better. AUC/F1/accuracy (`score_report`) are reported only. `purged_cv_predict/score` fit a fresh
+  clone per split with the train rows' weights and score with the test rows' weights; a single-class train split raises.
 
 ---
 
@@ -245,7 +255,11 @@ Inside each IS window, the existing train/val split and inner purged CV apply.
   model on its IS window's val+train events). Reported NaN when IS return ≤ 0, with the count of such windows.
   Also `WFE_sharpe` (ratio of Sharpes).
 - `pct_profitable_oos`, `oos_sharpe`, `oos_sortino`, `max_dd`, `IS↔OOS Spearman` across windows, trades, turnover.
-- PBO over the combo × window performance matrix (CSCV, S=16 blocks).
+- PBO over the combo × window performance matrix (CSCV, `PBO_BLOCKS` S=16; `validation/pbo.py`): rows cut into S contiguous
+  blocks; for each of the C(S, S/2) IS block sets, n* = best IS column (ties → lowest index), ω = OOS rank of n*
+  (1 = worst, ties averaged)/(N+1), λ = log(ω/(1−ω)); PBO = P(λ < 0) + ½·P(λ = 0) (the exact-median case, odd N or
+  ties, counts half, so noise gives ≈ 0.5 for any N). Default metric = per-period Sharpe from block moments of each column
+  shifted by its first value (a flat column scores exactly 0, or ±inf with non-zero mean). `PBO_BLOCKS` must be even. Also reported: P(OOS loss of n*) and the IS→OOS degradation slope.
 
 **Nested selection (walk-forward of the walk-forward).** Each combo yields a causal daily OOS return stream.
 Every `SELECT_EVERY = 10` trading days at decision date d, pick the combo with the highest trailing
@@ -256,7 +270,11 @@ lookback, use the default combo (IS=252, OOS=10); that period is labeled burn-in
 **Probabilistic Sharpe** PSR(SR*) = Φ( (SR̂ − SR*)·√(T−1) / √(1 − γ₃·SR̂ + (γ₄−1)/4·SR̂²) ),
 γ₄ = raw (non-excess) kurtosis, SR per-period (not annualized).
 **Deflated Sharpe** DSR = PSR(SR₀) with SR₀ = √V[SR_n]·((1−γ)Φ⁻¹(1−1/N) + γΦ⁻¹(1−1/(N·e))), γ ≈ 0.5772,
-N = number of trials from the ledger (§9), V[SR_n] = variance of trial Sharpes.
+N = number of trials from the ledger (§9), V[SR_n] = variance of trial Sharpes (per period). N = 1 → SR₀ = 0.
+**MinTRL**(SR*, α) = 1 + (1 − γ₃·SR̂ + (γ₄−1)/4·SR̂²)·(Φ⁻¹(1−α)/(SR̂ − SR*))²; ∞ if SR̂ ≤ SR*.
+Moments (`validation/stats.py`): SR = mean/std (ddof 1), skew and raw kurtosis are the biased sample estimators.
+Invariant (tested): the Bailey & López de Prado (2014) example — SR 2.5/√250, T = 1250, N = 100, V = ½/250, γ₃ = −3,
+γ₄ = 10 — gives SR₀ = 0.1132 and DSR = 0.9004 (N = 46 → 0.9505).
 
 ---
 

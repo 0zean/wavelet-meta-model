@@ -100,6 +100,12 @@ class RunConfig:
     CMDA_SPLITS: int = 4  # purged k-fold splits inside the train window
     CV_EMBARGO_PCT: float = 0.01  # purged-CV embargo as a fraction of the train bars (SPEC §5)
 
+    # Validation toolkit (SPEC §5–6, U5)
+    CPCV_GROUPS: int = 10  # CPCV N contiguous groups
+    CPCV_TEST_GROUPS: int = 2  # CPCV k test groups per split → C(N,k) splits, C(N−1,k−1) paths
+    PBO_BLOCKS: int = 16  # CSCV blocks S
+    SELECTION_METRIC: Literal["neg_log_loss", "brier"] = "neg_log_loss"
+
     # Low-movement day filter (classifier training only)
     # Bars whose trading day has |VWAP_close − VWAP_open| in the bottom
     # LOW_MOVE_PCTILE are excluded from classifier training.
@@ -175,6 +181,14 @@ class RunConfig:
             raise ValueError(f"FEATURE_SELECTION must be 'none' or 'cmda', got {self.FEATURE_SELECTION!r}")
         if self.FEATURE_SELECTION == "cmda" and self.FEATURE_GROUPS is None:
             raise ValueError("FEATURE_SELECTION='cmda' needs FEATURE_GROUPS (the legacy matrix has no wavelet_core)")
+        if not (self.CPCV_GROUPS >= 2 and 1 <= self.CPCV_TEST_GROUPS < self.CPCV_GROUPS):
+            raise ValueError(
+                f"need CPCV_GROUPS >= 2 and 1 <= CPCV_TEST_GROUPS < CPCV_GROUPS; got {self.CPCV_GROUPS}, {self.CPCV_TEST_GROUPS}"
+            )
+        if self.PBO_BLOCKS < 2 or self.PBO_BLOCKS % 2:
+            raise ValueError(f"PBO_BLOCKS must be an even integer >= 2; got {self.PBO_BLOCKS}")
+        if self.SELECTION_METRIC not in ("neg_log_loss", "brier"):
+            raise ValueError(f"SELECTION_METRIC must be 'neg_log_loss' or 'brier', got {self.SELECTION_METRIC!r}")
         if self.WINDOW_UNIT not in ("days", "bars"):
             raise ValueError(f"WINDOW_UNIT must be 'days' or 'bars', got {self.WINDOW_UNIT!r}")
         for name in ("INITIAL_TRAIN", "VAL", "TEST", "VERTICAL_BARS", "BARS_PER_DAY"):
