@@ -515,15 +515,68 @@ class-imbalance handling, scaling fit leakage for linear models.
   profit factor, tail ratio, plus PSR — all OOS only.
 
 **Done when.**
-- [ ] Single-symbol, no-risk-layer backtest reproduces U7 output exactly.
-- [ ] Tests: caps never exceeded (property test), daily stop flattens and blocks re-entry that session, vol target
+- [x] Single-symbol, no-risk-layer backtest reproduces U7 output exactly.
+- [x] Tests: caps never exceeded (property test), daily stop flattens and blocks re-entry that session, vol target
       scales inversely with σ, costs are charged on every notional change.
-- [ ] Portfolio run over ≥5 symbols at 1Hour completes; metrics table saved.
+- [x] Portfolio run over ≥5 symbols at 1Hour completes; metrics table saved.
 
 **Reviewer focus.** Using same-bar close for sizing decisions executed at that bar's open, cap enforcement after
 fills vs before, cross-symbol timestamp alignment, cost double-counting.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done, findings fixed). 318 tests pass (1 min 56 s with
+`OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1`; ~4 min with default threading); ruff clean. Notes:
+- Modules: `risk/profiles.py` (`RiskProfile`, `PROFILES` = `none` / `standard`, `get_profile`), `risk/costs.py`
+  (Corwin–Schultz per pair, `session_spread`, `half_spread`), `risk/portfolio.py` (`simulate_portfolio`: union timeline,
+  one equity curve, one position per symbol; per-bar log of gross / long / short / net / count / max position /
+  drawdown multiplier / gate), `risk/run.py` (one WFO per symbol in parallel, every profile, equal-weight buy-and-hold →
+  `results/portfolio/`, trials stage `U8`). Config `RISK_PROFILE="none"` (excluded from the feature-cache key; an active
+  profile needs `POSITION_MODE="single"`); `run_backtest(..., spread_bars=)` routes through the simulator when the
+  profile is active; CLI `--risk-profile`. Metrics add Sortino, max DD duration, PSR(0), profit factor, tail ratio. SPEC §7.
+- Regression: profile `none` equity is **bit-identical** to `simulate_trades` + `equity_curve` (tests on 4 random
+  configurations; SPY/QQQ 1Day real signals × 5 sizers × meta/primary, 20/20; the reviewer repeated it on the six 1Hour
+  symbols); the legacy CSV hash is unchanged (`402ef202…`).
+- SPEC refinements: (1) the CS half-spread is estimated from **5Min** bars for every timeframe, lagged one session — CS
+  grows with bar length (SPY mean 14 bp from 1Day, 4.9 bp from 1Hour, 1.5 bp from 5Min; quoted ≈ 0.1 bp); no quoted
+  fallback (no quote data), a fill without an estimate raises. (2) The net cap is enforced **per side** (long and short
+  gross each ≤ `max_net`), which bounds |net| whichever positions exit. (3) The drawdown throttle is applied after the
+  position cap (SPEC order); its 0 tier is absorbing once flat (a kill switch).
+- Tests `tests/test_risk.py` (25): profiles/config; bitwise U7 regression; caps property test (6 universes, missing bars,
+  per-position / gross / per-side / count, exact at entry bars); accounting + cross-symbol alignment (equity rebuilt from
+  trades and each symbol's last close); vol target (frac = SIZE·m·min(1, σ*/σ_hold), doubling σ halves the notional);
+  drawdown tiers and throttle-after-cap; daily loss gate intraday (flatten at next open, session blocked, next session
+  trades) and 1Day (next session blocked); costs on entry / trim / exit hand-computed (and turnover); spread estimate
+  required at every fill; portfolio causality (bars + signals perturbed after c, equity and log up to c equal); CS formula,
+  gap shift, negative → 0; half-spread uses prior sessions only (daily and hourly index); metrics; `run_backtest`
+  routing; 2 review regressions.
+- Review (no BREAKING / SEVERE). MINORs fixed: (1) slots and gross/net headroom for fills at open[b] were computed after
+  that open's gap exits (entries depended on open[b]) → every decision taken from a close[b−1] snapshot before any fill;
+  gap-exiting positions keep their slot and exposure (test); fixing it exposed that a cap on the net breaks when the
+  offsetting side exits → per-side caps (tests); (2) the drift band was claimed for every position, but a symbol without
+  a bar at b cannot trade → it is trimmed at its next bar; claim qualified in SPEC and the docstring (reachable only with
+  overnight holds across a session one symbol lacks); (3) a trimmed trade's `pnl_pct` ignored the trim fills → cash P&L /
+  entry notional (test); (4) this status line. Reviewer checks that held: the saved table reproduces to 2.3e-13; final
+  equity − INIT_CASH = Σ trade P&L; decisions unaffected by prices from T on (16 real-data perturbations); costs once per
+  fill; the gate never re-enters inside a blocked session.
+- Portfolio run: SPY, QQQ, IWM, DIA, TLT, GLD at 1Hour, 2016-01 → 2025-10, `wavelet_trend` / `logit_l2` / `oof` / `fixed`,
+  98 folds per symbol, 227 s with 6 workers (1 BLAS thread each: with default threading the six workers oversubscribed the
+  cores, ~700 s per fold vs 1.7 s — U10's runner needs the same). Results unchanged by the review fixes. OOS:
+
+  | | EW buy-and-hold | meta / none | primary / none | meta / standard | primary / standard |
+  |---|---|---|---|---|---|
+  | Sharpe | 0.94 | −0.12 | −0.64 | −1.01 | −1.03 |
+  | Ann. return / vol | 12.8% / 13.9% | −2.8% / 14.8% | −27.5% / 38.6% | −2.1% / 2.1% | −2.7% / 2.6% |
+  | Max DD | −26% | −30% | −93% | −16% | −20% |
+  | PSR(0) | 1.00 | 0.37 | 0.03 | 0.00 | 0.00 |
+  | Trades / turnover (x/yr) | – | 2583 / 631 | 12268 / 2996 | 2583 / 93 | 4541 / 140 |
+
+  `standard`: mean committed size 0.15 (vol target 0.5% per trade), gross ≤ 1.002 and per-position ≤ 0.205 on decision
+  marks (within the drift band), drawdown throttle active on 41% (meta) / 88% (primary) of bars, gate hit once; the
+  CS spread added 1.1–1.7 bp per fill on top of 1 bp slippage, so the average trade falls from −0.6 to −4.1 bp. The
+  risk layer cuts volatility ~7× but creates no edge: the 1Hour meta-model has none here (per-symbol meta AUC 0.49–0.51, in
+  `trials.jsonl`). 2 trials (stage U8) in `results/portfolio/trials.jsonl`, 2 pre-review (identical numbers) in
+  `pre_review/`.
+- Out of scope / deferred: multi-lot positions per symbol and active-bet averaging under the risk layer (raises);
+  quoted-spread costs (needs quote data); resizing held positions on vol / drawdown changes (only drift trims).
 
 ---
 

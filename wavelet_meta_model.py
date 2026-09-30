@@ -13,6 +13,7 @@
 ║    8. Expanding-window WFO     (purged + embargoed, uniqueness-weighted)     ║
 ║    9. Bet sizing               (calibrated p → size; sizing/, --sizer)       ║
 ║   10. Barrier-exit backtest    (next-bar open, slippage, fractional sizes)   ║
+║   11. Risk layer               (vol target, caps, loss gates; --risk-profile)║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
@@ -27,6 +28,7 @@ from features import cache as feature_cache
 from models.zoo import REGISTRY as ZOO
 from primaries import REGISTRY as PRIMARIES
 from primaries.diagnostics import primary_diagnostics
+from risk.profiles import PROFILES, get_profile
 from sizing import REGISTRY as SIZERS
 from utils.config import RunConfig
 from utils.data_loader import load_ohlcv, make_synthetic_spy
@@ -102,7 +104,7 @@ def main(
     print(f"[CFG]   features={cfg.FEATURE_GROUPS or 'legacy'}  selection={cfg.FEATURE_SELECTION}")
     print(f"[CFG]   primary={cfg.PRIMARY} {cfg.PRIMARY_PARAMS or ''}")
     print(f"[CFG]   models: meta={cfg.META_MODEL} primary={cfg.PRIMARY_MODEL}  meta_train={cfg.META_TRAIN}")
-    print(f"[CFG]   sizing: {cfg.SIZER} step={cfg.SIZE_STEP} positions={cfg.POSITION_MODE}")
+    print(f"[CFG]   sizing: {cfg.SIZER} step={cfg.SIZE_STEP} positions={cfg.POSITION_MODE}  risk={cfg.RISK_PROFILE}")
 
     # Feature context (cross-asset market bars) and cache (Alpaca data only: the key needs a symbol)
     context = {}
@@ -130,7 +132,15 @@ def main(
 
     # Backtest, metrics and plots cover only the OOS span
     df_oos = df.loc[signals.index[0] :]
-    results = run_backtest(df_oos, signals, cfg)
+    spread_bars = None
+    if get_profile(cfg.RISK_PROFILE).spread == "cs":  # the half-spread is estimated from 5Min bars (risk/costs.py)
+        if cfg.TIMEFRAME == "5Min":
+            spread_bars = df
+        elif symbol and not data_path:
+            spread_bars = load_bars(symbol, "5Min", start, end)
+        else:
+            raise ValueError(f"risk profile {cfg.RISK_PROFILE!r} needs 5Min bars for the spread estimate")
+    results = run_backtest(df_oos, signals, cfg, spread_bars=spread_bars)
     metrics = compute_metrics(df_oos, results, cfg)
     signal_diagnostics(df, signals, cfg)
     o = meta_outcomes(df, signals, cfg)
@@ -168,6 +178,7 @@ if __name__ == "__main__":
     ap.add_argument("--sizer", choices=sorted(SIZERS), help="bet sizer (sizing/; default fixed)")
     ap.add_argument("--size-step", type=float, help="bet-size discretization step (default 0.1, 0 = off)")
     ap.add_argument("--position-mode", choices=["single", "average"], help="one position or active-bet averaging")
+    ap.add_argument("--risk-profile", choices=sorted(PROFILES), help="risk layer (risk/profiles.py; default none)")
     a = ap.parse_args()
     overrides = {}
     if a.features:
@@ -185,6 +196,7 @@ if __name__ == "__main__":
         ("sizer", "SIZER"),
         ("size_step", "SIZE_STEP"),
         ("position_mode", "POSITION_MODE"),
+        ("risk_profile", "RISK_PROFILE"),
     ):
         if getattr(a, arg) is not None:
             overrides[name] = getattr(a, arg)

@@ -6,13 +6,28 @@ from features.triple_barrier_labels import barrier_exits
 from models.zoo import PROB_CLIP
 from utils.config import RunConfig
 from validation.scoring import brier, neg_log_loss
+from validation.stats import psr, return_moments
+
+
+def _longest_run(mask: np.ndarray) -> int:
+    """Length of the longest run of True."""
+    best = cur = 0
+    for v in mask:
+        cur = cur + 1 if v else 0
+        best = max(best, cur)
+    return best
 
 
 def strategy_metrics(equity: pd.Series, trades: pd.DataFrame, bars_per_year: int) -> pd.Series:
     """
     Risk-adjusted performance of one equity curve over its own span. Equity attrs from the backtest:
     `turnover` (Σ traded notional / equity), `avg_position` (mean |bet size| over the closes with a position; the
-    same definition in both position modes) and, for POSITION_MODE="average", `exposure` (share of bars held).
+    same definition in both position modes) and, for POSITION_MODE="average" and the risk layer, `exposure`
+    (share of bars held). Sortino uses the root-mean-square of the negative per-bar returns; max drawdown duration is
+    the longest run of closes below the running peak, in trading days; PSR(0) is the probabilistic Sharpe ratio of
+    the per-bar returns (validation/stats.py); profit factor = Σ winning / Σ losing trade P&L (cash P&L when the
+    backtest records it, else size · per-unit return); tail ratio = |95th / 5th percentile| of the non-zero
+    per-bar returns (NaN with fewer than 20).
 
     Args:
         equity (pd.Series): Bar-level equity.
@@ -26,8 +41,23 @@ def strategy_metrics(equity: pd.Series, trades: pd.DataFrame, bars_per_year: int
     total_ret = equity.iloc[-1] / equity.iloc[0] - 1
     ann_ret = (1 + total_ret) ** (bars_per_year / max(len(rets), 1)) - 1
     vol = rets.std() * np.sqrt(bars_per_year)
-    max_dd = (equity / equity.cummax() - 1).min()
+    downside = np.sqrt((np.minimum(rets, 0.0) ** 2).mean()) * np.sqrt(bars_per_year)
+    under = (equity / equity.cummax() - 1).to_numpy()
+    max_dd = under.min()
     n_trades = len(trades)
+    # Profit factor on each trade's P&L as a fraction of equity (cash P&L when the backtest records it)
+    if "pnl" in trades:
+        tp = trades["pnl"].to_numpy(dtype=float)
+    else:
+        tp = trades["pnl_pct"].to_numpy(dtype=float) * (trades["size"].to_numpy(dtype=float) if "size" in trades else 1)
+    active = rets[rets != 0].to_numpy()  # bars with P&L: the tails of the held bars
+    q5, q95 = np.quantile(active, [0.05, 0.95]) if len(active) >= 20 else (np.nan, np.nan)
+    r = rets.to_numpy()[1:]
+    try:
+        mom = return_moments(r)
+        psr0 = psr(mom.sr, mom.n_obs, mom.skew, mom.kurt)
+    except ValueError:  # no trades (zero variance) or too short
+        psr0 = np.nan
     return pd.Series(
         {
             "Total Return (%)": total_ret * 100,
@@ -35,11 +65,16 @@ def strategy_metrics(equity: pd.Series, trades: pd.DataFrame, bars_per_year: int
             "Annual Volatility (%)": vol * 100,
             "Sharpe Ratio": rets.mean() * bars_per_year / (vol + 1e-12),
             "Max Drawdown (%)": max_dd * 100,
+            "Sortino Ratio": rets.mean() * bars_per_year / downside if downside > 0 else np.nan,
             "Calmar Ratio": ann_ret / abs(max_dd) if max_dd < 0 else np.nan,
+            "Max DD Duration (days)": _longest_run(under < 0) * 252 / bars_per_year,
+            "PSR(0)": psr0,
             "Num Trades": n_trades,
             "Win Rate (%)": (trades["pnl_pct"] > 0).mean() * 100 if n_trades else np.nan,
             "Avg Trade (bp)": trades["pnl_pct"].mean() * 1e4 if n_trades else np.nan,
             "Avg Bars Held": trades["bars_held"].mean() if n_trades else np.nan,
+            "Profit Factor": tp[tp > 0].sum() / -tp[tp < 0].sum() if (tp < 0).any() else np.nan,
+            "Tail Ratio": abs(q95) / abs(q5) if q5 < 0 else np.nan,
             "Exposure (%)": equity.attrs["exposure"] * 100
             if "exposure" in equity.attrs
             else (trades["bars_held"].sum() / len(equity) * 100 if n_trades else 0.0),
