@@ -207,25 +207,50 @@ def simulate_positions(
 
 
 def run_backtest(
-    df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig, size_col: str = "bet_size"
+    df: pd.DataFrame,
+    signals: pd.DataFrame,
+    cfg: RunConfig,
+    size_col: str = "bet_size",
+    spread_bars: pd.DataFrame | None = None,
 ) -> dict[str, tuple[pd.Series, pd.DataFrame]]:
     """
     Backtest the meta-filtered, sized signals (`size_col`, cfg.POSITION_MODE) and, as the benchmark
-    meta-labeling must beat, the unfiltered primary signal on the same events at m = 1.
+    meta-labeling must beat, the unfiltered primary signal on the same events at m = 1. With an active
+    cfg.RISK_PROFILE both go through the risk layer (risk.portfolio.simulate_portfolio, one symbol).
 
     Args:
         df (pd.DataFrame): OHLC data covering the OOS span.
         signals (pd.DataFrame): WFO output.
         cfg (RunConfig): Run configuration.
         size_col (str, optional): Bet-size column of the meta-filtered strategy. Defaults to "bet_size".
+        spread_bars (pd.DataFrame | None, optional): 5Min bars of the symbol, with history before the OOS span,
+            for the Corwin–Schultz half-spread (risk profiles with spread="cs"). Defaults to None.
 
     Returns:
         dict[str, tuple[pd.Series, pd.DataFrame]]: Strategy name → (equity, trades).
     """
-    print(f"\n[BACKTEST]  Simulating barrier-exit trades (sizer {cfg.SIZER}, {cfg.POSITION_MODE} positions) ...")
+    from risk.costs import half_spread
+    from risk.portfolio import simulate_portfolio
+    from risk.profiles import get_profile
+
+    profile = get_profile(cfg.RISK_PROFILE)
+    print(
+        f"\n[BACKTEST]  Simulating barrier-exit trades (sizer {cfg.SIZER}, {cfg.POSITION_MODE} positions, "
+        f"risk {profile.name}) ..."
+    )
+    hs = None
+    if profile.spread == "cs":
+        if spread_bars is None:
+            raise ValueError(f"risk profile {profile.name!r} charges spreads: pass the symbol's 5Min spread_bars")
+        hs = {"_": half_spread(df.index, spread_bars, profile.spread_window_days, profile.spread_floor)}
     results = {}
     for name, col, sz in (("Meta-filtered", "trade_signal", size_col), ("Primary only", "signed_dir", None)):
-        if cfg.POSITION_MODE == "single":
+        if profile.active:
+            eq, trades, _ = simulate_portfolio(
+                {"_": df}, {"_": signals}, cfg, profile, side_col=col, size_col=sz, half_spreads=hs
+            )
+            results[name] = (eq, trades)
+        elif cfg.POSITION_MODE == "single":
             trades = simulate_trades(df, signals, cfg, side_col=col, size_col=sz)
             results[name] = (equity_curve(df, trades, cfg.INIT_CASH, cfg.SIZE), trades)
         else:

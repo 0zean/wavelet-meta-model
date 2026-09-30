@@ -346,14 +346,48 @@ p = τ; `fixed`, `kelly_capped` and (for τ > ½) `ldp_sigmoid` jump at τ.
   CLI `--sizer`, `--size-step`, `--position-mode`; comparison `python -m sizing.compare` (one WFO, every
   sizer × mode → `trials.jsonl`, stage `U7`).
 
-**Risk layer**, applied in order at decision time t (info ≤ close[t], fill at open[t+1]):
-1. Vol target: notional = m · equity · min(1, σ_target / σ_hold,t), σ_hold = bar σ · √vertical_bars; σ_target default 0.5% per trade.
-2. Caps: per-position ≤ 20% equity, per-symbol ≤ 25%, gross ≤ 100% (no leverage default), |net| ≤ 100%, max concurrent 10 — scale down pro-rata.
-3. Drawdown throttle: multiplier 1.0 / 0.5 / 0.0 at DD < 10% / 10–20% / > 20% (resets at new high).
-4. Daily loss gate: if session P&L ≤ −2% equity, flatten at next open and block entries for the rest of that session (next day for 1Day).
+**Risk layer** (U8, `risk/`). `RISK_PROFILE` names a `risk.profiles.RiskProfile`: `none` (default) = the pre-U8
+backtest above, bit-identical; `standard` = the defaults below. An active profile routes the backtest through
+`risk.portfolio.simulate_portfolio` — one or many symbols on one **union timeline** and one equity curve, one position
+per symbol (`POSITION_MODE="single"` required; an event arriving while its symbol holds a position is skipped, a bet
+whose final size is 0 does not block). A symbol without a bar at a union timestamp neither fills nor re-marks there.
+**Timing:** every decision filled at open[b] is taken at the close of union bar b−1 with information ≤ that close:
+equity E, drawdown, session P&L, held positions marked at their symbol's last close, the event's width, the
+half-spread. Per bar: gap exits at the open → gate flattening → drift trims → entries (notional f·E(close b−1),
+shares = notional / fill) → intrabar barrier exits (bet order) → vertical exits at the close → marks.
+1. Vol target: f = SIZE·m·min(1, σ_target / σ_hold), σ_hold = width / BARRIER_MULT = σ_bar,t·√VERTICAL_BARS; σ_target 0.5%.
+2. Caps: |f| ≤ min(per-position 20%, per-symbol 25%) (one position per symbol); entries at one bar, ranked by |f| (then
+   symbol), fill the free slots of max concurrent 10; one pro-rata factor k ∈ [0, 1] then keeps gross ≤ 100% (no
+   leverage) and **each side's** gross (long total, short total) ≤ the net cap 100% given the held positions on decision
+   marks — so |net| stays within the cap whichever positions exit (a cap on the net itself is broken as soon as the
+   offsetting side exits). Held positions are not resized, except a
+   **drift trim** at the next open when marks take a position past cap·(1 + 10%) (back to the cap), or gross / a side's
+   gross past theirs (the positions that can trade scaled pro-rata back). A held symbol with no bar at b cannot trade and is
+   trimmed at its next bar. Positions that gap through a barrier at open[b] are unknown at close[b−1] and still take
+   their slot and exposure in the decision for that open. Invariant (tested): at every entry bar gross, the position cap and
+   the side(s) receiving entries hold exactly on decision marks; after every open, positions whose symbol has a bar
+   there are within the 10% drift band.
+3. Drawdown throttle: × 1.0 / 0.5 / 0.0 for DD < 10% / [10%, 20%) / ≥ 20% (close-marked equity vs its running high;
+   resets at a new high), applied after the position cap. The 0 tier is absorbing once flat (no position can make a
+   new high): it is a kill switch.
+4. Daily loss gate: session P&L = equity at close / equity at the previous session's last close − 1. At ≤ −2% every
+   position is flattened at its symbol's next open and entries are blocked for the rest of that session (for 1Day,
+   the next session: its open is the next decision).
 
-**Costs:** every notional change pays `half_spread_sym + SLIPPAGE_PCT` on the traded notional; `half_spread_sym`
-from the trailing (train-window) Corwin–Schultz estimate, floored at 0.5 bp; optional short borrow 0 bp default.
+**Costs:** every fill (entry, exit, trim, flattening) pays c = `SLIPPAGE_PCT` + half-spread adversely on the fill price;
+`standard` uses the Corwin–Schultz (2012) half-spread (`risk/costs.py`), floored at 0.5 bp; `none` charges
+`SLIPPAGE_PCT` only (U7). **Refinement:** CS grows with the bar length (2016–2025 SPY mean half-spread 14 bp from 1Day
+bars, 4.9 bp from 1Hour, 1.5 bp from 5Min, vs ≈ 0.1 bp quoted), so it is estimated from **5Min** bars for every
+traded timeframe: per session the mean pair estimate (pairs straddling sessions excluded, CS overnight adjustment,
+negative estimates 0), and a fill uses the trailing 21-session mean of the sessions **before** its own (causal). No
+quoted-spread fallback (no quote data cached); a fill without an estimate raises. Optional short borrow (annual bps,
+0 default) is charged at exit on the entry notional for the bars held. There is no internal crossing between symbols.
+
+**Metrics** (all over the OOS span): the U7 table plus Sortino (RMS of negative per-bar returns), max drawdown duration
+(longest run of closes below the running peak, trading days), PSR(0) of the per-bar returns, profit factor (Σ winning /
+Σ losing trade P&L; cash P&L under the risk layer), tail ratio (|q95 / q5| of the non-zero per-bar returns, NaN below
+20). Portfolio runner `python -m risk.run` (one WFO per symbol, every profile, equal-weight buy-and-hold benchmark →
+`trials.jsonl`, stage `U8`).
 
 ---
 

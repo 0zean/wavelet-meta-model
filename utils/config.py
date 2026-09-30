@@ -187,6 +187,11 @@ class RunConfig:
     # size of the active bets (López de Prado §10.4), resized at each bet's entry / exit.
     POSITION_MODE: Literal["single", "average"] = "single"
 
+    # Risk layer (SPEC §7, U8; risk/): a named profile in risk.profiles.PROFILES. "none" = the pre-U8 backtest;
+    # any other routes the backtest through the portfolio simulator (vol target, caps, drawdown throttle, daily
+    # loss gate, spread costs), which needs POSITION_MODE="single".
+    RISK_PROFILE: str = "none"
+
     # Holdout (SPEC §9): the WFO refuses data on/after data.bars.HOLDOUT_START unless True
     ALLOW_HOLDOUT: bool = False
 
@@ -231,6 +236,10 @@ class RunConfig:
             raise ValueError(f"KELLY_FRACTION must be in (0, 1], got {self.KELLY_FRACTION}")
         if self.POSITION_MODE not in ("single", "average"):
             raise ValueError(f"POSITION_MODE must be 'single' or 'average', got {self.POSITION_MODE!r}")
+        from risk.profiles import get_profile
+
+        if get_profile(self.RISK_PROFILE).active and self.POSITION_MODE != "single":
+            raise ValueError(f"RISK_PROFILE={self.RISK_PROFILE!r} needs POSITION_MODE='single'")
         if not 0 < self.META_THRESH < 1:
             raise ValueError(f"META_THRESH must be in (0, 1), got {self.META_THRESH}")
         if self.ZOO_CV_SPLITS < 2:

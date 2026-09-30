@@ -38,6 +38,7 @@ _NON_FEATURE_FIELDS = {
     "SIZE_STEP",
     "KELLY_FRACTION",
     "POSITION_MODE",
+    "RISK_PROFILE",
     "SEED",
     "CLF_THRESH",
     "META_THRESH",
