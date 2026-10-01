@@ -209,8 +209,8 @@ def test_code_hash_ignores_line_endings_but_not_the_platform(monkeypatch, tmp_pa
         (tmp_path / "wfo" / "x.py").write_bytes(b"a = 1\r\nb = 2\r\n")  # a Windows (autocrlf) checkout
         R.code_hash.cache_clear()
         assert R.code_hash() == h1
-        monkeypatch.setattr(R.platform, "system", lambda: "Windows")
-        monkeypatch.setattr(R.platform, "machine", lambda: "AMD64")
+        monkeypatch.setattr(R.platform, "system", lambda: "Plan9")  # not the host, whichever it is
+        monkeypatch.setattr(R.platform, "machine", lambda: "mips")
         R.code_hash.cache_clear()
         assert R.code_hash() != h1
     finally:

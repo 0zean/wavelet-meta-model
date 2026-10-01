@@ -213,7 +213,7 @@ def _signals(sym: str, df: pd.DataFrame, cfg: RunConfig, root: Path, feature_cac
     os.close(fd)
     try:
         sig.to_pickle(tmp)
-        os.replace(tmp, path)
+        feature_cache.publish(tmp, path)  # content-addressed too: a concurrent writer of the key wrote the same
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)

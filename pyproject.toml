@@ -36,3 +36,7 @@ lint.ignore = ["F403"]
 pythonpath = ["."]
 testpaths = ["tests"]
 filterwarnings = ["ignore:adfuller currently returns:FutureWarning"]
+
+[tool.uv]
+# fracdiff 0.9.0 pins statsmodels<0.14, and statsmodels 0.13.5 does not import under pandas 3 (deprecate_kwarg)
+override-dependencies = ["statsmodels>=0.14.4"]

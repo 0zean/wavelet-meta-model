@@ -762,6 +762,15 @@ too small to be meaningful, inner CV leaking across window boundaries.
 - Ledger continuity: the PC run must start from the Mac's `results/ledger.jsonl` (181 rows) and `data/cache/`
   (copied, not re-fetched: `adjustment=all` history re-adjusts on new dividends), and the PC ledger is canonical
   from Stage A on, or N is undercounted.
+- Windows PC setup (i9-14900KF, 24 cores / 32 threads, 64 GB): ledger (181 rows), `results/experiments/` and
+  `data/cache/` copied over via git. The locked env did not import: fracdiff 0.9.0 pins statsmodels < 0.14 and
+  statsmodels 0.13.5 breaks under pandas 3 (`deprecate_kwarg`); a `[tool.uv] override-dependencies` lifts it to
+  0.15.0 (what the Mac evidently ran — the pytest filter targets a 0.15-only adfuller warning). 384 tests pass on
+  Windows, including the `msvcrt` lock path. `rf_ldp` fits with `n_jobs=-1`, i.e. 32 threads inside every cell
+  process; the run sets `LOKY_MAX_CPU_COUNT=1` so each cell process fits single-threaded (forest results do not
+  depend on n_jobs: per-tree seeds are drawn up front, prediction is already serial).
+- Freeze: no `*.py` under the hashed packages may change, be added or removed while Stage A runs (workers recompute
+  the code hash for the signals key). Survivor selection therefore goes in `experiments/report.py` (unhashed).
 
 ---
 

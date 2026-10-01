@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import tempfile
+import time
 from functools import cache
 from pathlib import Path
 
@@ -117,15 +118,30 @@ def _path(root: Path, symbol: str, timeframe: str, group: str, key: str) -> Path
     return Path(root) / symbol / timeframe / group / f"{key}.npz"
 
 
+def publish(tmp, path) -> None:
+    """os.replace(tmp, path) for a content-addressed file. Windows refuses to replace a file another process has
+    open (a concurrent load of the same key); the file there already holds these bytes, so ours is dropped."""
+    try:
+        os.replace(tmp, path)
+    except PermissionError:
+        if not Path(path).exists():
+            raise
+
+
 def load(root, symbol: str, timeframe: str, group: str, key: str, index: pd.DatetimeIndex) -> pd.DataFrame | None:
     path = _path(root, symbol, timeframe, group, key)
-    if not path.exists():
-        return None
-    with np.load(path, allow_pickle=False) as z:
-        if not np.array_equal(z["__ts__"], index.asi8):
-            raise ValueError(f"feature cache {path}: index does not match the bars (hash collision?)")
-        cols = [str(c) for c in z["__columns__"]]
-        return pd.DataFrame({c: z[f"c{i}"] for i, c in enumerate(cols)}, index=index)
+    for attempt in range(5):
+        if not path.exists():
+            return None
+        try:
+            with np.load(path, allow_pickle=False) as z:
+                if not np.array_equal(z["__ts__"], index.asi8):
+                    raise ValueError(f"feature cache {path}: index does not match the bars (hash collision?)")
+                cols = [str(c) for c in z["__columns__"]]
+                return pd.DataFrame({c: z[f"c{i}"] for i, c in enumerate(cols)}, index=index)
+        except PermissionError:  # Windows: a concurrent save is replacing the file
+            time.sleep(0.05 * 2**attempt)
+    return None  # still locked: recompute (a miss)
 
 
 def save(root, symbol: str, timeframe: str, group: str, key: str, feats: pd.DataFrame) -> None:
@@ -137,7 +153,7 @@ def save(root, symbol: str, timeframe: str, group: str, key: str, feats: pd.Data
     os.close(fd)
     try:
         np.savez(tmp, **arrays)
-        os.replace(tmp, path)
+        publish(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)

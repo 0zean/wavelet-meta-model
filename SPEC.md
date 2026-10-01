@@ -459,7 +459,10 @@ cells are run once. Stages, in counting order: `U6, U7, U8, U9, U10, A, B, C, D,
 
 **Cell hash** = sha256(canonical cell, every resolved RunConfig field, code hash, data hash)[:16]. Code hash = the
 source of every `*.py` in data, features, primaries, models, sizing, risk, validation, wfo, utils and experiments
-(except `experiments/report.py`) plus the Python and numeric-library versions; data hash = each symbol's bars, the 5Min
+(except `experiments/report.py`, line endings normalized to LF so a CRLF checkout hashes the same) plus the Python and
+numeric-library versions and the OS and CPU architecture (`platform.system()`, `platform.machine()`: equal library
+versions on arm64 macOS and x86-64 Windows need not give bit-identical floats, so a result is reused only on the
+platform that computed it); data hash = each symbol's bars, the 5Min
 spread bars of a spread-charging risk profile and, for a PWFO cell, the exchange sessions **between its first and last data session** (the only ones
 `unit_bounds` reads; the cached calendar runs a year past today and is refreshed monthly). The stage is not hashed.
 Artifacts: `results/experiments/cells/<hash>/` (spec, log, daily returns, signals or PWFO outputs, result, traceback).
