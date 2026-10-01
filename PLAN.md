@@ -799,6 +799,9 @@ too small to be meaningful, inner CV leaking across window boundaries.
   ~0.53 core, P-cores idle) for its first ~13.7 h; opting its processes out of power throttling (per process,
   `SetProcessInformation`) cut fold times to 0.57x. Measured per-cell CPU (under that throttling): 5Min 3.3 h,
   15Min 1.9 h — fixed per-fold model costs (~238 folds × 9–19 fits) dominate below 5Min.
+  Stopped by the user at 18:05 (cooling break; 179 of 790 per-symbol fits cached, ledger untouched). Restart with
+  `scripts/run_specs.ps1` (detached, opts every run process out of EcoQoS, runs specs in sequence):
+  `u11_a1.yaml` then `u11_a_screen.yaml` (the remaining 160 5Min cells).
 
 ---
 
