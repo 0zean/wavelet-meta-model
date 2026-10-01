@@ -5,7 +5,7 @@ Key = sha256 over (group, symbol, timeframe, code hash, feature-relevant cfg fie
 The data hash covers the bars' timestamps and OHLCV(+vwap) values, so a different range,
 adjustment or top-up is a different key. The code hash covers every `features/*.py`
 source file (any feature-code change invalidates every group — safe over precise) and
-the numpy/pandas/scipy/pywddff/fracdiff versions.
+the numpy/pandas/scipy/pywddff versions.
 Files: `{root}/{symbol}/{timeframe}/{group}/{key}.npz`, plain numpy arrays, no pickle.
 """
 
@@ -83,7 +83,7 @@ def code_hash() -> str:
     from importlib.metadata import version
 
     h = hashlib.sha256()
-    for lib in ("numpy", "pandas", "scipy", "pywddff", "fracdiff"):
+    for lib in ("numpy", "pandas", "scipy", "pywddff"):
         h.update(f"{lib}={version(lib)}".encode())
     for path in sorted((Path(__file__).resolve().parent).glob("*.py")):
         h.update(path.name.encode())

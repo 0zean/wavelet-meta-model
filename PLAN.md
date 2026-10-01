@@ -771,6 +771,25 @@ too small to be meaningful, inner CV leaking across window boundaries.
   depend on n_jobs: per-tree seeds are drawn up front, prediction is already serial).
 - Freeze: no `*.py` under the hashed packages may change, be added or removed while Stage A runs (workers recompute
   the code hash for the signals key). Survivor selection therefore goes in `experiments/report.py` (unhashed).
+- `fastfracdiff/` (in-repo, numpy + scipy) replaces the archived fracdiff 0.9.0 and statsmodels' `adfuller`
+  (both dependencies removed): same fixed-window `fdiff`, same binary search for the minimum ADF-stationary d, and an
+  ADF whose AIC lag search reads every nested candidate off one Cholesky of the centred, scaled design's Gram matrix
+  instead of ~80 SVD-based OLS fits — a full d search on a 190k-bar 5Min train went from 452 s to 2.7 s (~170x).
+  Equivalence vs the replaced code on 158 expanding-prefix trains (6 symbols 1Day, 4 1Hour, 2 15Min, 2 5Min up to
+  190k bars; 1,387 ADF evaluations): 0 d mismatches, 0 lag mismatches, t-values within 1.6e-11 relative.
+  `tests/test_fastfracdiff.py` checks every search point of a smaller recorded set (data/data.csv prefixes).
+  Profiling a late 5Min fold (SPY fold 234, 37.6k fitting events): the old d fit was 1,113 s of ~1,125 s; model fits
+  are ~12 s (wavelet_trend/xgb), ~42 s (rf_ldp), ~34 s (ml_xgb/xgb, of which 21 s the ml_xgb primary).
+- **Pre-registered 5Min rule** (written 2026-10-01, before any 5Min Stage A result exists). Stage A runs as
+  `u11_a1.yaml` = the 760 15Min–1Day cells + a 5Min pilot of 30 cells: 5Min × {SPY, AAPL, TLT} (index ETF, single
+  stock, bonds) × the 5 primaries × {xgb, rf_ldp} — ordinary Stage A cells, counted in the ledger whatever the
+  outcome. For each pilot cell, the one-sided 95 % upper confidence bound on its OOS meta AUC is computed by a
+  bootstrap over NY sessions (the OOS events of a resampled session move together; 2,000 resamples, percentile).
+  If **every** pilot cell's bound is < 0.52 (Stage A's survivor AUC gate) the other 160 5Min cells are not run and
+  5Min is reported as screened out on the pilot; otherwise they are run (`u11_a_screen.yaml`, which skips the pilot).
+  An intersection–union test: each cell's bound is a level-5 % test of AUC ≥ 0.52, and the drop needs all 30, so
+  no multiplicity correction is needed. A pilot cell in `error` is re-run first; a `no_fit` cell has no OOS and
+  fails the gate. Caveat for the report: the drop extrapolates from 3 of 19 symbols.
 
 ---
 
