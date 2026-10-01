@@ -18,7 +18,7 @@ import wfo.wfo_engine as eng
 from data.bars import HoldoutError
 from experiments import ledger as L
 from experiments.legacy import import_legacy
-from experiments.report import leaderboard, row_dsr, write_report
+from experiments.report import leaderboard, row_dsr, session_bootstrap_auc, weighted_auc, write_report
 from experiments.spec import Cell, expand, normalize
 from tests.test_runconfig import synthetic_daily
 from utils.config import RunConfig
@@ -551,3 +551,32 @@ def test_stage_pbo_counts_identical_streams_once(env):
         rows.append(_row(h, "A"))
     res = stage_pbo(rows, env["root"]).iloc[0]
     assert res["n_cells"] == 3 and res["n_distinct"] == 2
+
+
+# ── 5Min pilot rule (U11) ────────────────────────────────────────────────────
+
+
+def test_weighted_auc_matches_sklearn_with_ties_and_integer_weights():
+    from sklearn.metrics import roc_auc_score
+
+    rng = np.random.default_rng(3)
+    p = rng.integers(0, 20, 500) / 20  # many ties
+    y = (rng.random(500) < 0.3 + 0.4 * p).astype(int)
+    inv = np.unique(p, return_inverse=True)[1]
+    assert weighted_auc(inv, y, np.ones(500)) == pytest.approx(roc_auc_score(y, p), abs=1e-12)
+    w = rng.integers(0, 4, 500)
+    rep = np.repeat(np.arange(500), w)  # weights = replicated events
+    assert weighted_auc(inv, y, w.astype(float)) == pytest.approx(roc_auc_score(y[rep], p[rep]), abs=1e-12)
+
+
+def test_session_bootstrap_bound_widens_with_within_session_dependence():
+    rng = np.random.default_rng(4)
+    n_s, k = 200, 30  # 200 sessions of 30 events; the outcome is a session-level coin flip
+    sessions = np.repeat(np.arange(n_s), k)
+    y = np.repeat(rng.integers(0, 2, n_s), k)
+    p = rng.random(n_s * k)  # uninformative
+    auc, ub = session_bootstrap_auc(y, p, sessions, n_boot=500)
+    assert abs(auc - 0.5) < 0.03 and ub > auc
+    assert session_bootstrap_auc(y, p, sessions, n_boot=500) == (auc, ub)  # seeded
+    _, ub_iid = session_bootstrap_auc(y, p, np.arange(n_s * k), n_boot=500)  # events treated as independent
+    assert ub - auc > ub_iid - auc  # clustering is not understated

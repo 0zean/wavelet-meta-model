@@ -790,6 +790,15 @@ too small to be meaningful, inner CV leaking across window boundaries.
   An intersection–union test: each cell's bound is a level-5 % test of AUC ≥ 0.52, and the drop needs all 30, so
   no multiplicity correction is needed. A pilot cell in `error` is re-run first; a `no_fit` cell has no OOS and
   fails the gate. Caveat for the report: the drop extrapolates from 3 of 19 symbols.
+  **Outcome (2026-10-01, `python -m experiments.report pilot experiments/specs/u11_a1.yaml`, seed 0, from the
+  pilot's cached signals before its ledger rows exist): run.** 21 of 30 bounds ≥ 0.52; SPY AUC 0.518–0.536
+  (bounds 0.524–0.542), AAPL 0.504–0.524, TLT 0.510–0.518; ~37k scored OOS events over 2,380 sessions per symbol
+  (TLT 32k), bound − AUC ≈ 0.006. The other 160 5Min cells run after u11_a1 (`u11_a_screen.yaml`). An AUC above
+  0.52 is the survivor gate's first half only; PSR after costs decides the rest.
+- Run note: launched hidden, the run was confined to the 16 E-cores by Windows 11 EcoQoS (each of 30 workers
+  ~0.53 core, P-cores idle) for its first ~13.7 h; opting its processes out of power throttling (per process,
+  `SetProcessInformation`) cut fold times to 0.57x. Measured per-cell CPU (under that throttling): 5Min 3.3 h,
+  15Min 1.9 h — fixed per-fold model costs (~238 folds × 9–19 fits) dominate below 5Min.
 
 ---
 

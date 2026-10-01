@@ -191,3 +191,94 @@ def write_report(ledger: L.Ledger, root, out, stage: str | None = None, top: int
     )
     (out / "report.html").write_text(page, encoding="utf-8")
     return {"md": out / "report.md", "html": out / "report.html", "csv": out / "leaderboard.csv"}
+
+
+# ── U11 5Min pilot rule (PLAN U11, pre-registered 2026-10-01) ────────────────
+
+PILOT_AUC_GATE = 0.52  # Stage A's survivor AUC gate
+
+
+def weighted_auc(inv: np.ndarray, y: np.ndarray, w: np.ndarray) -> float:
+    """AUC = P(p⁺ > p⁻) + ½ P(tie) with event weights `w`; `inv` = each event's rank among the distinct probabilities
+    (np.unique(prob, return_inverse=True)[1]), y = 0/1 outcome."""
+    pos = np.bincount(inv, weights=w * y)
+    neg = np.bincount(inv, weights=w * (1 - y))
+    return float((pos * (np.cumsum(neg) - 0.5 * neg)).sum() / (pos.sum() * neg.sum()))
+
+
+def session_bootstrap_auc(success, prob, sessions, n_boot: int = 2000, q: float = 0.95, seed: int = 0):
+    """(AUC, one-sided upper bound): the q-quantile of the AUC over `n_boot` resamples of whole sessions with
+    replacement (a session's events move together: overlapping barriers and shared intraday regime make them
+    dependent). Resamples without both outcomes are skipped."""
+    y = np.asarray(success, dtype=float)
+    inv = np.unique(np.asarray(prob, dtype=float), return_inverse=True)[1].ravel()
+    codes, uniq = pd.factorize(pd.Index(sessions))
+    rng = np.random.default_rng(seed)
+    boots = []
+    for _ in range(n_boot):
+        w = np.bincount(rng.integers(0, len(uniq), len(uniq)), minlength=len(uniq))[codes].astype(float)
+        if (w * y).sum() > 0 and (w * (1 - y)).sum() > 0:
+            boots.append(weighted_auc(inv, y, w))
+    return weighted_auc(inv, y, np.ones_like(y)), float(np.quantile(boots, q))
+
+
+def pilot_rule(spec_path, root, timeframe: str = "5Min", source=None, n_boot: int = 2000) -> tuple[pd.DataFrame, str]:
+    """
+    The pre-registered 5Min rule over the `timeframe` cells of `spec_path`, from their cached per-symbol WFO signals
+    (`<root>/signals/<key>.pkl`, so it can run before the cells' ledger rows exist): per cell the OOS meta AUC on
+    scored events (as the runner's Meta AUC) and its session-bootstrap one-sided 95 % upper bound. Verdict "drop"
+    iff every cell's bound is < PILOT_AUC_GATE (a cell without scored events fails the gate); "undecided" while
+    any cell's signals are missing.
+    """
+    from experiments.runner import CachedBars, load_cell_data, signals_key
+    from experiments.spec import load_spec
+    from wfo.wfo_metrics import meta_outcomes
+
+    recs = []
+    for cell in [c for c in load_spec(spec_path)[1] if c.spec["timeframe"] == timeframe]:
+        cfg = cell.config(False)
+        ((sym, df),) = load_cell_data(cell, cfg, source or CachedBars(), False)["bars"].items()
+        path = Path(root) / "signals" / f"{signals_key(sym, cfg, df)}.pkl"
+        rec = {"label": cell.label(), "n_events": 0, "n_sessions": 0, "auc": np.nan, "auc_ub95": np.nan}
+        if not path.exists():
+            recs.append(rec | {"status": "missing"})
+            continue
+        o = meta_outcomes(df, pd.read_pickle(path), cfg)
+        s = o[o["scored"]]
+        rec |= {"status": "ok", "n_events": len(s)}
+        if s["success"].nunique() == 2:
+            sessions = s.index.tz_convert("America/New_York").date
+            auc, ub = session_bootstrap_auc(s["success"], s["meta_prob"], sessions, n_boot)
+            rec |= {"n_sessions": len(set(sessions)), "auc": auc, "auc_ub95": ub}
+        recs.append(rec)
+    table = pd.DataFrame(recs)
+    table["below_gate"] = table["auc_ub95"].lt(PILOT_AUC_GATE) | (table["status"].eq("ok") & table["auc_ub95"].isna())
+    if table["status"].eq("missing").any():
+        verdict = "undecided"
+    else:
+        verdict = "drop" if table["below_gate"].all() else "run"
+    return table, verdict
+
+
+if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root <root>]
+    import argparse
+
+    from experiments.runner import DEFAULT_ROOT
+
+    ap = argparse.ArgumentParser(prog="experiments.report")
+    ap.add_argument("cmd", choices=["pilot"])
+    ap.add_argument("spec")
+    ap.add_argument("--root", default=str(DEFAULT_ROOT))
+    ap.add_argument("--timeframe", default="5Min")
+    a = ap.parse_args()
+    table, verdict = pilot_rule(a.spec, a.root, a.timeframe)
+    out = Path(a.root) / "report"
+    out.mkdir(parents=True, exist_ok=True)
+    stem = f"pilot_{Path(a.spec).stem}_{a.timeframe}"
+    table.to_csv(out / f"{stem}.csv", index=False)
+    gate = f"every one-sided 95 % session-bootstrap upper bound on OOS meta AUC < {PILOT_AUC_GATE}"
+    md = [f"# {a.timeframe} pilot rule ({a.spec})", "", f"Verdict: **{verdict}** — gate: {gate}.", "",
+          _markdown(_fmt(table))]  # fmt: skip
+    (out / f"{stem}.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    print("\n".join(md))
+    print(f"\n→ {out / stem}.csv / .md")
