@@ -1,0 +1,13 @@
+[EXP]  QQQ: signals cache hit d94379ab6785b5ba4a49f6af.pkl
+
+[DIAG]  OOS signal quality
+OOS events               2808.0000
+Primary success rate        0.5068
+Meta-scored events       2808.0000
+Meta log-loss               0.6954
+Meta Brier                  0.2510
+Meta AUC                    0.5057
+Approved share              0.4786
+Approved success rate       0.5171
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk standard) ...

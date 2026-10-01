@@ -1,0 +1,26 @@
+{
+  "adjustment": "all",
+  "columns": [
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "vwap",
+    "trade_count"
+  ],
+  "coverage_end": "2026-09-27",
+  "coverage_start": "2016-01-01",
+  "feed": "sip",
+  "fetched_at": "2026-09-27T02:34:39.888660-04:00",
+  "first_ts": "2016-01-04T09:30:00-05:00",
+  "last_ts": "2026-09-25T15:55:00-04:00",
+  "n_bars": 209673,
+  "schema_version": 1,
+  "session": "rth",
+  "sha256": "4d999255e8ffe64030350a66f8a786300a87928855b9b825ba8b3b22cc0280bd",
+  "source": "alpaca",
+  "symbol": "GLD",
+  "timeframe": "5Min",
+  "tz": "America/New_York"
+}

@@ -1,0 +1,452 @@
+[DATA]  SPY 1Day: dropping 1 session(s) missing their last bar: 2019-08-12
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.01s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2407 isotonic=0.2417)
+[META]  Trained on 369 events  (success rate=0.553)
+[PRIM]  wavelet_trend: long share oof=0.604  test=0.318
+[WFO]  Fold 1 done in 22.0s  |  OOS events=22  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=isotonic (cv Brier sigmoid=0.2459 isotonic=0.2409)
+[META]  Trained on 390 events  (success rate=0.544)
+[PRIM]  wavelet_trend: long share oof=0.587  test=0.143
+[WFO]  Fold 2 done in 21.7s  |  OOS events=21  approved=3
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2460 isotonic=0.2471)
+[META]  Trained on 410 events  (success rate=0.546)
+[PRIM]  wavelet_trend: long share oof=0.571  test=0.389
+[WFO]  Fold 3 done in 21.7s  |  OOS events=18  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2454 isotonic=0.2485)
+[META]  Trained on 428 events  (success rate=0.547)
+[PRIM]  wavelet_trend: long share oof=0.565  test=0.583
+[WFO]  Fold 4 done in 21.7s  |  OOS events=12  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2454 isotonic=0.2459)
+[META]  Trained on 443 events  (success rate=0.553)
+[PRIM]  wavelet_trend: long share oof=0.562  test=0.615
+[WFO]  Fold 5 done in 21.8s  |  OOS events=13  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=isotonic (cv Brier sigmoid=0.2452 isotonic=0.2423)
+[META]  Trained on 455 events  (success rate=0.552)
+[PRIM]  wavelet_trend: long share oof=0.560  test=0.812
+[WFO]  Fold 6 done in 22.7s  |  OOS events=16  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=isotonic (cv Brier sigmoid=0.2432 isotonic=0.2423)
+[META]  Trained on 470 events  (success rate=0.555)
+[PRIM]  wavelet_trend: long share oof=0.568  test=0.350
+[WFO]  Fold 7 done in 22.9s  |  OOS events=20  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2420 isotonic=0.2428)
+[META]  Trained on 490 events  (success rate=0.557)
+[PRIM]  wavelet_trend: long share oof=0.565  test=0.667
+[WFO]  Fold 8 done in 23.8s  |  OOS events=18  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2418 isotonic=0.2422)
+[META]  Trained on 508 events  (success rate=0.551)
+[PRIM]  wavelet_trend: long share oof=0.563  test=0.933
+[PRIM]  Warning: fold 9 test sides are 93.3% long (one-sided primary)
+[WFO]  Fold 9 done in 22.6s  |  OOS events=15  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2395 isotonic=0.2458)
+[META]  Trained on 524 events  (success rate=0.559)
+[PRIM]  wavelet_trend: long share oof=0.576  test=0.588
+[WFO]  Fold 10 done in 22.7s  |  OOS events=17  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2393 isotonic=0.2419)
+[META]  Trained on 540 events  (success rate=0.557)
+[PRIM]  wavelet_trend: long share oof=0.574  test=0.500
+[WFO]  Fold 11 done in 22.8s  |  OOS events=20  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=isotonic (cv Brier sigmoid=0.2409 isotonic=0.2389)
+[META]  Trained on 563 events  (success rate=0.549)
+[PRIM]  wavelet_trend: long share oof=0.574  test=0.600
+[WFO]  Fold 12 done in 22.8s  |  OOS events=15  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2402 isotonic=0.2406)
+[META]  Trained on 575 events  (success rate=0.546)
+[PRIM]  wavelet_trend: long share oof=0.577  test=0.263
+[WFO]  Fold 13 done in 23.0s  |  OOS events=19  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=isotonic (cv Brier sigmoid=0.2407 isotonic=0.2405)
+[META]  Trained on 596 events  (success rate=0.549)
+[PRIM]  wavelet_trend: long share oof=0.565  test=0.750
+[WFO]  Fold 14 done in 22.9s  |  OOS events=8  approved=6
+
+[WFO]  Total OOS events: 234  |  Approved trades: 142
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5513
+Meta-scored events       234.0000
+Meta log-loss              0.6783
+Meta Brier                 0.2424
+Meta AUC                   0.5788
+Approved share             0.6068
+Approved success rate      0.6197
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              25.219        37.815        49.906
+Annual Return (%)              6.235         9.009        11.503
+Annual Volatility (%)         11.139        15.411        18.019
+Sharpe Ratio                   0.599         0.637         0.694
+Max Drawdown (%)             -15.476       -18.796       -23.435
+Calmar Ratio                   0.403         0.479         0.491
+Num Trades                    64.000        95.000         0.000
+Win Rate (%)                  57.812        54.737           NaN
+Avg Trade (bp)                39.365        38.205           NaN
+Avg Bars Held                  8.438         7.611           NaN
+Exposure (%)                  57.631        77.161         0.000
+Avg Bet Size                   1.000         1.000           NaN
+Turnover (x/yr)               34.450        51.100         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              25.219        37.815        49.906
+Annual Return (%)              6.235         9.009        11.503
+Annual Volatility (%)         11.139        15.411        18.019
+Sharpe Ratio                   0.599         0.637         0.694
+Max Drawdown (%)             -15.476       -18.796       -23.435
+Calmar Ratio                   0.403         0.479         0.491
+Num Trades                    64.000        95.000         0.000
+Win Rate (%)                  57.812        54.737           NaN
+Avg Trade (bp)                39.365        38.205           NaN
+Avg Bars Held                  8.438         7.611           NaN
+Exposure (%)                  57.631        77.161         0.000
+Avg Bet Size                   1.000         1.000           NaN
+Turnover (x/yr)               34.450        51.100         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, average positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              36.332        35.615        49.906
+Annual Return (%)              8.692         8.538        11.503
+Annual Volatility (%)         12.074        15.750        18.019
+Sharpe Ratio                   0.751         0.599         0.694
+Max Drawdown (%)             -18.359       -12.397       -23.435
+Calmar Ratio                   0.473         0.689         0.491
+Num Trades                   142.000       234.000         0.000
+Win Rate (%)                  61.972        55.128           NaN
+Avg Trade (bp)                57.591        30.708           NaN
+Avg Bars Held                  8.254         7.483           NaN
+Exposure (%)                  68.090        87.300         0.000
+Avg Bet Size                   0.995         0.971           NaN
+Turnover (x/yr)               24.324        27.813         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer linear, single positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)               7.452        37.815        49.906
+Annual Return (%)              1.952         9.009        11.503
+Annual Volatility (%)          2.639        15.411        18.019
+Sharpe Ratio                   0.746         0.637         0.694
+Max Drawdown (%)              -5.296       -18.796       -23.435
+Calmar Ratio                   0.369         0.479         0.491
+Num Trades                    59.000        95.000         0.000
+Win Rate (%)                  59.322        54.737           NaN
+Avg Trade (bp)                50.464        38.205           NaN
+Avg Bars Held                  8.373         7.611           NaN
+Exposure (%)                  52.721        77.161         0.000
+Avg Bet Size                   0.264         1.000           NaN
+Turnover (x/yr)                8.030        51.100         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer linear, average positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)               6.362        35.615        49.906
+Annual Return (%)              1.673         8.538        11.503
+Annual Volatility (%)          2.836        15.750        18.019
+Sharpe Ratio                   0.599         0.599         0.694
+Max Drawdown (%)              -5.558       -12.397       -23.435
+Calmar Ratio                   0.301         0.689         0.491
+Num Trades                   142.000       234.000         0.000
+Win Rate (%)                  61.972        55.128           NaN
+Avg Trade (bp)                57.591        30.708           NaN
+Avg Bars Held                  8.254         7.483           NaN
+Exposure (%)                  65.635        87.300         0.000
+Avg Bet Size                   0.257         0.971           NaN
+Turnover (x/yr)                6.327        27.813         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer ldp_sigmoid, single positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)               5.148        37.815        49.906
+Annual Return (%)              1.359         9.009        11.503
+Annual Volatility (%)          2.261        15.411        18.019
+Sharpe Ratio                   0.608         0.637         0.694
+Max Drawdown (%)              -4.896       -18.796       -23.435
+Calmar Ratio                   0.278         0.479         0.491
+Num Trades                    59.000        95.000         0.000
+Win Rate (%)                  59.322        54.737           NaN
+Avg Trade (bp)                50.464        38.205           NaN
+Avg Bars Held                  8.373         7.611           NaN
+Exposure (%)                  52.721        77.161         0.000
+Avg Bet Size                   0.210         1.000           NaN
+Turnover (x/yr)                6.415        51.100         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer ldp_sigmoid, average positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)               4.820        35.615        49.906
+Annual Return (%)              1.274         8.538        11.503
+Annual Volatility (%)          2.373        15.750        18.019
+Sharpe Ratio                   0.545         0.599         0.694
+Max Drawdown (%)              -5.583       -12.397       -23.435
+Calmar Ratio                   0.228         0.689         0.491
+Num Trades                   142.000       234.000         0.000
+Win Rate (%)                  61.972        55.128           NaN
+Avg Trade (bp)                57.591        30.708           NaN
+Avg Bars Held                  8.254         7.483           NaN
+Exposure (%)                  64.568        87.300         0.000
+Avg Bet Size                   0.213         0.971           NaN
+Turnover (x/yr)                4.979        27.813         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer ecdf, single positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              17.262        37.815        49.906
+Annual Return (%)              4.376         9.009        11.503
+Annual Volatility (%)          6.406        15.411        18.019
+Sharpe Ratio                   0.701         0.637         0.694
+Max Drawdown (%)             -12.369       -18.796       -23.435
+Calmar Ratio                   0.354         0.479         0.491
+Num Trades                    60.000        95.000         0.000
+Win Rate (%)                  58.333        54.737           NaN
+Avg Trade (bp)                45.228        38.205           NaN
+Avg Bars Held                  8.267         7.611           NaN
+Exposure (%)                  52.935        77.161         0.000
+Avg Bet Size                   0.574         1.000           NaN
+Turnover (x/yr)               17.505        51.100         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer ecdf, average positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              14.207        35.615        49.906
+Annual Return (%)              3.637         8.538        11.503
+Annual Volatility (%)          6.695        15.750        18.019
+Sharpe Ratio                   0.567         0.599         0.694
+Max Drawdown (%)             -13.587       -12.397       -23.435
+Calmar Ratio                   0.268         0.689         0.491
+Num Trades                   142.000       234.000         0.000
+Win Rate (%)                  61.972        55.128           NaN
+Avg Trade (bp)                57.591        30.708           NaN
+Avg Bars Held                  8.254         7.483           NaN
+Exposure (%)                  65.848        87.300         0.000
+Avg Bet Size                   0.572         0.971           NaN
+Turnover (x/yr)               14.258        27.813         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer kelly_capped, single positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)               0.290        37.815        49.906
+Annual Return (%)              0.078         9.009        11.503
+Annual Volatility (%)          0.552        15.411        18.019
+Sharpe Ratio                   0.144         0.637         0.694
+Max Drawdown (%)              -1.490       -18.796       -23.435
+Calmar Ratio                   0.052         0.479         0.491
+Num Trades                    24.000        95.000         0.000
+Win Rate (%)                  58.333        54.737           NaN
+Avg Trade (bp)                12.388        38.205           NaN
+Avg Bars Held                  8.917         7.611           NaN
+Exposure (%)                  22.839        77.161         0.000
+Avg Bet Size                   0.100         1.000           NaN
+Turnover (x/yr)                1.292        51.100         0.000
+══════════════════════════════════════════════════════════════════════
+
+[BACKTEST]  Simulating barrier-exit trades (sizer kelly_capped, average positions) ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              -0.588        35.615        49.906
+Annual Return (%)             -0.158         8.538        11.503
+Annual Volatility (%)          0.569        15.750        18.019
+Sharpe Ratio                  -0.276         0.599         0.694
+Max Drawdown (%)              -1.209       -12.397       -23.435
+Calmar Ratio                  -0.131         0.689         0.491
+Num Trades                   103.000       234.000         0.000
+Win Rate (%)                  65.049        55.128           NaN
+Avg Trade (bp)                66.416        30.708           NaN
+Avg Bars Held                  8.709         7.483           NaN
+Exposure (%)                  24.013        87.300         0.000
+Avg Bet Size                   0.100         0.971           NaN
+Turnover (x/yr)                1.021        27.813         0.000
+══════════════════════════════════════════════════════════════════════
+
+       sizer position_mode  n_trades  avg_size  ret_ann  vol_ann  sharpe    psr  max_dd  turnover  exposure  sizer_skipped_folds
+       fixed        single        64    1.0000   0.0624   0.1114  0.5985 0.8782 -0.1548   34.4500    0.5763                    0
+       fixed       average       142    0.9953   0.0869   0.1207  0.7506 0.9280 -0.1836   24.3240    0.6809                    0
+      linear        single        59    0.2641   0.0195   0.0264  0.7456 0.9229 -0.0530    8.0304    0.5272                    0
+      linear       average       142    0.2572   0.0167   0.0284  0.5990 0.8740 -0.0556    6.3271    0.6564                    0
+ ldp_sigmoid        single        59    0.2099   0.0136   0.0226  0.6084 0.8774 -0.0490    6.4147    0.5272                    0
+ ldp_sigmoid       average       142    0.2127   0.0127   0.0237  0.5454 0.8492 -0.0558    4.9793    0.6457                    0
+        ecdf        single        60    0.5743   0.0438   0.0641  0.7006 0.9119 -0.1237   17.5048    0.5293                    0
+        ecdf       average       142    0.5722   0.0364   0.0669  0.5672 0.8604 -0.1359   14.2577    0.6585                    0
+kelly_capped        single        24    0.1000   0.0008   0.0055  0.1439 0.6088 -0.0149    1.2916    0.2284                    0
+kelly_capped       average       103    0.1000  -0.0016   0.0057 -0.2757 0.2964 -0.0121    1.0205    0.2401                    0
+[SIZE]  primary-only Sharpe 0.637  buy-and-hold 0.694
+[SIZE]  Saved results/sizing/sizing_SPY_1Day_2016-01-01_2025-10-01_wavelet_trend_rf_ldp_oof.csv

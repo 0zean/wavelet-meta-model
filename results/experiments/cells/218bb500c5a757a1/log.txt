@@ -1,0 +1,33 @@
+[EXP]  IWM: signals cache hit 1f6136ac812a55f895bedf7a.pkl
+
+[DIAG]  OOS signal quality
+OOS events               2880.0000
+Primary success rate        0.4826
+Meta-scored events       2880.0000
+Meta log-loss               0.6930
+Meta Brier                  0.2499
+Meta AUC                    0.5030
+Approved share              0.0823
+Approved success rate       0.5148
+[EXP]  QQQ: signals cache hit d94379ab6785b5ba4a49f6af.pkl
+
+[DIAG]  OOS signal quality
+OOS events               2808.0000
+Primary success rate        0.5068
+Meta-scored events       2808.0000
+Meta log-loss               0.6954
+Meta Brier                  0.2510
+Meta AUC                    0.5057
+Approved share              0.4786
+Approved success rate       0.5171
+[EXP]  SPY: signals cache hit 6fdcc42d518b6c89fe6890c4.pkl
+
+[DIAG]  OOS signal quality
+OOS events               2734.0000
+Primary success rate        0.4857
+Meta-scored events       2734.0000
+Meta log-loss               0.7071
+Meta Brier                  0.2519
+Meta AUC                    0.5053
+Approved share              0.1291
+Approved success rate       0.5014

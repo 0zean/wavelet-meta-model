@@ -1,0 +1,271 @@
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 3,238 events from 17,093 bars  |  -1=1462  0=15  1=1761  |  barriers {'vertical': 2454, 'lower': 439, 'upper': 345}
+[FEAT]  wavelet_core      4 cols    0.01s
+[FEAT]  trend             9 cols    0.21s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+[FEAT]  intraday          4 cols    0.00s
+
+[PWFO]  IS63_OOS63 window 0: IS[0:441]  OOS[441:882]
+
+[FRACDIFF] Optimal d  : 0.1172
+           ADF p-val  : 4.7762 %  (n=278)
+           Corr (raw) : 0.9926
+[WFO]  Fold 1: insufficient events (train=44, val=26) — skipping
+
+[PWFO]  IS63_OOS63 window 1: IS[441:882]  OOS[882:1323]
+
+[FRACDIFF] Optimal d  : 0.2422
+           ADF p-val  : 4.6432 %  (n=278)
+           Corr (raw) : 0.9571
+[WFO]  Fold 2: insufficient events (train=54, val=30) — skipping
+
+[PWFO]  IS63_OOS63 window 2: IS[882:1323]  OOS[1323:1761]
+
+[FRACDIFF] Optimal d  : 0.0000
+           ADF p-val  : 0.5575 %  (n=278)
+           Corr (raw) : 1.0000
+[WFO]  Fold 3: insufficient events (train=48, val=27) — skipping
+
+[PWFO]  IS63_OOS63 window 3: IS[1323:1761]  OOS[1761:2202]
+
+[FRACDIFF] Optimal d  : 0.6875
+           ADF p-val  : 56.7479 %  (n=275)
+           Corr (raw) : 0.5858
+[WFO]  Fold 4: insufficient events (train=54, val=28) — skipping
+
+[PWFO]  IS63_OOS63 window 4: IS[1761:2202]  OOS[2202:2640]
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 0.0017 %  (n=278)
+           Corr (raw) : 0.5111
+[WFO]  Fold 5: insufficient events (train=55, val=28) — skipping
+
+[PWFO]  IS63_OOS63 window 5: IS[2202:2640]  OOS[2640:3081]
+
+[FRACDIFF] Optimal d  : 0.4688
+           ADF p-val  : 4.3640 %  (n=278)
+           Corr (raw) : 0.8643
+[WFO]  Fold 6: insufficient events (train=47, val=30) — skipping
+
+[PWFO]  IS63_OOS63 window 6: IS[2640:3081]  OOS[3081:3519]
+
+[FRACDIFF] Optimal d  : 0.1641
+           ADF p-val  : 4.8902 %  (n=278)
+           Corr (raw) : 0.9860
+[WFO]  Fold 7: insufficient events (train=53, val=23) — skipping
+
+[PWFO]  IS63_OOS63 window 7: IS[3081:3519]  OOS[3519:3960]
+
+[FRACDIFF] Optimal d  : 0.4844
+           ADF p-val  : 2.1602 %  (n=275)
+           Corr (raw) : 0.8592
+[WFO]  Fold 8: insufficient events (train=56, val=20) — skipping
+
+[PWFO]  IS63_OOS63 window 8: IS[3519:3960]  OOS[3960:4398]
+
+[FRACDIFF] Optimal d  : 0.3594
+           ADF p-val  : 4.8173 %  (n=278)
+           Corr (raw) : 0.9269
+[WFO]  Fold 9: insufficient events (train=70, val=34) — skipping
+
+[PWFO]  IS63_OOS63 window 9: IS[3960:4398]  OOS[4398:4839]
+
+[FRACDIFF] Optimal d  : 0.1562
+           ADF p-val  : 3.8828 %  (n=278)
+           Corr (raw) : 0.9883
+[WFO]  Fold 10: insufficient events (train=57, val=26) — skipping
+
+[PWFO]  IS63_OOS63 window 10: IS[4398:4839]  OOS[4839:5274]
+
+[FRACDIFF] Optimal d  : 0.6406
+           ADF p-val  : 4.5237 %  (n=278)
+           Corr (raw) : 0.6235
+[WFO]  Fold 11: insufficient events (train=48, val=28) — skipping
+
+[PWFO]  IS63_OOS63 window 11: IS[4839:5274]  OOS[5274:5715]
+
+[FRACDIFF] Optimal d  : 0.3281
+           ADF p-val  : 4.7614 %  (n=275)
+           Corr (raw) : 0.9260
+[WFO]  Fold 12: insufficient events (train=71, val=34) — skipping
+
+[PWFO]  IS63_OOS63 window 12: IS[5274:5715]  OOS[5715:6153]
+
+[FRACDIFF] Optimal d  : 0.6016
+           ADF p-val  : 4.7352 %  (n=278)
+           Corr (raw) : 0.8139
+[WFO]  Fold 13: insufficient events (train=49, val=31) — skipping
+
+[PWFO]  IS63_OOS63 window 13: IS[5715:6153]  OOS[6153:6594]
+
+[FRACDIFF] Optimal d  : 0.5078
+           ADF p-val  : 4.5655 %  (n=278)
+           Corr (raw) : 0.7952
+[WFO]  Fold 14: insufficient events (train=54, val=20) — skipping
+
+[PWFO]  IS63_OOS63 window 14: IS[6153:6594]  OOS[6594:7029]
+
+[FRACDIFF] Optimal d  : 0.6016
+           ADF p-val  : 4.8725 %  (n=278)
+           Corr (raw) : 0.6411
+[WFO]  Fold 15: insufficient events (train=58, val=25) — skipping
+
+[PWFO]  IS63_OOS63 window 15: IS[6594:7029]  OOS[7029:7470]
+
+[FRACDIFF] Optimal d  : 0.6016
+           ADF p-val  : 4.5669 %  (n=275)
+           Corr (raw) : 0.7892
+[WFO]  Fold 16: insufficient events (train=41, val=16) — skipping
+
+[PWFO]  IS63_OOS63 window 16: IS[7029:7470]  OOS[7470:7911]
+
+[FRACDIFF] Optimal d  : 0.8594
+           ADF p-val  : 32.6902 %  (n=278)
+           Corr (raw) : 0.2572
+[WFO]  Fold 17: insufficient events (train=65, val=27) — skipping
+
+[PWFO]  IS63_OOS63 window 17: IS[7470:7911]  OOS[7911:8352]
+
+[FRACDIFF] Optimal d  : 0.3828
+           ADF p-val  : 2.1508 %  (n=278)
+           Corr (raw) : 0.9163
+[WFO]  Fold 18: insufficient events (train=40, val=27) — skipping
+
+[PWFO]  IS63_OOS63 window 18: IS[7911:8352]  OOS[8352:8787]
+
+[FRACDIFF] Optimal d  : 0.7656
+           ADF p-val  : 53.3275 %  (n=278)
+           Corr (raw) : 0.5479
+[WFO]  Fold 19: insufficient events (train=49, val=28) — skipping
+
+[PWFO]  IS63_OOS63 window 19: IS[8352:8787]  OOS[8787:9228]
+
+[FRACDIFF] Optimal d  : 0.9297
+           ADF p-val  : 4.5774 %  (n=275)
+           Corr (raw) : 0.1736
+[WFO]  Fold 20: insufficient events (train=44, val=24) — skipping
+
+[PWFO]  IS63_OOS63 window 20: IS[8787:9228]  OOS[9228:9669]
+
+[FRACDIFF] Optimal d  : 0.2578
+           ADF p-val  : 4.9347 %  (n=278)
+           Corr (raw) : 0.9465
+[WFO]  Fold 21: insufficient events (train=60, val=25) — skipping
+
+[PWFO]  IS63_OOS63 window 21: IS[9228:9669]  OOS[9669:10110]
+
+[FRACDIFF] Optimal d  : 0.0000
+           ADF p-val  : 3.4732 %  (n=278)
+           Corr (raw) : 1.0000
+[WFO]  Fold 22: insufficient events (train=50, val=19) — skipping
+
+[PWFO]  IS63_OOS63 window 22: IS[9669:10110]  OOS[10110:10548]
+
+[FRACDIFF] Optimal d  : 0.5625
+           ADF p-val  : 4.4103 %  (n=278)
+           Corr (raw) : 0.7448
+[WFO]  Fold 23: insufficient events (train=48, val=30) — skipping
+
+[PWFO]  IS63_OOS63 window 23: IS[10110:10548]  OOS[10548:10989]
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 3.3109 %  (n=275)
+           Corr (raw) : 0.2015
+[WFO]  Fold 24: insufficient events (train=51, val=20) — skipping
+
+[PWFO]  IS63_OOS63 window 24: IS[10548:10989]  OOS[10989:11430]
+
+[FRACDIFF] Optimal d  : 0.2500
+           ADF p-val  : 4.6531 %  (n=278)
+           Corr (raw) : 0.9701
+[WFO]  Fold 25: insufficient events (train=69, val=26) — skipping
+
+[PWFO]  IS63_OOS63 window 25: IS[10989:11430]  OOS[11430:11871]
+
+[FRACDIFF] Optimal d  : 0.5469
+           ADF p-val  : 4.6977 %  (n=278)
+           Corr (raw) : 0.7914
+[WFO]  Fold 26: insufficient events (train=64, val=24) — skipping
+
+[PWFO]  IS63_OOS63 window 26: IS[11430:11871]  OOS[11871:12309]
+
+[FRACDIFF] Optimal d  : 0.6953
+           ADF p-val  : 4.6096 %  (n=278)
+           Corr (raw) : 0.5822
+[WFO]  Fold 27: insufficient events (train=58, val=31) — skipping
+
+[PWFO]  IS63_OOS63 window 27: IS[11871:12309]  OOS[12309:12750]
+
+[FRACDIFF] Optimal d  : 0.5625
+           ADF p-val  : 4.8134 %  (n=275)
+           Corr (raw) : 0.7686
+[WFO]  Fold 28: insufficient events (train=55, val=22) — skipping
+
+[PWFO]  IS63_OOS63 window 28: IS[12309:12750]  OOS[12750:13188]
+
+[FRACDIFF] Optimal d  : 0.2109
+           ADF p-val  : 4.9613 %  (n=278)
+           Corr (raw) : 0.9764
+[WFO]  Fold 29: insufficient events (train=62, val=28) — skipping
+
+[PWFO]  IS63_OOS63 window 29: IS[12750:13188]  OOS[13188:13629]
+
+[FRACDIFF] Optimal d  : 0.3750
+           ADF p-val  : 4.4896 %  (n=278)
+           Corr (raw) : 0.8936
+[WFO]  Fold 30: insufficient events (train=64, val=26) — skipping
+
+[PWFO]  IS63_OOS63 window 30: IS[13188:13629]  OOS[13629:14067]
+
+[FRACDIFF] Optimal d  : 0.5547
+           ADF p-val  : 26.1546 %  (n=278)
+           Corr (raw) : 0.6955
+[WFO]  Fold 31: insufficient events (train=58, val=32) — skipping
+
+[PWFO]  IS63_OOS63 window 31: IS[13629:14067]  OOS[14067:14508]
+
+[FRACDIFF] Optimal d  : 0.8203
+           ADF p-val  : 4.3898 %  (n=275)
+           Corr (raw) : 0.4096
+[WFO]  Fold 32: insufficient events (train=57, val=27) — skipping
+
+[PWFO]  IS63_OOS63 window 32: IS[14067:14508]  OOS[14508:14946]
+
+[FRACDIFF] Optimal d  : 0.5312
+           ADF p-val  : 4.6300 %  (n=278)
+           Corr (raw) : 0.8594
+[WFO]  Fold 33: insufficient events (train=58, val=26) — skipping
+
+[PWFO]  IS63_OOS63 window 33: IS[14508:14946]  OOS[14946:15387]
+
+[FRACDIFF] Optimal d  : 0.6953
+           ADF p-val  : 4.5543 %  (n=278)
+           Corr (raw) : 0.6043
+[WFO]  Fold 34: insufficient events (train=51, val=25) — skipping
+
+[PWFO]  IS63_OOS63 window 34: IS[14946:15387]  OOS[15387:15822]
+
+[FRACDIFF] Optimal d  : 0.6641
+           ADF p-val  : 4.6896 %  (n=278)
+           Corr (raw) : 0.5219
+[WFO]  Fold 35: insufficient events (train=57, val=24) — skipping
+
+[PWFO]  IS63_OOS63 window 35: IS[15387:15822]  OOS[15822:16263]
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 0.0077 %  (n=275)
+           Corr (raw) : 0.6614
+[WFO]  Fold 36: insufficient events (train=47, val=30) — skipping
+
+[PWFO]  IS63_OOS63 window 36: IS[15822:16263]  OOS[16263:16701]
+
+[FRACDIFF] Optimal d  : 0.5156
+           ADF p-val  : 88.8753 %  (n=278)
+           Corr (raw) : 0.8117
+[WFO]  Fold 37: insufficient events (train=57, val=32) — skipping
+[PWFO]  IS63_OOS63: 37 windows, status {'insufficient_events': 37}

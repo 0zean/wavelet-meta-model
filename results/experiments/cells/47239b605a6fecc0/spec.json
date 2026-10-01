@@ -1,0 +1,36 @@
+{
+  "spec": {
+    "end": "2025-10-01",
+    "feature_groups": [
+      "wavelet_core",
+      "trend",
+      "mean_reversion",
+      "volatility",
+      "microstructure",
+      "intraday",
+      "fracdiff"
+    ],
+    "meta_train": "oof",
+    "model": {
+      "meta": "logit_l2",
+      "primary": "legacy"
+    },
+    "overrides": {},
+    "primary": {
+      "name": "wavelet_trend",
+      "params": {}
+    },
+    "pwfo": null,
+    "risk_profile": "standard",
+    "seed": 42,
+    "sizer": "fixed",
+    "start": "2016-01-01",
+    "symbols": [
+      "IWM",
+      "QQQ",
+      "SPY"
+    ],
+    "timeframe": "1Hour"
+  },
+  "stage": "U10"
+}

@@ -1,0 +1,13 @@
+[EXP]  SPY: signals cache hit 6fdcc42d518b6c89fe6890c4.pkl
+
+[DIAG]  OOS signal quality
+OOS events               2734.0000
+Primary success rate        0.4857
+Meta-scored events       2734.0000
+Meta log-loss               0.7071
+Meta Brier                  0.2519
+Meta AUC                    0.5053
+Approved share              0.1291
+Approved success rate       0.5014
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk standard) ...
