@@ -20,6 +20,7 @@ dependencies = [
     "alpaca-py>=0.44.0",
     "python-dotenv>=1.2.3",
     "lightgbm>=4.7.0",
+    "joblib>=1.4",
 ]
 
 [dependency-groups]

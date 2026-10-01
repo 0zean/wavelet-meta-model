@@ -1,0 +1,14 @@
+# U10 smoke run: the runner end to end on cached Alpaca data (stage U10, development window only).
+stage: U10
+name: u10_smoke
+defaults:
+  timeframe: 1Hour
+  start: 2016-01-01
+  end: 2025-10-01
+  primary: wavelet_trend
+  model: {meta: logit_l2}
+  meta_train: oof
+  sizer: fixed
+grid:
+  symbols: [SPY, QQQ, IWM, [SPY, QQQ, IWM]]
+  risk_profile: [none, standard]

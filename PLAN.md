@@ -671,14 +671,58 @@ too small to be meaningful, inner CV leaking across window boundaries.
 - `report` command: leaderboard with DSR (n_trials from ledger), PBO per stage, and Markdown/HTML summary.
 
 **Done when.**
-- [ ] Re-running an identical spec performs zero model fits (cache test).
-- [ ] Killing a run mid-way and restarting resumes without duplicate ledger rows.
-- [ ] A failing cell produces a ledger row with `status="error"` and traceback path.
-- [ ] Holdout guard: the runner refuses any cell whose data range crosses `HOLDOUT_START` unless `--final` is given.
+- [x] Re-running an identical spec performs zero model fits (cache test).
+- [x] Killing a run mid-way and restarting resumes without duplicate ledger rows.
+- [x] A failing cell produces a ledger row with `status="error"` and traceback path.
+- [x] Holdout guard: the runner refuses any cell whose data range crosses `HOLDOUT_START` unless `--final` is given.
 
 **Reviewer focus.** Hash omitting a field that changes results, ledger trial count undercounting (DSR too generous), cache staleness after code change.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done, findings fixed). 382 tests pass (~2 min 30 s with
+`OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1`); ruff clean. Notes:
+- Modules (`experiments/`, SPEC §9): `spec.py` (YAML → normalized, validated cells; cartesian grid with dotted keys +
+  explicit cells; stages `U6 … U10, A … E`), `runner.py` (cell hash = canonical spec + every resolved RunConfig field +
+  code hash + data hash; artifacts `results/experiments/cells/<hash>/`; per-symbol signals cache keyed without the
+  backtest-only fields, fitted first, once per symbol; joblib cells; resume / cross-stage cache hits; error / no_fit
+  capture; dead-worker recovery; holdout guard), `ledger.py` (append-only `results/ledger.jsonl`, fsync'd locked
+  appends, row validation, run lock, trial counting), `report.py` (funnel, PBO per stage, leaderboard with DSR and
+  `dsr_all` → md / html / csv), `legacy.py` + `import-legacy` (U6–U9 `trials.jsonl` → ledger), `__main__.py` (CLI
+  `run | report | import-legacy`), `specs/u10_smoke.yaml`. `NoFitError` (wfo_engine; also PWFO with no default combo) =
+  a counted `no_fit`. joblib added as an explicit dependency.
+- SPEC refinements: (1) ledger return statistics are **daily** (Sharpe, moments, PSR, n_obs) so trials compare across
+  timeframes and the DSR's period is a day; `max_dd` bar-level; (2) N(stage) = Σ `n_trials` over the **distinct** cell
+  hashes with status ok / no_fit through the stage (PWFO cell = grid size; cache hits once; a re-run under new code
+  counts again; errors listed, not counted); V[SR_n] over the same trials (PWFO cells contribute their combos); (3) a
+  final batch must be all stage E **and** past HOLDOUT_START, and its access is also recorded outside the ledger
+  (`data/cache/holdout_access.jsonl`); (4) PWFO cells hash only the sessions inside their data range.
+- Done-criteria evidence: cache — `test_rerun_of_an_identical_spec_performs_zero_fits` (fit_window spy: 0 calls; the
+  portfolio cell fits nothing either), and on real data the 8-cell smoke spec re-run skipped every cell in 3 s; resume —
+  `test_interrupted_run_resumes_without_duplicates` and a real `kill -9` of `experiments run` after 3 of 8 rows: the
+  restart skipped those 3, ran 5, ledger 8 distinct hashes; errors — exception, data-load failure (full traceback) and
+  a killed worker (`WorkerDied`) each give an `error` row with `error_path`, final unless `--retry-errors`; holdout —
+  crossing cells refused before any load, `--final` needs stage E past the holdout, one batch ever (resume allowed),
+  across ledgers. Also: hash covers every RunConfig field (tested field by field), code hash changes with source, run_wfo
+  output identical when only backtest-only fields change, parallel = serial, truncated-line tolerance, legacy mapping.
+- Review (1 BREAKING, 1 SEVERE, 7 MINOR — all fixed, with regression tests). BREAKING: PWFO cells hashed the whole
+  cached calendar (a year past today, refreshed monthly) → every refresh refit the grid and recounted it → only the
+  sessions inside the data range. SEVERE: a worker dying (OOM / segfault) aborted the batch with no row, on every
+  restart → pool breakage caught, unrecorded cells re-run one per fresh process, a repeat death = `error` row.
+  MINORs: (1) a dev-range stage-E batch used up the holdout access → refused; (2) `--ledger elsewhere` bypassed the
+  once-only holdout and the check could race → marker outside the ledger + run lock; (3) two concurrent runs on one
+  ledger wrote duplicate rows → one run per ledger; (4) data-load error kept only the message → full traceback;
+  (5) legacy import aborted on a partial line / imported unknown stages → skipped and reported / refused, every row
+  validated on append; (6) DSR only through the row's own stage → `dsr_all` (whole ledger) added; (7) per-stage PBO
+  counted one configuration under two code versions twice → identical streams once. Held: signals-cache exclusions,
+  hash completeness, no N undercount via dedup / errors / legacy, holdout bypasses via overrides or dates, resume.
+- Ledger now: 165 legacy rows (every `results/**/trials.jsonl`, incl. `pre_review/`) + 16 U10 rows; N = 35 / 135 /
+  139 / 163 / 179 through U6 … U10. Smoke (SPY, QQQ, IWM, their EW portfolio; 1Hour 2016 → 2025-10, wavelet_trend /
+  logit_l2 / oof / fixed × risk none, standard): Sharpe −0.79 … 0.02, meta AUC 0.503–0.506, DSR 0.000 for every cell
+  (N = 179), PBO 0.47 over the 8 distinct streams. It was run under two code versions (scheduling change only; metrics
+  identical), so the 8 configurations count twice — the documented over-count. Report in `results/experiments/report/`.
+- Out of scope / deferred: survivor-driven staging (stage B cells from stage A survivors) — U11 writes per-stage specs;
+  PWFO cells per symbol only (multi-symbol PWFO is U11 Stage D); `--jobs 1` has no crash isolation; the ledger and
+  artifacts are gitignored (`results/ledger.jsonl`, `results/experiments/`), so the trial history must be kept/backed up
+  by hand — losing it would undercount N in U11.
 
 ---
 
@@ -713,4 +757,4 @@ too small to be meaningful, inner CV leaking across window boundaries.
 - Deep sequence models (TCN/LSTM/transformers) beyond a cheap screen.
 - Point-in-time universe (delisted names) to remove survivorship bias.
 - (U9/U10) SPY 5Min × all primaries diagnostics deferred from U4 — full-window 5Min WFO too slow before rolling IS / d caching.
-- Removal of unused deps (`dill`, `pyfts`, `pyyaml`, `requests`) — `pyyaml` becomes used in U10.
+- Removal of unused deps (`dill`, `pyfts`, `requests`) — `pyyaml` is used since U10.

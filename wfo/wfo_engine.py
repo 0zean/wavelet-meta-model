@@ -16,6 +16,10 @@ from utils.config import RunConfig
 ONE_SIDED_SHARE = 0.10  # warn when a split's long share falls outside [10%, 90%]
 
 
+class NoFitError(RuntimeError):
+    """No walk-forward window could be fit (too little data or too few events): a counted no-fit, not a crash."""
+
+
 def purged(labels: pd.DataFrame, start: int, end: int, embargo: int = 0) -> pd.DataFrame:
     """
     Label rows whose event bar t lies in [start, end) AND whose exit is observed
@@ -365,7 +369,7 @@ def run_wfo(
 
     Raises:
         HoldoutError: If df reaches HOLDOUT_START and cfg.ALLOW_HOLDOUT is off.
-        RuntimeError: If no WFO folds are completed.
+        NoFitError: If no WFO folds are completed.
 
     Returns:
         pd.DataFrame: OOS predictions for every test event, concatenated across folds
@@ -399,7 +403,7 @@ def run_wfo(
         print(f"[WFO]  Fold {fold} done in {elapsed:.1f}s  |  OOS events={len(result_ts)}  approved={trade_ct}")
 
     if not all_results:
-        raise RuntimeError("No WFO folds completed — check INITIAL_TRAIN/VAL/TEST vs data length.")
+        raise NoFitError("No WFO folds completed — check INITIAL_TRAIN/VAL/TEST vs data length.")
 
     combined = pd.concat(all_results).sort_index()
     combined.attrs["meta_skipped_folds"] = meta_skipped  # folds whose meta-model could not be fit (no trades)
