@@ -198,6 +198,35 @@ def test_code_hash_changes_with_source(monkeypatch, tmp_path):
         R.code_hash.cache_clear()
 
 
+def test_code_hash_ignores_line_endings_but_not_the_platform(monkeypatch, tmp_path):
+    for d in R.CODE_DIRS:
+        (tmp_path / d).mkdir()
+    (tmp_path / "wfo" / "x.py").write_bytes(b"a = 1\nb = 2\n")
+    monkeypatch.setattr(R, "ROOT", tmp_path)
+    R.code_hash.cache_clear()
+    try:
+        h1 = R.code_hash()
+        (tmp_path / "wfo" / "x.py").write_bytes(b"a = 1\r\nb = 2\r\n")  # a Windows (autocrlf) checkout
+        R.code_hash.cache_clear()
+        assert R.code_hash() == h1
+        monkeypatch.setattr(R.platform, "system", lambda: "Windows")
+        monkeypatch.setattr(R.platform, "machine", lambda: "AMD64")
+        R.code_hash.cache_clear()
+        assert R.code_hash() != h1
+    finally:
+        R.code_hash.cache_clear()
+
+
+def test_ledger_lock_round_trip_and_utf8(tmp_path):
+    led = L.Ledger(tmp_path / "ledger.jsonl")
+    with led.run_lock():
+        led.append({"cell_hash": "h", "stage": "A", "status": "ok", "label": "σ ≥ 0 ═"})
+        led.append({"cell_hash": "h2", "stage": "A", "status": "ok"})
+    with led.run_lock():  # released
+        pass
+    assert [r["cell_hash"] for r in led.rows()] == ["h", "h2"] and led.rows()[0]["label"] == "σ ≥ 0 ═"
+
+
 def test_backtest_only_fields_do_not_change_wfo_signals():
     df = synthetic_daily(1400)
     cfg = RunConfig.for_timeframe("1Day", PRIMARY="wavelet_trend", META_MODEL="logit_l2", META_TRAIN="oof", **SMALL)

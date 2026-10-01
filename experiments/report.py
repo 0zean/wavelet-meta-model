@@ -165,7 +165,7 @@ def write_report(ledger: L.Ledger, root, out, stage: str | None = None, top: int
         md += [f"## {title}", "", _markdown(_fmt(df)) if len(df) else "_none_", ""]
     if errors:
         md += ["## Errors", ""] + [f"- `{r['cell_hash']}` {r.get('label', '')}: {r.get('error')}" for r in errors]
-    (out / "report.md").write_text("\n".join(md) + "\n")
+    (out / "report.md").write_text("\n".join(md) + "\n", encoding="utf-8")
 
     css = (
         "body{font:14px/1.45 system-ui,sans-serif;margin:24px auto;max-width:1200px;padding:0 16px;color:#0b0b0b;"
@@ -189,5 +189,5 @@ def write_report(ledger: L.Ledger, root, out, stage: str | None = None, top: int
         + "".join(body)
         + "</body></html>"
     )
-    (out / "report.html").write_text(page)
+    (out / "report.html").write_text(page, encoding="utf-8")
     return {"md": out / "report.md", "html": out / "report.html", "csv": out / "leaderboard.csv"}

@@ -68,7 +68,9 @@ TRADING_DAYS = 252
 def code_hash() -> str:
     from importlib.metadata import version
 
-    h = hashlib.sha256(f"python={platform.python_version()}".encode())
+    # the platform too: equal library versions on another OS / CPU (arm64 macOS vs x86-64 Windows) need not give
+    # bit-identical floats, so a result is only reused where it was computed
+    h = hashlib.sha256(f"python={platform.python_version()} {platform.system()} {platform.machine()}".encode())
     for lib in LIBS:
         h.update(f"{lib}={version(lib)}".encode())
     for d in CODE_DIRS:
@@ -77,7 +79,7 @@ def code_hash() -> str:
             if rel in CODE_EXCLUDE:
                 continue
             h.update(rel.encode())
-            h.update(path.read_bytes())
+            h.update(path.read_bytes().replace(b"\r\n", b"\n"))  # a CRLF checkout is the same code
     return h.hexdigest()
 
 
@@ -310,10 +312,12 @@ def run_cell(cell: Cell, chash: str, data: dict, final: bool, root, feature_cach
     root = Path(root)
     out = root / "cells" / chash
     out.mkdir(parents=True, exist_ok=True)
-    (out / "spec.json").write_text(json.dumps({"stage": cell.stage, "spec": cell.spec}, indent=2, sort_keys=True))
+    (out / "spec.json").write_text(
+        json.dumps({"stage": cell.stage, "spec": cell.spec}, indent=2, sort_keys=True), encoding="utf-8"
+    )
     t0 = time.time()
     row: dict = {"status": "ok"}
-    with open(out / "log.txt", "w", buffering=1) as log, contextlib.redirect_stdout(log):
+    with open(out / "log.txt", "w", buffering=1, encoding="utf-8") as log, contextlib.redirect_stdout(log):
         try:
             cfg = cell.config(final)
             if cell.is_pwfo:
@@ -323,10 +327,10 @@ def run_cell(cell: Cell, chash: str, data: dict, final: bool, root, feature_cach
         except NoFitError as e:  # no window could be fit: a counted trial without a result
             row = {"status": "no_fit", "error": str(e), "n_trials": cell_trials(cell)}
         except Exception as e:  # noqa: BLE001 — a failing cell is recorded (status=error), never dropped
-            (out / "traceback.txt").write_text(traceback.format_exc())
+            (out / "traceback.txt").write_text(traceback.format_exc(), encoding="utf-8")
             row = {"status": "error", "error": f"{type(e).__name__}: {e}", "error_path": str(out / "traceback.txt")}
     row["runtime_s"] = round(time.time() - t0, 2)
-    (out / "result.json").write_text(json.dumps(L.clean(row), indent=2, sort_keys=True))
+    (out / "result.json").write_text(json.dumps(L.clean(row), indent=2, sort_keys=True), encoding="utf-8")
     return row
 
 
@@ -384,7 +388,7 @@ def check_holdout(cells: list[Cell], final: bool, events: list[dict]) -> str | N
 
 def _crash_row(out: Path, err: str) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    (out / "traceback.txt").write_text(err)
+    (out / "traceback.txt").write_text(err, encoding="utf-8")
     return {"status": "error", "error": err, "error_path": str(out / "traceback.txt"), "runtime_s": 0}
 
 
@@ -543,7 +547,10 @@ def _run(cells, ledger, root, source, jobs, inner_jobs, final, retry_errors, spe
 def _signals_job(key, sym, df, cfg, root, feature_cache_dir):
     root = Path(root)
     (root / "signals").mkdir(parents=True, exist_ok=True)
-    with open(root / "signals" / f"{key}.log", "w", buffering=1) as log, contextlib.redirect_stdout(log):
+    with (
+        open(root / "signals" / f"{key}.log", "w", buffering=1, encoding="utf-8") as log,
+        contextlib.redirect_stdout(log),
+    ):
         try:
             _signals(sym, df, cfg, root, feature_cache_dir)
             return key, None

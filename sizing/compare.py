@@ -109,7 +109,7 @@ def main() -> None:
     }
     started, sha = datetime.now(UTC).isoformat(), _git_sha()
     rows = sizer_rows(df, signals, cfg, sizers)
-    with open(out / "trials.jsonl", "a") as f:
+    with open(out / "trials.jsonl", "a", encoding="utf-8") as f:
         for r in rows:
             spec = {
                 "symbol": a.symbol,

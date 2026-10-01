@@ -46,7 +46,10 @@ def _wfo_one(sym: str, a: argparse.Namespace, sig_dir: Path) -> str:
     if a.reuse and path.exists():
         return sym
     cfg = _cfg(a)
-    with open(sig_dir / f"{sym}_{a.timeframe}.log", "w", buffering=1) as log, contextlib.redirect_stdout(log):
+    with (
+        open(sig_dir / f"{sym}_{a.timeframe}.log", "w", buffering=1, encoding="utf-8") as log,
+        contextlib.redirect_stdout(log),
+    ):
         df = load_bars(sym, a.timeframe, a.start, a.end)
         t = time.time()
         sig = run_wfo(df, cfg, symbol=sym, feature_cache_dir=feature_cache.DEFAULT_ROOT)
@@ -145,7 +148,7 @@ def main() -> None:
 
     diag = {s: sigs[s].attrs.get("diag", {}) for s in syms}
     started, sha = datetime.now(UTC).isoformat(), _git_sha()
-    with open(out / "trials.jsonl", "a") as f:
+    with open(out / "trials.jsonl", "a", encoding="utf-8") as f:
         for name, m, summ, eq in rows:
             spec = {
                 "symbols": syms,

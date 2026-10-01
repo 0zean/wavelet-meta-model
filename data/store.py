@@ -105,7 +105,7 @@ def load_bars_cache(npz_path: Path, json_path: Path, expect: dict | None = None)
     """
     if not json_path.exists():
         raise CacheError(f"Missing metadata sidecar {json_path}")
-    meta = json.loads(json_path.read_text())
+    meta = json.loads(json_path.read_text(encoding="utf-8"))
     if meta.get("schema_version") != SCHEMA_VERSION:
         raise CacheError(f"{json_path}: schema_version {meta.get('schema_version')} != {SCHEMA_VERSION}")
     for key, val in (expect or {}).items():

@@ -533,5 +533,8 @@ def _logged_job(log_dir, df, cfg, combo, unit, sessions, prep_kw, spread_bars):
 
     if log_dir is None:
         return _combo_job(df, cfg, combo, unit, sessions, prep_kw, spread_bars)
-    with open(Path(log_dir) / f"{combo.label}.log", "w", buffering=1) as f, contextlib.redirect_stdout(f):
+    with (
+        open(Path(log_dir) / f"{combo.label}.log", "w", buffering=1, encoding="utf-8") as f,
+        contextlib.redirect_stdout(f),
+    ):
         return _combo_job(df, cfg, combo, unit, sessions, prep_kw, spread_bars)

@@ -98,7 +98,7 @@ def write_outputs(res: PWFOResult, cfg: RunConfig, out: Path, cell: str, title: 
     res.returns.to_csv(out / f"returns_{cell}.csv")
     res.choice.to_csv(out / f"choice_{cell}.csv", index=False)
     res.pwfo.to_csv(out / f"pwfo_{cell}.csv")
-    (out / f"stats_{cell}.json").write_text(json.dumps(res.stats, indent=2, default=float))
+    (out / f"stats_{cell}.json").write_text(json.dumps(res.stats, indent=2, default=float), encoding="utf-8")
     plot_heatmaps(res.summary, cfg, title, out / f"heatmaps_{cell}.png")
 
 
@@ -167,7 +167,7 @@ def main() -> None:
     def num(x):
         return None if x is None or (isinstance(x, float) and not np.isfinite(x)) else float(x)
 
-    with open(out / "trials.jsonl", "a") as f:
+    with open(out / "trials.jsonl", "a", encoding="utf-8") as f:
         # Every grid combo is a trial (the DSR counts them all): a combo with no fittable window is a "no_fit" row
         for label, s in res.summary.iterrows():
             if s["n_ok_windows"] == 0:
