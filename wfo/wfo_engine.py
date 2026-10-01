@@ -52,14 +52,21 @@ def select_features(X_tr, lab_tr, w_tr, cfg: RunConfig, n_bars: int):
 
 
 def oof_primary(
-    df: pd.DataFrame, X: pd.DataFrame, labels: pd.DataFrame, weights: pd.Series, cfg: RunConfig, select=None
+    df: pd.DataFrame,
+    X: pd.DataFrame,
+    labels: pd.DataFrame,
+    weights: pd.Series,
+    cfg: RunConfig,
+    select=None,
+    fit_start: int = 0,
 ) -> pd.DataFrame:
     """
     Out-of-fold primary frame for the fitting events (META_TRAIN="oof"): over a purged k-fold of their spans
     (ZOO_CV_SPLITS, CV_EMBARGO_PCT), a fresh primary is fit on each purged train split and signals its test
     split, so no event's primary signal comes from a model that saw its label. `select(X, labels, weights)`
     (clustered MDA) → kept columns is run on each train split too, so feature selection never sees a test
-    split's labels either. `df` ends at the fitting split's end. Fixed rules ignore the fit, so their frame equals
+    split's labels either. `df` ends at the fitting split's end; the primaries are fit on df.iloc[fit_start:] (a
+    rolling window) and signal with the whole prefix as history. Fixed rules ignore the fit, so their frame equals
     the plain signal.
     """
     cv = inner_cv(labels, cfg)
@@ -67,7 +74,7 @@ def oof_primary(
     for train, test in cv.split(X):
         Xtr, lab, w = X.iloc[train], labels.iloc[train], weights.iloc[train]
         cols = list(X.columns) if select is None else select(Xtr, lab, w)
-        p = make_primary(cfg).fit(df, Xtr[cols], lab, w, cfg)
+        p = make_primary(cfg).fit(df.iloc[fit_start:], Xtr[cols], lab, w, cfg)
         Xte = X.iloc[test][cols]
         frames.append(check_signal(p.signal(df, Xte, cfg), Xte, p.name))
     return pd.concat(frames).loc[X.index]
@@ -150,6 +157,167 @@ def wfo_folds(index: pd.DatetimeIndex, cfg: RunConfig) -> list[Fold]:
     return folds
 
 
+class Prepared(NamedTuple):
+    """Whole-series inputs shared by every fold / window (all causal: bar t uses bars <= t)."""
+
+    events: pd.DataFrame  # CUSUM events + barrier widths
+    labels: pd.DataFrame  # triple-barrier outcomes (read only through `purged`)
+    fset: FeatureSet
+    base_feats: pd.DataFrame  # static feature groups
+    event_pos: pd.Series  # bar position of each event
+    size_names: tuple[str, ...]  # cfg.SIZER first, then the extra sizers
+
+
+class WindowFit(NamedTuple):
+    status: str  # "ok" | "fracdiff_failed" | "insufficient_events" | "primary_failed"
+    oos: pd.DataFrame | None  # OOS predictions of the test events (run_wfo's per-fold frame)
+    in_sample: pd.DataFrame | None  # the same models' predictions on their own fitting events (if asked)
+    meta_skipped: bool  # no meta-model could be fit (no trades)
+    sizer_skipped: tuple[str, ...]  # sizers that could not be fit while a meta-model exists
+    n_fit_events: int  # meta-model fitting rows
+
+
+def prepare(
+    df: pd.DataFrame,
+    cfg: RunConfig,
+    *,
+    context: dict[str, pd.DataFrame] | None = None,
+    symbol: str | None = None,
+    feature_cache_dir=None,
+    sizers: tuple[str, ...] = (),
+) -> Prepared:
+    """Events, labels and static features on the full series, once per run (see run_wfo)."""
+    cfg.holdout_guard(df.index)
+    make_primary(cfg)  # fail fast on an unknown primary or bad PRIMARY_PARAMS
+
+    print("\n" + "═" * 60)
+    print("  Sampling events, labels and causal features on the full dataset")
+    print("═" * 60)
+    events = sample_events(df, cfg)
+    labels = triple_barrier_labels(df, events, cfg)
+    fset = FeatureSet(cfg, context=context, symbol=symbol, cache_dir=feature_cache_dir)
+    base_feats = build_features(df, cfg, fset)
+    event_pos = pd.Series(df.index.get_indexer(events.index), index=events.index)
+    return Prepared(events, labels, fset, base_feats, event_pos, tuple(dict.fromkeys((cfg.SIZER, *sizers))))
+
+
+def fit_window(
+    df: pd.DataFrame,
+    cfg: RunConfig,
+    prep: Prepared,
+    fold: int,
+    fit_start: int,
+    train_end: int,
+    val_end: int,
+    test_end: int,
+    emb_tr: int,
+    emb_vl: int,
+    *,
+    in_sample: bool = False,
+) -> WindowFit:
+    """
+    One walk-forward step: fit on train = [fit_start, train_end) and val = [train_end, val_end), predict the test
+    events in [val_end, test_end). fit_start = 0 is the expanding WFO (run_wfo); a rolling window (wfo/pwfo.py)
+    starts later, and then every fitted state (fracdiff d, feature selection, primary, meta-model, sizers) sees
+    only bars and events from fit_start on. Steps 1–6 of run_wfo.
+
+    in_sample=True also returns the fitted models' predictions on their own fitting events (train + val purged
+    at val_end), the in-sample side of the walk-forward efficiency (SPEC §6).
+    """
+    events, labels, fset, base_feats, event_pos, size_names = prep
+    N = len(df)
+
+    # ── Features: per-fold groups (fracdiff d) fit on train bars before the embargo ──
+    # (fitting on the embargo bars would make every train feature depend on them)
+    try:
+        states = fset.fit(df.iloc[fit_start : train_end - emb_tr])
+    except RuntimeWarning as e:  # FracdiffStat raises this when no d <= 1 is stationary
+        print(f"[WFO]  Fold {fold}: fracdiff failed ({e}) — skipping")
+        return WindowFit("fracdiff_failed", None, None, False, (), 0)
+    X_all = base_feats.iloc[:test_end].join(fset.transform(df.iloc[:test_end], states))
+
+    # ── Samples: events with complete features; fitting splits purged ─────
+    lab_tr = purged(labels, fit_start, train_end, emb_tr)
+    lab_vl = purged(labels, train_end, val_end, emb_vl)
+    ev_ts = events[(event_pos >= val_end) & (event_pos < test_end)]
+
+    X_tr = X_all.reindex(lab_tr.index).dropna()
+    X_vl = X_all.reindex(lab_vl.index).dropna()
+    X_ts = X_all.reindex(ev_ts.index).dropna()
+    n_nan = len(lab_tr) - len(X_tr) + len(lab_vl) - len(X_vl) + len(ev_ts) - len(X_ts)
+    if n_nan:
+        print(f"[WFO]  Fold {fold}: {n_nan} events dropped for NaN features (warm-up or gaps)")
+    lab_tr, lab_vl = lab_tr.loc[X_tr.index], lab_vl.loc[X_vl.index]
+
+    if len(X_tr) < cfg.MIN_TRAIN_EVENTS or len(X_vl) < cfg.MIN_VAL_EVENTS or X_ts.empty:
+        print(f"[WFO]  Fold {fold}: insufficient events (train={len(X_tr)}, val={len(X_vl)}) — skipping")
+        return WindowFit("insufficient_events", None, None, False, (), 0)
+
+    w_tr = average_uniqueness(lab_tr, N)
+    w_vl = average_uniqueness(lab_vl, N)
+
+    cmda = cfg.FEATURE_SELECTION == "cmda"
+    try:
+        # ── Primary + meta-model training rows (cfg.META_TRAIN) ──────────
+        if cfg.META_TRAIN == "val":
+            # Feature selection on purged train events only; primary fit on them (bars up to the train end);
+            # meta on val events
+            if cmda:
+                kept = select_features(X_tr, lab_tr, w_tr, cfg, train_end - fit_start).kept
+                X_tr, X_vl, X_ts = X_tr[kept], X_vl[kept], X_ts[kept]
+            prim = make_primary(cfg).fit(df.iloc[fit_start:train_end], X_tr, lab_tr, w_tr, cfg, val=(X_vl, lab_vl))
+            prim_fit = check_signal(prim.signal(df.iloc[:val_end], X_vl, cfg), X_vl, prim.name)
+            X_fit, lab_fit, w_fit = X_vl, lab_vl, w_vl
+        else:
+            # Train+val events purged at the val end; out-of-fold primary signals (feature selection inside
+            # each OOF split); then selection and the primary refit on all of them
+            lab_fit = purged(labels, fit_start, val_end, emb_vl)
+            X_fit = X_all.reindex(lab_fit.index).dropna()
+            lab_fit = lab_fit.loc[X_fit.index]
+            w_fit = average_uniqueness(lab_fit, N)
+            n_sel = val_end - fit_start
+            select = (lambda X, lab, w, n=n_sel: select_features(X, lab, w, cfg, n).kept) if cmda else None
+            prim_fit = oof_primary(df.iloc[:val_end], X_fit, lab_fit, w_fit, cfg, select=select, fit_start=fit_start)
+            if cmda:
+                kept = select_features(X_fit, lab_fit, w_fit, cfg, n_sel).kept
+                X_fit, X_ts = X_fit[kept], X_ts[kept]
+            prim = make_primary(cfg).fit(df.iloc[fit_start:val_end], X_fit, lab_fit, w_fit, cfg)
+    except ZooFitError as e:  # a non-legacy PRIMARY_MODEL with a single-class (inner) train split
+        print(f"[WFO]  Fold {fold}: primary could not be fit ({e}) — skipping")
+        return WindowFit("primary_failed", None, None, False, (), 0)
+
+    # ── Side-aware meta-labels → meta-model ──────────────────────────────
+    meta_lbl = make_meta_labels(df, events.loc[X_fit.index], prim_fit, cfg)
+    meta_mdl = fit_meta_model(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit)
+
+    # ── Final prediction on OOS test fold ─────────────────────────────────
+    fitted = fold_sizers(size_names, meta_mdl, df, events, X_fit, prim_fit, meta_lbl, w_fit, lab_fit, cfg)
+
+    def predict(X: pd.DataFrame, end: int) -> pd.DataFrame:
+        prim_x = check_signal(prim.signal(df.iloc[:end], X, cfg), X, prim.name)
+        res = meta_predict(meta_mdl, X, prim_x, cfg.META_THRESH)
+        res["width"] = events.loc[X.index, "width"]
+        res["fold"] = fold
+        res["primary"] = prim.name
+        for n, sz in fitted.items():
+            col = "bet_size" if n == cfg.SIZER else f"bet_size:{n}"
+            res[col] = 0.0 if sz is None else np.where(res["trade_signal"] != 0, sz.size(res["meta_prob"]), 0.0)
+        return res
+
+    result_ts = predict(X_ts, test_end)
+    is_frame = None
+    if in_sample:
+        X_is = X_fit if cfg.META_TRAIN == "oof" else pd.concat([X_tr, X_vl]).sort_index()
+        is_frame = predict(X_is, val_end)
+    shares = {cfg.META_TRAIN: (prim_fit["signed_dir"] > 0).mean(), "test": (result_ts["signed_dir"] > 0).mean()}
+    print(f"[PRIM]  {prim.name}: long share " + "  ".join(f"{k}={v:.3f}" for k, v in shares.items()))
+    for split, sh in shares.items():
+        if not ONE_SIDED_SHARE <= sh <= 1 - ONE_SIDED_SHARE:
+            print(f"[PRIM]  Warning: fold {fold} {split} sides are {sh:.1%} long (one-sided primary)")
+    skipped = tuple(n for n, sz in fitted.items() if sz is None and meta_mdl is not None)
+    return WindowFit("ok", result_ts, is_frame, meta_mdl is None, skipped, len(X_fit))
+
+
 def run_wfo(
     df: pd.DataFrame,
     cfg: RunConfig,
@@ -204,20 +372,8 @@ def run_wfo(
             (primary frame, meta_prob, trade_signal, width, fold, primary, bet_size). `bet_size` ∈ [0, 1] is
             cfg.SIZER's raw size (0 where no trade), before active-bet averaging and discretization (backtest).
     """
-    cfg.holdout_guard(df.index)
-    make_primary(cfg)  # fail fast on an unknown primary or bad PRIMARY_PARAMS
-    N = len(df)
-
-    print("\n" + "═" * 60)
-    print("  Sampling events, labels and causal features on the full dataset")
-    print("═" * 60)
-    events = sample_events(df, cfg)
-    labels = triple_barrier_labels(df, events, cfg)
-    fset = FeatureSet(cfg, context=context, symbol=symbol, cache_dir=feature_cache_dir)
-    base_feats = build_features(df, cfg, fset)
-    event_pos = pd.Series(df.index.get_indexer(events.index), index=events.index)
-
-    size_names = tuple(dict.fromkeys((cfg.SIZER, *sizers)))
+    prep = prepare(df, cfg, context=context, symbol=symbol, feature_cache_dir=feature_cache_dir, sizers=sizers)
+    size_names = prep.size_names
     all_results, meta_skipped, primary_skipped = [], [], []
     sizer_skipped = {n: [] for n in size_names}
     for fold, (train_end, val_end, test_end, emb_tr, emb_vl) in enumerate(wfo_folds(df.index, cfg), start=1):
@@ -226,92 +382,16 @@ def run_wfo(
         print(f"{'─' * 60}")
 
         t0 = time.time()
-
-        # ── Features: per-fold groups (fracdiff d) fit on train bars before the embargo ──
-        # (fitting on the embargo bars would make every train feature depend on them)
-        try:
-            states = fset.fit(df.iloc[: train_end - emb_tr])
-        except RuntimeWarning as e:  # FracdiffStat raises this when no d <= 1 is stationary
-            print(f"[WFO]  Fold {fold}: fracdiff failed ({e}) — skipping")
-            continue
-        X_all = base_feats.iloc[:test_end].join(fset.transform(df.iloc[:test_end], states))
-
-        # ── Samples: events with complete features; fitting splits purged ─────
-        lab_tr = purged(labels, 0, train_end, emb_tr)
-        lab_vl = purged(labels, train_end, val_end, emb_vl)
-        ev_ts = events[(event_pos >= val_end) & (event_pos < test_end)]
-
-        X_tr = X_all.reindex(lab_tr.index).dropna()
-        X_vl = X_all.reindex(lab_vl.index).dropna()
-        X_ts = X_all.reindex(ev_ts.index).dropna()
-        n_nan = len(lab_tr) - len(X_tr) + len(lab_vl) - len(X_vl) + len(ev_ts) - len(X_ts)
-        if n_nan:
-            print(f"[WFO]  Fold {fold}: {n_nan} events dropped for NaN features (warm-up or gaps)")
-        lab_tr, lab_vl = lab_tr.loc[X_tr.index], lab_vl.loc[X_vl.index]
-
-        if len(X_tr) < cfg.MIN_TRAIN_EVENTS or len(X_vl) < cfg.MIN_VAL_EVENTS or X_ts.empty:
-            print(f"[WFO]  Fold {fold}: insufficient events (train={len(X_tr)}, val={len(X_vl)}) — skipping")
-            continue
-
-        w_tr = average_uniqueness(lab_tr, N)
-        w_vl = average_uniqueness(lab_vl, N)
-
-        cmda = cfg.FEATURE_SELECTION == "cmda"
-        try:
-            # ── Primary + meta-model training rows (cfg.META_TRAIN) ──────────
-            if cfg.META_TRAIN == "val":
-                # Feature selection on purged train events only; primary fit on them (bars up to the train end);
-                # meta on val events
-                if cmda:
-                    kept = select_features(X_tr, lab_tr, w_tr, cfg, train_end).kept
-                    X_tr, X_vl, X_ts = X_tr[kept], X_vl[kept], X_ts[kept]
-                prim = make_primary(cfg).fit(df.iloc[:train_end], X_tr, lab_tr, w_tr, cfg, val=(X_vl, lab_vl))
-                prim_fit = check_signal(prim.signal(df.iloc[:val_end], X_vl, cfg), X_vl, prim.name)
-                X_fit, lab_fit, w_fit = X_vl, lab_vl, w_vl
-            else:
-                # Train+val events purged at the val end; out-of-fold primary signals (feature selection inside
-                # each OOF split); then selection and the primary refit on all of them
-                lab_fit = purged(labels, 0, val_end, emb_vl)
-                X_fit = X_all.reindex(lab_fit.index).dropna()
-                lab_fit = lab_fit.loc[X_fit.index]
-                w_fit = average_uniqueness(lab_fit, N)
-                select = (lambda X, lab, w, n=val_end: select_features(X, lab, w, cfg, n).kept) if cmda else None
-                prim_fit = oof_primary(df.iloc[:val_end], X_fit, lab_fit, w_fit, cfg, select=select)
-                if cmda:
-                    kept = select_features(X_fit, lab_fit, w_fit, cfg, val_end).kept
-                    X_fit, X_ts = X_fit[kept], X_ts[kept]
-                prim = make_primary(cfg).fit(df.iloc[:val_end], X_fit, lab_fit, w_fit, cfg)
-        except ZooFitError as e:  # a non-legacy PRIMARY_MODEL with a single-class (inner) train split
-            print(f"[WFO]  Fold {fold}: primary could not be fit ({e}) — skipping")
+        res = fit_window(df, cfg, prep, fold, 0, train_end, val_end, test_end, emb_tr, emb_vl)
+        if res.status == "primary_failed":
             primary_skipped.append(fold)
+        if res.status != "ok":
             continue
-
-        # ── Side-aware meta-labels → meta-model ──────────────────────────────
-        meta_lbl = make_meta_labels(df, events.loc[X_fit.index], prim_fit, cfg)
-        meta_mdl = fit_meta_model(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit)
-        if meta_mdl is None:
+        if res.meta_skipped:
             meta_skipped.append(fold)
-
-        # ── Final prediction on OOS test fold ─────────────────────────────────
-        prim_ts = check_signal(prim.signal(df.iloc[:test_end], X_ts, cfg), X_ts, prim.name)
-        result_ts = meta_predict(meta_mdl, X_ts, prim_ts, cfg.META_THRESH)
-        result_ts["width"] = ev_ts.loc[X_ts.index, "width"]
-        result_ts["fold"] = fold
-        result_ts["primary"] = prim.name
-        fitted = fold_sizers(size_names, meta_mdl, df, events, X_fit, prim_fit, meta_lbl, w_fit, lab_fit, cfg)
-        for n, sz in fitted.items():
-            col = "bet_size" if n == cfg.SIZER else f"bet_size:{n}"
-            if sz is None:
-                result_ts[col] = 0.0
-                if meta_mdl is not None:
-                    sizer_skipped[n].append(fold)
-            else:
-                result_ts[col] = np.where(result_ts["trade_signal"] != 0, sz.size(result_ts["meta_prob"]), 0.0)
-        shares = {cfg.META_TRAIN: (prim_fit["signed_dir"] > 0).mean(), "test": (prim_ts["signed_dir"] > 0).mean()}
-        print(f"[PRIM]  {prim.name}: long share " + "  ".join(f"{k}={v:.3f}" for k, v in shares.items()))
-        for split, sh in shares.items():
-            if not ONE_SIDED_SHARE <= sh <= 1 - ONE_SIDED_SHARE:
-                print(f"[PRIM]  Warning: fold {fold} {split} sides are {sh:.1%} long (one-sided primary)")
+        for n in res.sizer_skipped:
+            sizer_skipped[n].append(fold)
+        result_ts = res.oos
         all_results.append(result_ts)
 
         elapsed = time.time() - t0

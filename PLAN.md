@@ -596,15 +596,65 @@ fills vs before, cross-symbol timestamp alignment, cost double-counting.
 - Outputs: combo heat-maps (WFE, OOS Sharpe), per-window table, stitched OOS equity, PBO across combos.
 
 **Done when.**
-- [ ] Window generator tests: no IS/OOS overlap, OOS windows tile the span contiguously, embargo respected, half-days.
-- [ ] Nested-selection test: perturbing any OOS window's returns cannot change the combo chosen *for that same window*.
-- [ ] Legacy fixed-bar WFO is reproducible as a single PWFO combo.
-- [ ] PWFO on SPY 1Hour completes with heat-maps + PBO + DSR (n_trials = combos) reported.
+- [x] Window generator tests: no IS/OOS overlap, OOS windows tile the span contiguously, embargo respected, half-days.
+- [x] Nested-selection test: perturbing any OOS window's returns cannot change the combo chosen *for that same window*.
+- [x] Legacy fixed-bar WFO is reproducible as a single PWFO combo.
+- [x] PWFO on SPY 1Hour completes with heat-maps + PBO + DSR (n_trials = combos) reported.
 
 **Reviewer focus.** Selection look-ahead in the nested step, WFE definition with negative IS returns, window counts
 too small to be meaningful, inner CV leaking across window boundaries.
 
-**Status.** Not started.
+**Status.** ✅ Complete (adversarial review done, findings fixed). 344 tests pass (~2 min 10 s with
+`OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1`); ruff clean. Notes:
+- Modules: `wfo/wfo_engine.py` — the fold body is now `prepare()` (events, labels, static features once) +
+  `fit_window(..., fit_start, ..., in_sample=)` (one walk-forward step; with `fit_start > 0` every fitted state —
+  fracdiff d, cMDA, primary, meta-model, sizers — sees only events with t ≥ fit_start and bars from fit_start, primary
+  signals keep the bar prefix as warm-up; `in_sample=True` also predicts the window's own fitting events);
+  `run_wfo` is a loop over it (bit-identical). `wfo/pwfo.py` — `unit_bounds` (exchange-calendar sessions; dropped
+  sessions = zero-bar days; half-days = one session), `pwfo_windows`, `make_grid`, `run_combo`, `combo_stats`, `wfe`,
+  `nested_select`, `stitch`, `run_pwfo` (parallel combos, PBO across combos, DSR with N = grid size). `wfo/pwfo_run.py`
+  (CLI, heat-maps, trials stage `U9`). Config `PWFO_IS_GRID`, `PWFO_OOS_GRID`, `PWFO_EXPANDING`, `PWFO_VAL_FRAC`,
+  `PWFO_DEFAULT`, `PWFO_MIN_WINDOWS`, `PWFO_WFE_MIN_T`, `SELECT_EVERY`, `SELECT_LOOKBACK` (all outside the feature-cache key). SPEC §6.
+- SPEC refinements: (1) no gap between IS and OOS — the WFO's exit embargo (§5) purges train/val samples resolving in
+  the last `EMBARGO` sessions instead; (2) IS splits into train + a final val of round(⅓·IS) (the WFO's own ratio);
+  (3) WFE is NaN unless the mean IS figure is > 0 at t ≥ 2, and its IS mean covers all windows (unfitted = flat, as in
+  the OOS); (4) a combo with no fittable window is reported, excluded from selection / PBO, and counted in the DSR's N;
+  (5) the PWFO stream switches between the combos' paper return streams and ends where the earliest combo's OOS ends.
+  Also: `fit_fracdiff_d` skips its log-only ADF p-value below 45 points (it raised on short rolling windows).
+- Done-criteria evidence: window generator (6 parametrized cases with a dropped session and two half-days: IS/OOS
+  disjoint, OOS tiles contiguously, embargo = bars of the last E calendar sessions, boundaries on session starts;
+  half-day + purge test; validation); nested selection (4 seeds × 8 decisions: perturbing returns and IS Sharpes from
+  d on leaves every choice up to and including d unchanged; burn-in, tie-breaks, stitch); legacy = one expanding
+  combo — `pwfo_windows` equals `wfo_folds` in both units, `run_combo` signals equal `run_wfo` exactly in both units, and
+  `legacy_5min` through `run_combo(unit="bars")` reproduces the CSV hash `402ef202…`; rolling isolation (spies on
+  `fit_meta_model` / `FeatureSet.fit`, val and oof); combo statistics consistency; full PWFO (PBO, DSR ≤ PSR, infeasible
+  combo, burn-in) and its causality (bars perturbed after c → PWFO and combo returns up to c unchanged); holdout guard.
+- Review (no BREAKING). SEVERE fixed: WFE / WFE_sharpe exploded on a positive but statistically-zero IS mean (−6.5 /
+  −36.7 in the first run) → t ≥ 2 gate (test). MINORs fixed: (1) WFE numerator over all windows, denominator over
+  fitted ones → both over all windows (test); (2) `pct_profitable_oos` reads "losing" for "not trading" → added
+  `pct_windows_traded`, `pct_profitable_traded`; (3) `weak` counted all windows → fitted windows (test); (4) the trial
+  ledger skipped no-fit combos → one `status="no_fit"` row per such combo, `n_trials_dsr` and a `run_id` on every row
+  (U10 owns dedup and the n_trials rule). Reviewer checks that held: run_wfo bit-identity and the legacy hash, the
+  hash through run_combo, rolling isolation (incl. ml_xgb's active-day mask), nested-selection causality, parallel =
+  serial, byte-identical rerun of the SPY run, OOS/IS date alignment, DSR/PBO units.
+- SPY 1Hour, 2016-01 → 2025-10, `wavelet_trend` / `logit_l2` / `oof` / `fixed`, rolling, 16 combos, 129 s with 8 workers.
+  IS 63 / 126 cannot be fit at 1Hour (≈1.3 CUSUM events per session < MIN_TRAIN_EVENTS = 200 in every window). OOS:
+
+  | IS \ OOS | 5 | 10 | 21 | 63 |
+  |---|---|---|---|---|
+  | 252: Sharpe (fitted / windows) | 0.01 (368/439) | 0.00 (185/219) | −0.22 (84/104) | −0.06 (28/34)† |
+  | 504: Sharpe (fitted / windows) | −0.27 (389/389) | −0.11 (194/194) | 0.09 (92/92) | 0.05 (30/30)† |
+
+  † < 50 fitted windows. WFE is n/a everywhere: no combo's in-sample return is significantly positive (IS t from −1.1
+  to 0.9) — the meta-filtered strategy has no edge even on its own fitting events. 50–82% of fitted windows trade;
+  among those 44–68% are profitable. Nested PWFO (live 2018-07-09 → 2025-07-11, 1762 days after 380 burn-in days,
+  picks spread over all 8 run combos): ann. return 0.1%, Sharpe 0.05, max DD −12.5%, PSR(0) 0.55, **DSR 0.33** (N = 16),
+  **PBO 0.77** (8 combos, 1890 common days; P(OOS loss of the IS winner) 0.81, degradation slope −0.76). No cadence is
+  recommendable here. Outputs in `results/pwfo/` (heat-maps, per-window table, daily returns, choices, stats); 17 rows
+  (stage U9) in `trials.jsonl`; the pre-review run (same numbers except WFE) in `pre_review/`.
+- Out of scope / deferred: a per-timeframe IS grid (at 1Hour the 63/126 rows are unfittable by construction; a smaller
+  MIN_TRAIN_EVENTS or a 5Min/15Min run would populate them — a U11 Stage C choice); PWFO over a multi-symbol portfolio
+  (U11 Stage D); ledger dedup and trial counting (U10).
 
 ---
 

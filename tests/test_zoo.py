@@ -282,9 +282,9 @@ def test_oof_primary_never_signals_an_event_it_was_fit_on(daily, monkeypatch):
     frames = {}
     orig = wfo_engine.oof_primary
 
-    def spy_oof(df, X, labels, weights, cfg, select=None):
+    def spy_oof(df, X, labels, weights, cfg, select=None, fit_start=0):
         frames["labels"] = labels
-        return orig(df, X, labels, weights, cfg, select=select)
+        return orig(df, X, labels, weights, cfg, select=select, fit_start=fit_start)
 
     monkeypatch.setattr(wfo_engine, "oof_primary", spy_oof)
     daily3 = daily.iloc[: wfo_folds(daily.index, cfg)[0].test_end]

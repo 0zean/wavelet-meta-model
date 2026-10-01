@@ -19,10 +19,11 @@ def fit_fracdiff_d(train: pd.Series) -> FracdiffStat:
     fs = FracdiffStat(mode="valid")
     Xt = fs.fit_transform(train.to_numpy().reshape(-1, 1)).reshape(-1)
 
-    _, pval, *_ = adfuller(Xt, maxlag=20, autolag="AIC")
+    # The ADF p-value is a log diagnostic only (FracdiffStat chose d); adfuller(maxlag=20) needs > 44 points
+    pval = adfuller(Xt, maxlag=20, autolag="AIC")[1] if Xt.size > 2 * (20 + 2) else np.nan
     corr = np.corrcoef(train.to_numpy()[-Xt.size :], Xt)[0, 1]
     print(f"\n[FRACDIFF] Optimal d  : {fs.d_[0]:.4f}")
-    print(f"           ADF p-val  : {pval * 100:.4f} %")
+    print(f"           ADF p-val  : {pval * 100:.4f} %  (n={Xt.size})")
     print(f"           Corr (raw) : {corr:.4f}")
     return fs
 
