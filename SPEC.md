@@ -438,15 +438,73 @@ The loader enforces it: `load_bars(..., allow_holdout=False)` raises if `end > H
 additionally stop labels from resolving inside the holdout (last event ≤ HOLDOUT_START minus the max vertical
 barrier). Only `experiments run --final` sets it True, and the ledger records that event.
 
-**Cell spec** (YAML): `symbols, timeframe, feature_groups, primary{name,params}, model{meta,primary}, sizer,
-risk_profile, pwfo{is_grid, oos_grid, expanding}, seed, stage`.
+**Holdout in the runner** (U10, `experiments/runner.py`). A cell whose `end` is after HOLDOUT_START is refused
+before any data is loaded unless `run --final`; a final run needs every cell in stage E **and** ending after
+HOLDOUT_START (a batch reading no holdout data must not use up the one access), appends a `holdout_access` event
+(batch id = hash of its cells and code) to the ledger and to `data/cache/holdout_access.jsonl` (outside any ledger, so
+`--ledger elsewhere` still sees it) before loading data, passes `allow_holdout` / `ALLOW_HOLDOUT`, and is refused if
+either already holds a holdout access of a different batch (resuming the same batch is allowed). The check and the
+event are under the ledger's run lock.
+Labels cannot resolve inside the holdout in a development cell: its bars end before HOLDOUT_START and
+`RunConfig.holdout_guard` raises on any bar on or after it, so a barrier still open at the data end is cut there.
 
-**Ledger row:** `cell_hash, stage, status, git_sha, spec_json, started_at, runtime_s, n_oos_events, n_trades,
-meta_auc, meta_logloss, brier, ret_ann, vol_ann, sharpe, sortino, calmar, max_dd, turnover, sr_skew, sr_kurt,
-n_obs, psr, wfe, n_oos_windows, error_path`. Stored as append-only `results/ledger.jsonl`. `n_trials` for DSR = count of `status="ok"` rows up to and including the stage.
+**Cell spec** (YAML, `experiments/spec.py`): `stage`, `name`, `defaults`, `grid` (cartesian; dotted keys such as
+`primary.name`, `model.meta`) and optional explicit `cells` (each merged over the defaults, then crossed with the
+grid). Cell fields: `symbols` (a string = one symbol; a list = one portfolio cell), `timeframe, start, end`
+([start, end) NY dates), `feature_groups` ("default" or a list), `primary{name, params}`, `model{meta, primary}`,
+`meta_train`, `sizer`, `risk_profile`, `pwfo{is_grid, oos_grid, expanding}` (null = one expanding WFO; one symbol
+only), `seed`, `overrides` (any other RunConfig field). Cells are normalized (defaults filled, symbols upper-cased and
+sorted, dates ISO) and their RunConfig built at load time, so an invalid spec fails before anything runs; identical
+cells are run once. Stages, in counting order: `U6, U7, U8, U9, U10, A, B, C, D, E`.
+
+**Cell hash** = sha256(canonical cell, every resolved RunConfig field, code hash, data hash)[:16]. Code hash = the
+source of every `*.py` in data, features, primaries, models, sizing, risk, validation, wfo, utils and experiments
+(except `experiments/report.py`) plus the Python and numeric-library versions; data hash = each symbol's bars, the 5Min
+spread bars of a spread-charging risk profile and, for a PWFO cell, the exchange sessions **between its first and last data session** (the only ones
+`unit_bounds` reads; the cached calendar runs a year past today and is refreshed monthly). The stage is not hashed.
+Artifacts: `results/experiments/cells/<hash>/` (spec, log, daily returns, signals or PWFO outputs, result, traceback).
+Per-symbol WFO signals are also cached (`results/experiments/signals/<key>.pkl`, key = the same inputs minus the
+backtest-only fields RISK_PROFILE, POSITION_MODE, SIZE_STEP, INIT_CASH, SIZE and the PWFO / selection fields, which
+`run_wfo` never reads — tested), so a risk or position-mode ablation refits nothing.
+**Resume / cache:** a cell whose (hash, stage) is in the ledger is skipped (an `error` row too, unless
+`--retry-errors`); a hash recorded in another stage is re-recorded for this stage without fitting (`cache_hit`).
+**Execution:** one run per ledger (an exclusive run lock; a second run raises). Data is loaded and hashed in the
+parent; the distinct per-symbol WFOs are fitted first, once each; then cells run in joblib processes with BLAS pinned
+to one thread, and the parent appends each row when its cell finishes (one write + fsync under a lock; rows are
+validated: hash, known stage, known status), so a killed run loses only in-flight cells. A truncated last line is
+skipped (reported) by the reader and isolated by the next append. A worker that dies (OOM kill, segfault) breaks the
+pool: the cells not yet recorded are re-run one per fresh process, and one whose process dies again is an `error` row
+("WorkerDied"). With `--jobs 1` cells run in-process (no crash isolation).
+**Status:** `ok`; `no_fit` (`NoFitError`: no window could be fit — counted, as in §6); `error` (any exception,
+including a data-load failure: full traceback under the cell's `traceback.txt`, path in `error_path`; never dropped).
+
+**Ledger row** (`results/ledger.jsonl`, append-only): `cell_hash, stage, status, kind (wfo | portfolio | pwfo |
+legacy), label, git_sha, code_hash, data_hash, run_id, final, spec_json, started_at, runtime_s, n_trials,
+n_oos_events, n_trades, meta_auc, meta_logloss, brier, ret_ann, vol_ann, sharpe, sortino, calmar, max_dd, turnover,
+sr_skew, sr_kurt, n_obs, psr, wfe, n_oos_windows, error, error_path` (+ `sharpe_primary` for one symbol;
+`per_symbol` for a portfolio; `pbo, pwfo_dsr, picks, combos, n_decisions` for PWFO; `cache_hit, cache_from`).
+*Refinement — return statistics are daily:* `ret_ann, vol_ann, sharpe, sortino, sr_skew, sr_kurt, psr, n_obs` come
+from the daily close-to-close returns of the meta-filtered equity (the PWFO's live stream for a PWFO cell), so they are
+comparable across timeframes and the DSR's per-period unit is one day; `max_dd` is the bar-level drawdown, `calmar` =
+ret_ann / |max_dd|; meta AUC / log-loss / Brier from `signal_diagnostics` (the mean AUC over symbols for a portfolio).
+*Refinement — trial count:* `n_trials` for the DSR of a stage = Σ `n_trials` over the **distinct** cell hashes with
+status `ok` or `no_fit` in that stage or an earlier one (a WFO / portfolio cell = 1, a PWFO cell = its grid size).
+A cache hit shares its hash and is counted once; a configuration re-run under new code is a new hash and counts again
+(over-counting is the safe side); errors are not counted (listed in the report). V[SR_n] = variance (ddof 1) of the
+per-period Sharpes (annualized / √252) of those trials, a PWFO cell contributing its combos' OOS Sharpes.
+*Legacy trials* (U6–U9 `trials.jsonl`, `experiments import-legacy`, every `results/**/trials.jsonl` incl.
+`pre_review/`): one `kind="legacy"` row per line, hash = "legacy-" + hash of the line (re-import is a no-op),
+`n_trials` = 1 except the U9 nested-PWFO row (0: a selection among the counted combos); they count in N and V but get
+no DSR in the report (their moments are per bar). A malformed (partial) source line is reported and skipped; a row
+with an unknown stage or status is refused.
+**Report** (`experiments report` → `results/experiments/report/report.{md,html}`, `leaderboard.csv`): stage funnel
+(cells, ok / no_fit / error, cache hits, trials in stage, cumulative N), PBO per stage (CSCV over the daily returns of
+the stage's runner cells on their common days, identical streams — one configuration under two code versions — counted
+once), leaderboard by DSR (N and V through the row's stage) plus `dsr_all` (N and V over every ledger trial: the
+deflation a pick made from the whole table faces), errors, holdout accesses.
 
 ---
 
 ## §10 Dependencies
 
-Add: `alpaca-py`, `python-dotenv`, `lightgbm` (added U6), `joblib`, `scipy` (explicit). `pyyaml` becomes used (U10).
+Add: `alpaca-py`, `python-dotenv`, `lightgbm` (added U6), `joblib` (added U10), `scipy` (explicit). `pyyaml` becomes used (U10).

@@ -26,7 +26,7 @@ from utils.config import RunConfig
 from validation.pbo import pbo
 from validation.stats import dsr, psr, return_moments
 from wfo.backtest import run_backtest
-from wfo.wfo_engine import Prepared, WindowFit, fit_window, prepare
+from wfo.wfo_engine import NoFitError, Prepared, WindowFit, fit_window, prepare
 
 TRADING_DAYS = 252
 
@@ -472,7 +472,7 @@ def run_pwfo(
     summary = pd.DataFrame(summ)
     windows = pd.concat(wins, ignore_index=True)
     if default not in rets:
-        raise RuntimeError(f"the default combo {default} produced no OOS windows; nested selection needs it")
+        raise NoFitError(f"the default combo {default} produced no OOS windows; nested selection needs it")
     returns = pd.DataFrame(rets).sort_index()
     is_sharpe = pd.concat(is_rows, ignore_index=True)
     is_len = {c.label: c.is_len for c in grid}

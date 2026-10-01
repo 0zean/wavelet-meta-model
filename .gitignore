@@ -18,3 +18,5 @@ results/model_zoo/
 results/sizing/
 results/portfolio/
 results/pwfo/
+results/experiments/
+results/ledger.jsonl
