@@ -13,10 +13,10 @@ and counts again (over-counting is the safe direction).
 """
 
 import contextlib
-import fcntl
 import json
 import os
 import sys
+import time
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -26,6 +26,35 @@ from experiments.spec import stage_rank
 
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "results" / "ledger.jsonl"
 COUNTED = ("ok", "no_fit")
+
+if os.name == "nt":  # Windows: a byte-range lock on the file's first byte (msvcrt has no flock)
+    import msvcrt
+
+    def _lock(f, blocking: bool = True) -> None:
+        f.seek(0)
+        while True:
+            try:
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError:
+                if not blocking:
+                    raise BlockingIOError from None
+                time.sleep(0.05)
+
+    def _unlock(f) -> None:
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock(f, blocking: bool = True) -> None:
+        fcntl.flock(f, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+
+    def _unlock(f) -> None:
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
 TRADING_DAYS = 252
 
 
@@ -51,7 +80,7 @@ class Ledger:
         if not self.path.exists():
             return []
         out, bad = [], []
-        with open(self.path) as f:
+        with open(self.path, encoding="utf-8") as f:
             for i, line in enumerate(f, start=1):
                 if not line.strip():
                     continue
@@ -75,13 +104,13 @@ class Ledger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path.with_name(self.path.name + ".lock"), "a") as f:
             try:
-                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _lock(f, blocking=False)
             except BlockingIOError:
                 raise RuntimeError(f"another experiment run holds {self.path} (one run per ledger)") from None
             try:
                 yield
             finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+                _unlock(f)
 
     def append(self, rows: dict | Iterable[dict]) -> None:
         rows = [rows] if isinstance(rows, dict) else list(rows)
@@ -92,7 +121,7 @@ class Ledger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         data = "".join(json.dumps(clean(r), sort_keys=True, allow_nan=False) + "\n" for r in rows)
         with open(self.path, "a+b") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
+            _lock(f)
             try:
                 f.seek(0, os.SEEK_END)
                 if f.tell() > 0:
@@ -103,7 +132,7 @@ class Ledger:
                 f.flush()
                 os.fsync(f.fileno())
             finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+                _unlock(f)
 
 
 def validate(row: dict) -> None:

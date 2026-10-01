@@ -1,0 +1,2426 @@
+[DATA]  SPY 1Day: dropping 1 session(s) missing their last bar: 2019-08-12
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.01s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2724 isotonic=0.2414)
+[CLF]  Val AUC=0.5000  (train events=230)
+[REG]  Val MAE=0.014316  (train-median baseline=0.018124)
+[META]  Trained on 135 events  (success rate=0.615)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 1 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 1 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 1 done in 1.8s  |  OOS events=22  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2613 isotonic=0.2366)
+[CLF]  Val AUC=0.5000  (train events=258)
+[REG]  Val MAE=0.009879  (train-median baseline=0.013229)
+[META]  Trained on 128 events  (success rate=0.625)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 2 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 2 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 2 done in 1.7s  |  OOS events=21  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2377 isotonic=0.2351)
+[CLF]  Val AUC=0.5000  (train events=268)
+[REG]  Val MAE=0.010080  (train-median baseline=0.015082)
+[META]  Trained on 139 events  (success rate=0.568)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 3 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 3 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 3 done in 1.7s  |  OOS events=18  approved=11
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2299 isotonic=0.2515)
+[CLF]  Val AUC=0.5032  (train events=281)
+[REG]  Val MAE=0.010608  (train-median baseline=0.015262)
+[META]  Trained on 144 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 4 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 4 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 4 done in 1.7s  |  OOS events=12  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2350 isotonic=0.2601)
+[CLF]  Val AUC=0.5043  (train events=298)
+[REG]  Val MAE=0.010969  (train-median baseline=0.015711)
+[META]  Trained on 143 events  (success rate=0.552)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 5 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 5 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 5 done in 1.7s  |  OOS events=13  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2310 isotonic=0.2315)
+[CLF]  Val AUC=0.4726  (train events=315)
+[REG]  Val MAE=0.010636  (train-median baseline=0.015626)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 6 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 6 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 6 done in 1.8s  |  OOS events=16  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2301 isotonic=0.2830)
+[CLF]  Val AUC=0.4582  (train events=329)
+[REG]  Val MAE=0.010533  (train-median baseline=0.015757)
+[META]  Trained on 137 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 7 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 7 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 7 done in 1.7s  |  OOS events=20  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2292 isotonic=0.2612)
+[CLF]  Val AUC=0.5026  (train events=347)
+[REG]  Val MAE=0.010485  (train-median baseline=0.015295)
+[META]  Trained on 138 events  (success rate=0.529)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 8 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 8 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 8 done in 1.8s  |  OOS events=18  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2334 isotonic=0.2827)
+[CLF]  Val AUC=0.5166  (train events=367)
+[REG]  Val MAE=0.010308  (train-median baseline=0.015017)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 9 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 9 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 9 done in 1.8s  |  OOS events=15  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2425 isotonic=0.2703)
+[CLF]  Val AUC=0.5324  (train events=388)
+[REG]  Val MAE=0.009657  (train-median baseline=0.012941)
+[META]  Trained on 131 events  (success rate=0.603)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 10 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 10 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 10 done in 1.8s  |  OOS events=17  approved=11
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2382 isotonic=0.2404)
+[CLF]  Val AUC=0.4983  (train events=408)
+[REG]  Val MAE=0.008084  (train-median baseline=0.010058)
+[META]  Trained on 126 events  (success rate=0.667)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 11 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 11 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 11 done in 1.8s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2427 isotonic=0.2409)
+[CLF]  Val AUC=0.5000  (train events=426)
+[REG]  Val MAE=0.006643  (train-median baseline=0.007842)
+[META]  Trained on 131 events  (success rate=0.672)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 12 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 12 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 12 done in 1.8s  |  OOS events=15  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2581 isotonic=0.2437)
+[CLF]  Val AUC=0.5000  (train events=441)
+[REG]  Val MAE=0.006257  (train-median baseline=0.007193)
+[META]  Trained on 131 events  (success rate=0.664)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 13 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 13 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 13 done in 1.9s  |  OOS events=19  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l1 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2369 isotonic=0.2418)
+[CLF]  Val AUC=0.5000  (train events=453)
+[REG]  Val MAE=0.006155  (train-median baseline=0.007708)
+[META]  Trained on 139 events  (success rate=0.612)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 14 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 14 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 14 done in 1.9s  |  OOS events=8  approved=4
+
+[WFO]  Total OOS events: 234  |  Approved trades: 157
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5855
+Meta-scored events       234.0000
+Meta log-loss              1.0817
+Meta Brier                 0.3559
+Meta AUC                   0.4301
+Approved share             0.6709
+Approved success rate      0.5478
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              16.765        23.894        49.906
+Annual Return (%)              4.256         5.932        11.503
+Annual Volatility (%)         14.428        15.447        18.019
+Sharpe Ratio                   0.361         0.450         0.694
+Max Drawdown (%)             -26.926       -27.979       -23.435
+Calmar Ratio                   0.158         0.212         0.491
+Num Trades                    73.000        95.000         0.000
+Win Rate (%)                  54.795        56.842           NaN
+Avg Trade (bp)                26.160        27.019           NaN
+Avg Bars Held                  7.781         7.611           NaN
+Exposure (%)                  60.619        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  logit_l1 split 1/45
+[CPCV]  logit_l1 split 2/45
+[CPCV]  logit_l1 split 3/45
+[CPCV]  logit_l1 split 4/45
+[CPCV]  logit_l1 split 5/45
+[CPCV]  logit_l1 split 6/45
+[CPCV]  logit_l1 split 7/45
+[CPCV]  logit_l1 split 8/45
+[CPCV]  logit_l1 split 9/45
+[CPCV]  logit_l1 split 10/45
+[CPCV]  logit_l1 split 11/45
+[CPCV]  logit_l1 split 12/45
+[CPCV]  logit_l1 split 13/45
+[CPCV]  logit_l1 split 14/45
+[CPCV]  logit_l1 split 15/45
+[CPCV]  logit_l1 split 16/45
+[CPCV]  logit_l1 split 17/45
+[CPCV]  logit_l1 split 18/45
+[CPCV]  logit_l1 split 19/45
+[CPCV]  logit_l1 split 20/45
+[CPCV]  logit_l1 split 21/45
+[CPCV]  logit_l1 split 22/45
+[CPCV]  logit_l1 split 23/45
+[CPCV]  logit_l1 split 24/45
+[CPCV]  logit_l1 split 25/45
+[CPCV]  logit_l1 split 26/45
+[CPCV]  logit_l1 split 27/45
+[CPCV]  logit_l1 split 28/45
+[CPCV]  logit_l1 split 29/45
+[CPCV]  logit_l1 split 30/45
+[CPCV]  logit_l1 split 31/45
+[CPCV]  logit_l1 split 32/45
+[CPCV]  logit_l1 split 33/45
+[CPCV]  logit_l1 split 34/45
+[CPCV]  logit_l1 split 35/45
+[CPCV]  logit_l1 split 36/45
+[CPCV]  logit_l1 split 37/45
+[CPCV]  logit_l1 split 38/45
+[CPCV]  logit_l1 split 39/45
+[CPCV]  logit_l1 split 40/45
+[CPCV]  logit_l1 split 41/45
+[CPCV]  logit_l1 split 42/45
+[CPCV]  logit_l1 split 43/45
+[CPCV]  logit_l1 split 44/45
+[CPCV]  logit_l1 split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2146 isotonic=0.2389)
+[CLF]  Val AUC=0.4243  (train events=230)
+[REG]  Val MAE=0.014316  (train-median baseline=0.018124)
+[META]  Trained on 135 events  (success rate=0.615)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 1 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 1 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 1 done in 1.6s  |  OOS events=22  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2358 isotonic=0.2411)
+[CLF]  Val AUC=0.4378  (train events=258)
+[REG]  Val MAE=0.009879  (train-median baseline=0.013229)
+[META]  Trained on 128 events  (success rate=0.625)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 2 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 2 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 2 done in 1.6s  |  OOS events=21  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2364 isotonic=0.2383)
+[CLF]  Val AUC=0.5692  (train events=268)
+[REG]  Val MAE=0.010080  (train-median baseline=0.015082)
+[META]  Trained on 139 events  (success rate=0.568)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 3 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 3 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 3 done in 1.6s  |  OOS events=18  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2383 isotonic=0.2403)
+[CLF]  Val AUC=0.4847  (train events=281)
+[REG]  Val MAE=0.010608  (train-median baseline=0.015262)
+[META]  Trained on 144 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 4 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 4 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 4 done in 1.6s  |  OOS events=12  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2375 isotonic=0.2419)
+[CLF]  Val AUC=0.4937  (train events=298)
+[REG]  Val MAE=0.010969  (train-median baseline=0.015711)
+[META]  Trained on 143 events  (success rate=0.552)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 5 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 5 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 5 done in 1.7s  |  OOS events=13  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2367 isotonic=0.2390)
+[CLF]  Val AUC=0.5184  (train events=315)
+[REG]  Val MAE=0.010636  (train-median baseline=0.015626)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 6 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 6 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 6 done in 1.6s  |  OOS events=16  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2332 isotonic=0.2491)
+[CLF]  Val AUC=0.5461  (train events=329)
+[REG]  Val MAE=0.010533  (train-median baseline=0.015757)
+[META]  Trained on 137 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 7 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 7 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 7 done in 1.6s  |  OOS events=20  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2318 isotonic=0.2374)
+[CLF]  Val AUC=0.5222  (train events=347)
+[REG]  Val MAE=0.010485  (train-median baseline=0.015295)
+[META]  Trained on 138 events  (success rate=0.529)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 8 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 8 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 8 done in 1.7s  |  OOS events=18  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2332 isotonic=0.2372)
+[CLF]  Val AUC=0.5343  (train events=367)
+[REG]  Val MAE=0.010308  (train-median baseline=0.015017)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 9 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 9 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 9 done in 1.7s  |  OOS events=15  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2406 isotonic=0.2439)
+[CLF]  Val AUC=0.5166  (train events=388)
+[REG]  Val MAE=0.009657  (train-median baseline=0.012941)
+[META]  Trained on 131 events  (success rate=0.603)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 10 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 10 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 10 done in 1.7s  |  OOS events=17  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2437 isotonic=0.2478)
+[CLF]  Val AUC=0.4960  (train events=408)
+[REG]  Val MAE=0.008084  (train-median baseline=0.010058)
+[META]  Trained on 126 events  (success rate=0.667)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 11 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 11 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 11 done in 1.8s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2419 isotonic=0.2452)
+[CLF]  Val AUC=0.4067  (train events=426)
+[REG]  Val MAE=0.006643  (train-median baseline=0.007842)
+[META]  Trained on 131 events  (success rate=0.672)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 12 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 12 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 12 done in 1.7s  |  OOS events=15  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2424 isotonic=0.2614)
+[CLF]  Val AUC=0.4360  (train events=441)
+[REG]  Val MAE=0.006257  (train-median baseline=0.007193)
+[META]  Trained on 131 events  (success rate=0.664)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 13 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 13 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 13 done in 1.7s  |  OOS events=19  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2449 isotonic=0.2749)
+[CLF]  Val AUC=0.4922  (train events=453)
+[REG]  Val MAE=0.006155  (train-median baseline=0.007708)
+[META]  Trained on 139 events  (success rate=0.612)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 14 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 14 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 14 done in 1.7s  |  OOS events=8  approved=5
+
+[WFO]  Total OOS events: 234  |  Approved trades: 156
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5855
+Meta-scored events       234.0000
+Meta log-loss              1.0641
+Meta Brier                 0.3502
+Meta AUC                   0.4427
+Approved share             0.6667
+Approved success rate      0.5449
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              15.065        23.894        49.906
+Annual Return (%)              3.846         5.932        11.503
+Annual Volatility (%)         13.850        15.447        18.019
+Sharpe Ratio                   0.342         0.450         0.694
+Max Drawdown (%)             -26.926       -27.979       -23.435
+Calmar Ratio                   0.143         0.212         0.491
+Num Trades                    73.000        95.000         0.000
+Win Rate (%)                  56.164        56.842           NaN
+Avg Trade (bp)                23.668        27.019           NaN
+Avg Bars Held                  7.644         7.611           NaN
+Exposure (%)                  59.552        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  logit_l2 split 1/45
+[CPCV]  logit_l2 split 2/45
+[CPCV]  logit_l2 split 3/45
+[CPCV]  logit_l2 split 4/45
+[CPCV]  logit_l2 split 5/45
+[CPCV]  logit_l2 split 6/45
+[CPCV]  logit_l2 split 7/45
+[CPCV]  logit_l2 split 8/45
+[CPCV]  logit_l2 split 9/45
+[CPCV]  logit_l2 split 10/45
+[CPCV]  logit_l2 split 11/45
+[CPCV]  logit_l2 split 12/45
+[CPCV]  logit_l2 split 13/45
+[CPCV]  logit_l2 split 14/45
+[CPCV]  logit_l2 split 15/45
+[CPCV]  logit_l2 split 16/45
+[CPCV]  logit_l2 split 17/45
+[CPCV]  logit_l2 split 18/45
+[CPCV]  logit_l2 split 19/45
+[CPCV]  logit_l2 split 20/45
+[CPCV]  logit_l2 split 21/45
+[CPCV]  logit_l2 split 22/45
+[CPCV]  logit_l2 split 23/45
+[CPCV]  logit_l2 split 24/45
+[CPCV]  logit_l2 split 25/45
+[CPCV]  logit_l2 split 26/45
+[CPCV]  logit_l2 split 27/45
+[CPCV]  logit_l2 split 28/45
+[CPCV]  logit_l2 split 29/45
+[CPCV]  logit_l2 split 30/45
+[CPCV]  logit_l2 split 31/45
+[CPCV]  logit_l2 split 32/45
+[CPCV]  logit_l2 split 33/45
+[CPCV]  logit_l2 split 34/45
+[CPCV]  logit_l2 split 35/45
+[CPCV]  logit_l2 split 36/45
+[CPCV]  logit_l2 split 37/45
+[CPCV]  logit_l2 split 38/45
+[CPCV]  logit_l2 split 39/45
+[CPCV]  logit_l2 split 40/45
+[CPCV]  logit_l2 split 41/45
+[CPCV]  logit_l2 split 42/45
+[CPCV]  logit_l2 split 43/45
+[CPCV]  logit_l2 split 44/45
+[CPCV]  logit_l2 split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2227 isotonic=0.2378)
+[CLF]  Val AUC=0.4874  (train events=230)
+[REG]  Val MAE=0.014316  (train-median baseline=0.018124)
+[META]  Trained on 135 events  (success rate=0.630)
+[PRIM]  ml_xgb: long share val=0.970  test=1.000
+[PRIM]  Warning: fold 1 val sides are 97.0% long (one-sided primary)
+[PRIM]  Warning: fold 1 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 1 done in 5.8s  |  OOS events=22  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2373 isotonic=0.2444)
+[CLF]  Val AUC=0.4976  (train events=258)
+[REG]  Val MAE=0.009879  (train-median baseline=0.013229)
+[META]  Trained on 128 events  (success rate=0.625)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 2 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 2 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 2 done in 5.9s  |  OOS events=21  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2377 isotonic=0.2490)
+[CLF]  Val AUC=0.4538  (train events=268)
+[REG]  Val MAE=0.010080  (train-median baseline=0.015082)
+[META]  Trained on 139 events  (success rate=0.568)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 3 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 3 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 3 done in 5.9s  |  OOS events=18  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2373 isotonic=0.2482)
+[CLF]  Val AUC=0.5004  (train events=281)
+[REG]  Val MAE=0.010608  (train-median baseline=0.015262)
+[META]  Trained on 144 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 4 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 4 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 4 done in 5.9s  |  OOS events=12  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2316 isotonic=0.2488)
+[CLF]  Val AUC=0.4923  (train events=298)
+[REG]  Val MAE=0.010969  (train-median baseline=0.015711)
+[META]  Trained on 143 events  (success rate=0.552)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 5 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 5 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 5 done in 5.9s  |  OOS events=13  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2306 isotonic=0.2343)
+[CLF]  Val AUC=0.4493  (train events=315)
+[REG]  Val MAE=0.010636  (train-median baseline=0.015626)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 6 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 6 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 6 done in 5.9s  |  OOS events=16  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2286 isotonic=0.2330)
+[CLF]  Val AUC=0.4294  (train events=329)
+[REG]  Val MAE=0.010533  (train-median baseline=0.015757)
+[META]  Trained on 137 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 7 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 7 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 7 done in 6.0s  |  OOS events=20  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2306 isotonic=0.2392)
+[CLF]  Val AUC=0.4407  (train events=347)
+[REG]  Val MAE=0.010485  (train-median baseline=0.015295)
+[META]  Trained on 138 events  (success rate=0.529)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 8 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 8 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 8 done in 6.0s  |  OOS events=18  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2296 isotonic=0.2312)
+[CLF]  Val AUC=0.4264  (train events=367)
+[REG]  Val MAE=0.010308  (train-median baseline=0.015017)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 9 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 9 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 9 done in 6.0s  |  OOS events=15  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2391 isotonic=0.2570)
+[CLF]  Val AUC=0.4518  (train events=388)
+[REG]  Val MAE=0.009657  (train-median baseline=0.012941)
+[META]  Trained on 131 events  (success rate=0.603)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 10 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 10 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 10 done in 6.0s  |  OOS events=17  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2411 isotonic=0.2442)
+[CLF]  Val AUC=0.4272  (train events=408)
+[REG]  Val MAE=0.008084  (train-median baseline=0.010058)
+[META]  Trained on 126 events  (success rate=0.667)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 11 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 11 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 11 done in 6.0s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2412 isotonic=0.2444)
+[CLF]  Val AUC=0.4820  (train events=426)
+[REG]  Val MAE=0.006643  (train-median baseline=0.007842)
+[META]  Trained on 131 events  (success rate=0.672)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 12 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 12 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 12 done in 6.0s  |  OOS events=15  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2411 isotonic=0.2441)
+[CLF]  Val AUC=0.4956  (train events=441)
+[REG]  Val MAE=0.006257  (train-median baseline=0.007193)
+[META]  Trained on 131 events  (success rate=0.664)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 13 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 13 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 13 done in 6.0s  |  OOS events=19  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2405 isotonic=0.2450)
+[CLF]  Val AUC=0.5133  (train events=453)
+[REG]  Val MAE=0.006155  (train-median baseline=0.007708)
+[META]  Trained on 139 events  (success rate=0.612)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 14 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 14 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 14 done in 6.1s  |  OOS events=8  approved=3
+
+[WFO]  Total OOS events: 234  |  Approved trades: 154
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5855
+Meta-scored events       234.0000
+Meta log-loss              1.0834
+Meta Brier                 0.3575
+Meta AUC                   0.4272
+Approved share             0.6581
+Approved success rate      0.5455
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              15.659        23.894        49.906
+Annual Return (%)              3.990         5.932        11.503
+Annual Volatility (%)         14.274        15.447        18.019
+Sharpe Ratio                   0.345         0.450         0.694
+Max Drawdown (%)             -26.926       -27.979       -23.435
+Calmar Ratio                   0.148         0.212         0.491
+Num Trades                    73.000        95.000         0.000
+Win Rate (%)                  53.425        56.842           NaN
+Avg Trade (bp)                24.746        27.019           NaN
+Avg Bars Held                  7.370         7.611           NaN
+Exposure (%)                  57.417        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  rf_ldp split 1/45
+[CPCV]  rf_ldp split 2/45
+[CPCV]  rf_ldp split 3/45
+[CPCV]  rf_ldp split 4/45
+[CPCV]  rf_ldp split 5/45
+[CPCV]  rf_ldp split 6/45
+[CPCV]  rf_ldp split 7/45
+[CPCV]  rf_ldp split 8/45
+[CPCV]  rf_ldp split 9/45
+[CPCV]  rf_ldp split 10/45
+[CPCV]  rf_ldp split 11/45
+[CPCV]  rf_ldp split 12/45
+[CPCV]  rf_ldp split 13/45
+[CPCV]  rf_ldp split 14/45
+[CPCV]  rf_ldp split 15/45
+[CPCV]  rf_ldp split 16/45
+[CPCV]  rf_ldp split 17/45
+[CPCV]  rf_ldp split 18/45
+[CPCV]  rf_ldp split 19/45
+[CPCV]  rf_ldp split 20/45
+[CPCV]  rf_ldp split 21/45
+[CPCV]  rf_ldp split 22/45
+[CPCV]  rf_ldp split 23/45
+[CPCV]  rf_ldp split 24/45
+[CPCV]  rf_ldp split 25/45
+[CPCV]  rf_ldp split 26/45
+[CPCV]  rf_ldp split 27/45
+[CPCV]  rf_ldp split 28/45
+[CPCV]  rf_ldp split 29/45
+[CPCV]  rf_ldp split 30/45
+[CPCV]  rf_ldp split 31/45
+[CPCV]  rf_ldp split 32/45
+[CPCV]  rf_ldp split 33/45
+[CPCV]  rf_ldp split 34/45
+[CPCV]  rf_ldp split 35/45
+[CPCV]  rf_ldp split 36/45
+[CPCV]  rf_ldp split 37/45
+[CPCV]  rf_ldp split 38/45
+[CPCV]  rf_ldp split 39/45
+[CPCV]  rf_ldp split 40/45
+[CPCV]  rf_ldp split 41/45
+[CPCV]  rf_ldp split 42/45
+[CPCV]  rf_ldp split 43/45
+[CPCV]  rf_ldp split 44/45
+[CPCV]  rf_ldp split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2266 isotonic=0.2366)
+[CLF]  Val AUC=0.4479  (train events=230)
+[REG]  Val MAE=0.014316  (train-median baseline=0.018124)
+[META]  Trained on 135 events  (success rate=0.615)
+[PRIM]  ml_xgb: long share val=0.985  test=1.000
+[PRIM]  Warning: fold 1 val sides are 98.5% long (one-sided primary)
+[PRIM]  Warning: fold 1 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 1 done in 3.9s  |  OOS events=22  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2370 isotonic=0.2423)
+[CLF]  Val AUC=0.4816  (train events=258)
+[REG]  Val MAE=0.009879  (train-median baseline=0.013229)
+[META]  Trained on 128 events  (success rate=0.625)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 2 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 2 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 2 done in 3.8s  |  OOS events=21  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2392 isotonic=0.2451)
+[CLF]  Val AUC=0.4497  (train events=268)
+[REG]  Val MAE=0.010080  (train-median baseline=0.015082)
+[META]  Trained on 139 events  (success rate=0.568)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 3 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 3 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 3 done in 3.9s  |  OOS events=18  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2391 isotonic=0.2605)
+[CLF]  Val AUC=0.4936  (train events=281)
+[REG]  Val MAE=0.010608  (train-median baseline=0.015262)
+[META]  Trained on 144 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 4 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 4 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 4 done in 3.9s  |  OOS events=12  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2374 isotonic=0.2606)
+[CLF]  Val AUC=0.4852  (train events=298)
+[REG]  Val MAE=0.010969  (train-median baseline=0.015711)
+[META]  Trained on 143 events  (success rate=0.552)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 5 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 5 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 5 done in 3.9s  |  OOS events=13  approved=5
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2350 isotonic=0.2439)
+[CLF]  Val AUC=0.4682  (train events=315)
+[REG]  Val MAE=0.010636  (train-median baseline=0.015626)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 6 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 6 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 6 done in 3.9s  |  OOS events=16  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2317 isotonic=0.2523)
+[CLF]  Val AUC=0.4301  (train events=329)
+[REG]  Val MAE=0.010533  (train-median baseline=0.015757)
+[META]  Trained on 137 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 7 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 7 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 7 done in 4.0s  |  OOS events=20  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2323 isotonic=0.2376)
+[CLF]  Val AUC=0.5595  (train events=347)
+[REG]  Val MAE=0.010485  (train-median baseline=0.015295)
+[META]  Trained on 138 events  (success rate=0.529)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 8 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 8 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 8 done in 4.0s  |  OOS events=18  approved=5
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2329 isotonic=0.2334)
+[CLF]  Val AUC=0.5565  (train events=367)
+[REG]  Val MAE=0.010308  (train-median baseline=0.015017)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 9 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 9 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 9 done in 4.0s  |  OOS events=15  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2397 isotonic=0.2494)
+[CLF]  Val AUC=0.5686  (train events=388)
+[REG]  Val MAE=0.009657  (train-median baseline=0.012941)
+[META]  Trained on 131 events  (success rate=0.603)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 10 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 10 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 10 done in 3.9s  |  OOS events=17  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=isotonic (cv Brier sigmoid=0.2400 isotonic=0.2394)
+[CLF]  Val AUC=0.5167  (train events=408)
+[REG]  Val MAE=0.008084  (train-median baseline=0.010058)
+[META]  Trained on 126 events  (success rate=0.667)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 11 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 11 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 11 done in 4.0s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2405 isotonic=0.2419)
+[CLF]  Val AUC=0.4828  (train events=426)
+[REG]  Val MAE=0.006643  (train-median baseline=0.007842)
+[META]  Trained on 131 events  (success rate=0.672)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 12 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 12 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 12 done in 4.0s  |  OOS events=15  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=isotonic (cv Brier sigmoid=0.2421 isotonic=0.2419)
+[CLF]  Val AUC=0.5027  (train events=441)
+[REG]  Val MAE=0.006257  (train-median baseline=0.007193)
+[META]  Trained on 131 events  (success rate=0.664)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 13 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 13 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 13 done in 4.0s  |  OOS events=19  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=isotonic (cv Brier sigmoid=0.2413 isotonic=0.2400)
+[CLF]  Val AUC=0.4979  (train events=453)
+[REG]  Val MAE=0.006155  (train-median baseline=0.007708)
+[META]  Trained on 139 events  (success rate=0.612)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 14 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 14 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 14 done in 4.0s  |  OOS events=8  approved=3
+
+[WFO]  Total OOS events: 234  |  Approved trades: 151
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5855
+Meta-scored events       234.0000
+Meta log-loss              1.0874
+Meta Brier                 0.3590
+Meta AUC                   0.4328
+Approved share             0.6453
+Approved success rate      0.5497
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              20.070        23.894        49.906
+Annual Return (%)              5.042         5.932        11.503
+Annual Volatility (%)         13.826        15.447        18.019
+Sharpe Ratio                   0.425         0.450         0.694
+Max Drawdown (%)             -26.926       -27.979       -23.435
+Calmar Ratio                   0.187         0.212         0.491
+Num Trades                    72.000        95.000         0.000
+Win Rate (%)                  56.944        56.842           NaN
+Avg Trade (bp)                29.870        27.019           NaN
+Avg Bars Held                  7.542         7.611           NaN
+Exposure (%)                  57.951        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  extra_trees split 1/45
+[CPCV]  extra_trees split 2/45
+[CPCV]  extra_trees split 3/45
+[CPCV]  extra_trees split 4/45
+[CPCV]  extra_trees split 5/45
+[CPCV]  extra_trees split 6/45
+[CPCV]  extra_trees split 7/45
+[CPCV]  extra_trees split 8/45
+[CPCV]  extra_trees split 9/45
+[CPCV]  extra_trees split 10/45
+[CPCV]  extra_trees split 11/45
+[CPCV]  extra_trees split 12/45
+[CPCV]  extra_trees split 13/45
+[CPCV]  extra_trees split 14/45
+[CPCV]  extra_trees split 15/45
+[CPCV]  extra_trees split 16/45
+[CPCV]  extra_trees split 17/45
+[CPCV]  extra_trees split 18/45
+[CPCV]  extra_trees split 19/45
+[CPCV]  extra_trees split 20/45
+[CPCV]  extra_trees split 21/45
+[CPCV]  extra_trees split 22/45
+[CPCV]  extra_trees split 23/45
+[CPCV]  extra_trees split 24/45
+[CPCV]  extra_trees split 25/45
+[CPCV]  extra_trees split 26/45
+[CPCV]  extra_trees split 27/45
+[CPCV]  extra_trees split 28/45
+[CPCV]  extra_trees split 29/45
+[CPCV]  extra_trees split 30/45
+[CPCV]  extra_trees split 31/45
+[CPCV]  extra_trees split 32/45
+[CPCV]  extra_trees split 33/45
+[CPCV]  extra_trees split 34/45
+[CPCV]  extra_trees split 35/45
+[CPCV]  extra_trees split 36/45
+[CPCV]  extra_trees split 37/45
+[CPCV]  extra_trees split 38/45
+[CPCV]  extra_trees split 39/45
+[CPCV]  extra_trees split 40/45
+[CPCV]  extra_trees split 41/45
+[CPCV]  extra_trees split 42/45
+[CPCV]  extra_trees split 43/45
+[CPCV]  extra_trees split 44/45
+[CPCV]  extra_trees split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2383 isotonic=0.2507)
+[CLF]  Val AUC=0.5778  (train events=230)
+[REG]  Val MAE=0.014316  (train-median baseline=0.018124)
+[META]  Trained on 135 events  (success rate=0.615)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 1 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 1 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 1 done in 6.0s  |  OOS events=22  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2447 isotonic=0.2484)
+[CLF]  Val AUC=0.4952  (train events=258)
+[REG]  Val MAE=0.009879  (train-median baseline=0.013229)
+[META]  Trained on 128 events  (success rate=0.625)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 2 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 2 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 2 done in 6.1s  |  OOS events=21  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2401 isotonic=0.2412)
+[CLF]  Val AUC=0.5319  (train events=268)
+[REG]  Val MAE=0.010080  (train-median baseline=0.015082)
+[META]  Trained on 139 events  (success rate=0.568)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 3 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 3 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 3 done in 6.0s  |  OOS events=18  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2350 isotonic=0.2481)
+[CLF]  Val AUC=0.5384  (train events=281)
+[REG]  Val MAE=0.010608  (train-median baseline=0.015262)
+[META]  Trained on 144 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 4 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 4 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 4 done in 6.1s  |  OOS events=12  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2305 isotonic=0.2410)
+[CLF]  Val AUC=0.5439  (train events=298)
+[REG]  Val MAE=0.010969  (train-median baseline=0.015711)
+[META]  Trained on 143 events  (success rate=0.552)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 5 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 5 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 5 done in 6.1s  |  OOS events=13  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2302 isotonic=0.2376)
+[CLF]  Val AUC=0.5279  (train events=315)
+[REG]  Val MAE=0.010636  (train-median baseline=0.015626)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 6 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 6 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 6 done in 6.0s  |  OOS events=16  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2277 isotonic=0.2364)
+[CLF]  Val AUC=0.4842  (train events=329)
+[REG]  Val MAE=0.010533  (train-median baseline=0.015757)
+[META]  Trained on 137 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 7 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 7 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 7 done in 6.1s  |  OOS events=20  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2299 isotonic=0.2356)
+[CLF]  Val AUC=0.4835  (train events=347)
+[REG]  Val MAE=0.010485  (train-median baseline=0.015295)
+[META]  Trained on 138 events  (success rate=0.529)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 8 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 8 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 8 done in 6.2s  |  OOS events=18  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2297 isotonic=0.2317)
+[CLF]  Val AUC=0.4963  (train events=367)
+[REG]  Val MAE=0.010308  (train-median baseline=0.015017)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 9 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 9 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 9 done in 6.2s  |  OOS events=15  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2326 isotonic=0.2360)
+[CLF]  Val AUC=0.5516  (train events=388)
+[REG]  Val MAE=0.009657  (train-median baseline=0.012941)
+[META]  Trained on 131 events  (success rate=0.603)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 10 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 10 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 10 done in 6.2s  |  OOS events=17  approved=11
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2330 isotonic=0.2435)
+[CLF]  Val AUC=0.5034  (train events=408)
+[REG]  Val MAE=0.008084  (train-median baseline=0.010058)
+[META]  Trained on 126 events  (success rate=0.675)
+[PRIM]  ml_xgb: long share val=0.992  test=1.000
+[PRIM]  Warning: fold 11 val sides are 99.2% long (one-sided primary)
+[PRIM]  Warning: fold 11 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 11 done in 6.2s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2306 isotonic=0.2459)
+[CLF]  Val AUC=0.4199  (train events=426)
+[REG]  Val MAE=0.006643  (train-median baseline=0.007842)
+[META]  Trained on 131 events  (success rate=0.679)
+[PRIM]  ml_xgb: long share val=0.992  test=1.000
+[PRIM]  Warning: fold 12 val sides are 99.2% long (one-sided primary)
+[PRIM]  Warning: fold 12 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 12 done in 6.1s  |  OOS events=15  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2339 isotonic=0.2455)
+[CLF]  Val AUC=0.4872  (train events=441)
+[REG]  Val MAE=0.006257  (train-median baseline=0.007193)
+[META]  Trained on 131 events  (success rate=0.664)
+[PRIM]  ml_xgb: long share val=1.000  test=0.947
+[PRIM]  Warning: fold 13 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 13 test sides are 94.7% long (one-sided primary)
+[WFO]  Fold 13 done in 6.2s  |  OOS events=19  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2360 isotonic=0.2433)
+[CLF]  Val AUC=0.5562  (train events=453)
+[REG]  Val MAE=0.006155  (train-median baseline=0.007708)
+[META]  Trained on 139 events  (success rate=0.619)
+[PRIM]  ml_xgb: long share val=0.993  test=1.000
+[PRIM]  Warning: fold 14 val sides are 99.3% long (one-sided primary)
+[PRIM]  Warning: fold 14 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 14 done in 6.2s  |  OOS events=8  approved=3
+
+[WFO]  Total OOS events: 234  |  Approved trades: 152
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5897
+Meta-scored events       234.0000
+Meta log-loss              1.0343
+Meta Brier                 0.3419
+Meta AUC                   0.4505
+Approved share             0.6496
+Approved success rate      0.5461
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              14.754        26.742        49.906
+Annual Return (%)              3.771         6.581        11.503
+Annual Volatility (%)         13.868        15.445        18.019
+Sharpe Ratio                   0.336         0.490         0.694
+Max Drawdown (%)             -26.926       -27.979       -23.435
+Calmar Ratio                   0.140         0.235         0.491
+Num Trades                    73.000        95.000         0.000
+Win Rate (%)                  56.164        57.895           NaN
+Avg Trade (bp)                23.195        29.410           NaN
+Avg Bars Held                  7.630         7.611           NaN
+Exposure (%)                  59.445        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  xgb split 1/45
+[CPCV]  xgb split 2/45
+[CPCV]  xgb split 3/45
+[CPCV]  xgb split 4/45
+[CPCV]  xgb split 5/45
+[CPCV]  xgb split 6/45
+[CPCV]  xgb split 7/45
+[CPCV]  xgb split 8/45
+[CPCV]  xgb split 9/45
+[CPCV]  xgb split 10/45
+[CPCV]  xgb split 11/45
+[CPCV]  xgb split 12/45
+[CPCV]  xgb split 13/45
+[CPCV]  xgb split 14/45
+[CPCV]  xgb split 15/45
+[CPCV]  xgb split 16/45
+[CPCV]  xgb split 17/45
+[CPCV]  xgb split 18/45
+[CPCV]  xgb split 19/45
+[CPCV]  xgb split 20/45
+[CPCV]  xgb split 21/45
+[CPCV]  xgb split 22/45
+[CPCV]  xgb split 23/45
+[CPCV]  xgb split 24/45
+[CPCV]  xgb split 25/45
+[CPCV]  xgb split 26/45
+[CPCV]  xgb split 27/45
+[CPCV]  xgb split 28/45
+[CPCV]  xgb split 29/45
+[CPCV]  xgb split 30/45
+[CPCV]  xgb split 31/45
+[CPCV]  xgb split 32/45
+[CPCV]  xgb split 33/45
+[CPCV]  xgb split 34/45
+[CPCV]  xgb split 35/45
+[CPCV]  xgb split 36/45
+[CPCV]  xgb split 37/45
+[CPCV]  xgb split 38/45
+[CPCV]  xgb split 39/45
+[CPCV]  xgb split 40/45
+[CPCV]  xgb split 41/45
+[CPCV]  xgb split 42/45
+[CPCV]  xgb split 43/45
+[CPCV]  xgb split 44/45
+[CPCV]  xgb split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2399 isotonic=0.2557)
+[CLF]  Val AUC=0.5809  (train events=230)
+[REG]  Val MAE=0.014316  (train-median baseline=0.018124)
+[META]  Trained on 135 events  (success rate=0.615)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 1 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 1 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 1 done in 2.6s  |  OOS events=22  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2416 isotonic=0.2429)
+[CLF]  Val AUC=0.5021  (train events=258)
+[REG]  Val MAE=0.009879  (train-median baseline=0.013229)
+[META]  Trained on 128 events  (success rate=0.625)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 2 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 2 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 2 done in 2.6s  |  OOS events=21  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 31}  calibration=isotonic (cv Brier sigmoid=0.2400 isotonic=0.2326)
+[CLF]  Val AUC=0.4445  (train events=268)
+[REG]  Val MAE=0.010080  (train-median baseline=0.015082)
+[META]  Trained on 139 events  (success rate=0.561)
+[PRIM]  ml_xgb: long share val=0.993  test=1.000
+[PRIM]  Warning: fold 3 val sides are 99.3% long (one-sided primary)
+[PRIM]  Warning: fold 3 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 3 done in 2.7s  |  OOS events=18  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2331 isotonic=0.2445)
+[CLF]  Val AUC=0.5593  (train events=281)
+[REG]  Val MAE=0.010608  (train-median baseline=0.015262)
+[META]  Trained on 144 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 4 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 4 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 4 done in 2.8s  |  OOS events=12  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 31}  calibration=sigmoid (cv Brier sigmoid=0.2279 isotonic=0.2416)
+[CLF]  Val AUC=0.5783  (train events=298)
+[REG]  Val MAE=0.010969  (train-median baseline=0.015711)
+[META]  Trained on 143 events  (success rate=0.552)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 5 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 5 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 5 done in 2.9s  |  OOS events=13  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2297 isotonic=0.2344)
+[CLF]  Val AUC=0.5305  (train events=315)
+[REG]  Val MAE=0.010636  (train-median baseline=0.015626)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 6 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 6 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 6 done in 2.9s  |  OOS events=16  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2271 isotonic=0.2321)
+[CLF]  Val AUC=0.4762  (train events=329)
+[REG]  Val MAE=0.010533  (train-median baseline=0.015757)
+[META]  Trained on 137 events  (success rate=0.562)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 7 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 7 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 7 done in 3.0s  |  OOS events=20  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2290 isotonic=0.2309)
+[CLF]  Val AUC=0.4185  (train events=347)
+[REG]  Val MAE=0.010485  (train-median baseline=0.015295)
+[META]  Trained on 138 events  (success rate=0.529)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 8 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 8 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 8 done in 3.0s  |  OOS events=18  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2277 isotonic=0.2326)
+[CLF]  Val AUC=0.4957  (train events=367)
+[REG]  Val MAE=0.010308  (train-median baseline=0.015017)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 9 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 9 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 9 done in 3.2s  |  OOS events=15  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2344 isotonic=0.2425)
+[CLF]  Val AUC=0.5246  (train events=388)
+[REG]  Val MAE=0.009657  (train-median baseline=0.012941)
+[META]  Trained on 131 events  (success rate=0.603)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 10 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 10 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 10 done in 3.2s  |  OOS events=17  approved=11
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2347 isotonic=0.2434)
+[CLF]  Val AUC=0.5122  (train events=408)
+[REG]  Val MAE=0.008084  (train-median baseline=0.010058)
+[META]  Trained on 126 events  (success rate=0.667)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 11 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 11 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 11 done in 3.2s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2327 isotonic=0.2445)
+[CLF]  Val AUC=0.4540  (train events=426)
+[REG]  Val MAE=0.006643  (train-median baseline=0.007842)
+[META]  Trained on 131 events  (success rate=0.664)
+[PRIM]  ml_xgb: long share val=0.992  test=1.000
+[PRIM]  Warning: fold 12 val sides are 99.2% long (one-sided primary)
+[PRIM]  Warning: fold 12 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 12 done in 3.3s  |  OOS events=15  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2358 isotonic=0.2441)
+[CLF]  Val AUC=0.5115  (train events=441)
+[REG]  Val MAE=0.006257  (train-median baseline=0.007193)
+[META]  Trained on 131 events  (success rate=0.664)
+[PRIM]  ml_xgb: long share val=1.000  test=1.000
+[PRIM]  Warning: fold 13 val sides are 100.0% long (one-sided primary)
+[PRIM]  Warning: fold 13 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 13 done in 3.3s  |  OOS events=19  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2358 isotonic=0.2415)
+[CLF]  Val AUC=0.5538  (train events=453)
+[REG]  Val MAE=0.006155  (train-median baseline=0.007708)
+[META]  Trained on 139 events  (success rate=0.619)
+[PRIM]  ml_xgb: long share val=0.993  test=1.000
+[PRIM]  Warning: fold 14 val sides are 99.3% long (one-sided primary)
+[PRIM]  Warning: fold 14 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 14 done in 3.4s  |  OOS events=8  approved=4
+
+[WFO]  Total OOS events: 234  |  Approved trades: 153
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5855
+Meta-scored events       234.0000
+Meta log-loss              1.0976
+Meta Brier                 0.3597
+Meta AUC                   0.4298
+Approved share             0.6538
+Approved success rate      0.5425
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              16.683        23.894        49.906
+Annual Return (%)              4.237         5.932        11.503
+Annual Volatility (%)         14.224        15.447        18.019
+Sharpe Ratio                   0.363         0.450         0.694
+Max Drawdown (%)             -28.174       -27.979       -23.435
+Calmar Ratio                   0.150         0.212         0.491
+Num Trades                    75.000        95.000         0.000
+Win Rate (%)                  54.667        56.842           NaN
+Avg Trade (bp)                25.134        27.019           NaN
+Avg Bars Held                  7.613         7.611           NaN
+Exposure (%)                  60.939        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  lightgbm split 1/45
+[CPCV]  lightgbm split 2/45
+[CPCV]  lightgbm split 3/45
+[CPCV]  lightgbm split 4/45
+[CPCV]  lightgbm split 5/45
+[CPCV]  lightgbm split 6/45
+[CPCV]  lightgbm split 7/45
+[CPCV]  lightgbm split 8/45
+[CPCV]  lightgbm split 9/45
+[CPCV]  lightgbm split 10/45
+[CPCV]  lightgbm split 11/45
+[CPCV]  lightgbm split 12/45
+[CPCV]  lightgbm split 13/45
+[CPCV]  lightgbm split 14/45
+[CPCV]  lightgbm split 15/45
+[CPCV]  lightgbm split 16/45
+[CPCV]  lightgbm split 17/45
+[CPCV]  lightgbm split 18/45
+[CPCV]  lightgbm split 19/45
+[CPCV]  lightgbm split 20/45
+[CPCV]  lightgbm split 21/45
+[CPCV]  lightgbm split 22/45
+[CPCV]  lightgbm split 23/45
+[CPCV]  lightgbm split 24/45
+[CPCV]  lightgbm split 25/45
+[CPCV]  lightgbm split 26/45
+[CPCV]  lightgbm split 27/45
+[CPCV]  lightgbm split 28/45
+[CPCV]  lightgbm split 29/45
+[CPCV]  lightgbm split 30/45
+[CPCV]  lightgbm split 31/45
+[CPCV]  lightgbm split 32/45
+[CPCV]  lightgbm split 33/45
+[CPCV]  lightgbm split 34/45
+[CPCV]  lightgbm split 35/45
+[CPCV]  lightgbm split 36/45
+[CPCV]  lightgbm split 37/45
+[CPCV]  lightgbm split 38/45
+[CPCV]  lightgbm split 39/45
+[CPCV]  lightgbm split 40/45
+[CPCV]  lightgbm split 41/45
+[CPCV]  lightgbm split 42/45
+[CPCV]  lightgbm split 43/45
+[CPCV]  lightgbm split 44/45
+[CPCV]  lightgbm split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.4002  (train events=230)
+[REG]  Val MAE=0.014316  (train-median baseline=0.018124)
+[META]  Trained on 135 events  (success rate=0.526)
+[PRIM]  ml_xgb: long share val=0.807  test=0.773
+[WFO]  Fold 1 done in 2.2s  |  OOS events=22  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.5277  (train events=258)
+[REG]  Val MAE=0.009879  (train-median baseline=0.013229)
+[META]  Trained on 128 events  (success rate=0.539)
+[PRIM]  ml_xgb: long share val=0.789  test=1.000
+[PRIM]  Warning: fold 2 test sides are 100.0% long (one-sided primary)
+[WFO]  Fold 2 done in 2.2s  |  OOS events=21  approved=21
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.4544  (train events=268)
+[REG]  Val MAE=0.010080  (train-median baseline=0.015082)
+[META]  Trained on 139 events  (success rate=0.489)
+[PRIM]  ml_xgb: long share val=0.719  test=0.944
+[PRIM]  Warning: fold 3 test sides are 94.4% long (one-sided primary)
+[WFO]  Fold 3 done in 2.2s  |  OOS events=18  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.4498  (train events=281)
+[REG]  Val MAE=0.010608  (train-median baseline=0.015262)
+[META]  Trained on 144 events  (success rate=0.486)
+[PRIM]  ml_xgb: long share val=0.854  test=0.833
+[WFO]  Fold 4 done in 2.2s  |  OOS events=12  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.4328  (train events=298)
+[REG]  Val MAE=0.010969  (train-median baseline=0.015711)
+[META]  Trained on 143 events  (success rate=0.503)
+[PRIM]  ml_xgb: long share val=0.853  test=0.923
+[PRIM]  Warning: fold 5 test sides are 92.3% long (one-sided primary)
+[WFO]  Fold 5 done in 2.3s  |  OOS events=13  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.4737  (train events=315)
+[REG]  Val MAE=0.010636  (train-median baseline=0.015626)
+[META]  Trained on 136 events  (success rate=0.537)
+[PRIM]  ml_xgb: long share val=0.890  test=0.562
+[WFO]  Fold 6 done in 2.3s  |  OOS events=16  approved=11
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.5184  (train events=329)
+[REG]  Val MAE=0.010533  (train-median baseline=0.015757)
+[META]  Trained on 137 events  (success rate=0.569)
+[PRIM]  ml_xgb: long share val=0.978  test=0.950
+[PRIM]  Warning: fold 7 val sides are 97.8% long (one-sided primary)
+[PRIM]  Warning: fold 7 test sides are 95.0% long (one-sided primary)
+[WFO]  Fold 7 done in 2.3s  |  OOS events=20  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.5498  (train events=347)
+[REG]  Val MAE=0.010485  (train-median baseline=0.015295)
+[META]  Trained on 138 events  (success rate=0.529)
+[PRIM]  ml_xgb: long share val=0.957  test=0.722
+[PRIM]  Warning: fold 8 val sides are 95.7% long (one-sided primary)
+[WFO]  Fold 8 done in 2.3s  |  OOS events=18  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.5093  (train events=367)
+[REG]  Val MAE=0.010308  (train-median baseline=0.015017)
+[META]  Trained on 137 events  (success rate=0.540)
+[PRIM]  ml_xgb: long share val=0.912  test=0.400
+[PRIM]  Warning: fold 9 val sides are 91.2% long (one-sided primary)
+[WFO]  Fold 9 done in 2.3s  |  OOS events=15  approved=5
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.4640  (train events=388)
+[REG]  Val MAE=0.009657  (train-median baseline=0.012941)
+[META]  Trained on 131 events  (success rate=0.534)
+[PRIM]  ml_xgb: long share val=0.748  test=0.706
+[WFO]  Fold 10 done in 2.3s  |  OOS events=17  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.4974  (train events=408)
+[REG]  Val MAE=0.008084  (train-median baseline=0.010058)
+[META]  Trained on 126 events  (success rate=0.500)
+[PRIM]  ml_xgb: long share val=0.484  test=0.450
+[WFO]  Fold 11 done in 2.3s  |  OOS events=20  approved=5
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.5634  (train events=426)
+[REG]  Val MAE=0.006643  (train-median baseline=0.007842)
+[META]  Trained on 131 events  (success rate=0.534)
+[PRIM]  ml_xgb: long share val=0.450  test=0.800
+[WFO]  Fold 12 done in 2.3s  |  OOS events=15  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.5055  (train events=441)
+[REG]  Val MAE=0.006257  (train-median baseline=0.007193)
+[META]  Trained on 131 events  (success rate=0.534)
+[PRIM]  ml_xgb: long share val=0.458  test=0.842
+[WFO]  Fold 13 done in 2.4s  |  OOS events=19  approved=17
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[FILTER] Active-day mask: 100.0% of bars retained for classifier training
+[CLF]  Val AUC=0.4486  (train events=453)
+[REG]  Val MAE=0.006155  (train-median baseline=0.007708)
+[META]  Trained on 139 events  (success rate=0.532)
+[PRIM]  ml_xgb: long share val=0.518  test=0.250
+[WFO]  Fold 14 done in 2.5s  |  OOS events=8  approved=5
+
+[WFO]  Total OOS events: 234  |  Approved trades: 141
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5299
+Meta-scored events       234.0000
+Meta log-loss              0.9401
+Meta Brier                 0.3265
+Meta AUC                   0.5065
+Approved share             0.6026
+Approved success rate      0.5319
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)               2.621       -10.728        49.906
+Annual Return (%)              0.698        -3.006        11.503
+Annual Volatility (%)         13.711        15.452        18.019
+Sharpe Ratio                   0.119        -0.120         0.694
+Max Drawdown (%)             -27.873       -27.381       -23.435
+Calmar Ratio                   0.025        -0.110         0.491
+Num Trades                    68.000        95.000         0.000
+Win Rate (%)                  52.941        50.526           NaN
+Avg Trade (bp)                 8.924        -7.446           NaN
+Avg Bars Held                  7.338         7.611           NaN
+Exposure (%)                  53.255        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  legacy split 1/45
+[CPCV]  legacy split 2/45
+[CPCV]  legacy split 3/45
+[CPCV]  legacy split 4/45
+[CPCV]  legacy split 5/45
+[CPCV]  legacy split 6/45
+[CPCV]  legacy split 7/45
+[CPCV]  legacy split 8/45
+[CPCV]  legacy split 9/45
+[CPCV]  legacy split 10/45
+[CPCV]  legacy split 11/45
+[CPCV]  legacy split 12/45
+[CPCV]  legacy split 13/45
+[CPCV]  legacy split 14/45
+[CPCV]  legacy split 15/45
+[CPCV]  legacy split 16/45
+[CPCV]  legacy split 17/45
+[CPCV]  legacy split 18/45
+[CPCV]  legacy split 19/45
+[CPCV]  legacy split 20/45
+[CPCV]  legacy split 21/45
+[CPCV]  legacy split 22/45
+[CPCV]  legacy split 23/45
+[CPCV]  legacy split 24/45
+[CPCV]  legacy split 25/45
+[CPCV]  legacy split 26/45
+[CPCV]  legacy split 27/45
+[CPCV]  legacy split 28/45
+[CPCV]  legacy split 29/45
+[CPCV]  legacy split 30/45
+[CPCV]  legacy split 31/45
+[CPCV]  legacy split 32/45
+[CPCV]  legacy split 33/45
+[CPCV]  legacy split 34/45
+[CPCV]  legacy split 35/45
+[CPCV]  legacy split 36/45
+[CPCV]  legacy split 37/45
+[CPCV]  legacy split 38/45
+[CPCV]  legacy split 39/45
+[CPCV]  legacy split 40/45
+[CPCV]  legacy split 41/45
+[CPCV]  legacy split 42/45
+[CPCV]  legacy split 43/45
+[CPCV]  legacy split 44/45
+[CPCV]  legacy split 45/45
+
+      model  meta_logloss  brier  meta_auc  meta_precision  sharpe  cpcv_sr_mean  cpcv_sr_sd  runtime_s status
+   logit_l1        1.0817 0.3559    0.4301          0.5478  0.3610        1.0573      0.0000       35.5     ok
+   logit_l2        1.0641 0.3502    0.4427          0.5449  0.3417        1.0501      0.0172       26.7     ok
+     rf_ldp        1.0834 0.3575    0.4272          0.5455  0.3454        1.0485      0.0227      277.5     ok
+extra_trees        1.0874 0.3590    0.4328          0.5497  0.4249        1.0615      0.0126      158.4     ok
+        xgb        1.0343 0.3419    0.4505          0.5461  0.3362        1.0515      0.0800      293.1     ok
+   lightgbm        1.0976 0.3597    0.4298          0.5425  0.3628        1.1505      0.1213      121.0     ok
+     legacy        0.9401 0.3265    0.5065          0.5319  0.1192        0.0460      0.2648       63.3     ok
+[ZOO]  Saved results/model_zoo/comparison_SPY_1Day_primary_ml_xgb_val.csv

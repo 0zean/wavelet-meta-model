@@ -1,0 +1,18 @@
+# U11 Stage A — screen (PLAN U11): full stock × timeframe × primary zoo, default features, xgb / rf_ldp meta-models,
+# fixed sizing, bi-weekly retraining (TEST = 10 sessions on every timeframe), development window only.
+# 1Min is excluded: not cached (SPEC §1 restricts it to ≤ 3 symbols; deferred).
+stage: A
+name: u11_a_screen
+defaults:
+  start: 2016-01-01
+  end: 2025-10-01
+  feature_groups: default
+  meta_train: oof
+  sizer: fixed
+  risk_profile: none
+  overrides: {TEST: 10}
+grid:
+  symbols: [SPY, QQQ, IWM, DIA, XLF, XLK, XLE, XLV, TLT, GLD, AAPL, MSFT, NVDA, AMZN, GOOGL, META, JPM, XOM, UNH]
+  timeframe: [5Min, 15Min, 30Min, 1Hour, 1Day]
+  primary.name: [wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb]
+  model.meta: [xgb, rf_ldp]

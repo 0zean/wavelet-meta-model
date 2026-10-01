@@ -1,0 +1,1964 @@
+[DATA]  SPY 1Day: dropping 1 session(s) missing their last bar: 2019-08-12
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.02s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2622 isotonic=0.2528)
+[META]  Trained on 135 events  (success rate=0.519)
+[PRIM]  wavelet_trend: long share val=0.622  test=0.318
+[WFO]  Fold 1 done in 44.2s  |  OOS events=22  approved=22
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2604 isotonic=0.2639)
+[META]  Trained on 128 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share val=0.633  test=0.143
+[WFO]  Fold 2 done in 47.3s  |  OOS events=21  approved=21
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2575 isotonic=0.2525)
+[META]  Trained on 139 events  (success rate=0.511)
+[PRIM]  wavelet_trend: long share val=0.568  test=0.389
+[WFO]  Fold 3 done in 45.8s  |  OOS events=18  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2527 isotonic=0.2525)
+[META]  Trained on 144 events  (success rate=0.521)
+[PRIM]  wavelet_trend: long share val=0.542  test=0.583
+[WFO]  Fold 4 done in 55.1s  |  OOS events=12  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2554 isotonic=0.2495)
+[META]  Trained on 143 events  (success rate=0.545)
+[PRIM]  wavelet_trend: long share val=0.503  test=0.615
+[WFO]  Fold 5 done in 55.5s  |  OOS events=13  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2654 isotonic=0.2475)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  wavelet_trend: long share val=0.471  test=0.812
+[WFO]  Fold 6 done in 55.4s  |  OOS events=16  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2505 isotonic=0.2493)
+[META]  Trained on 137 events  (success rate=0.569)
+[PRIM]  wavelet_trend: long share val=0.482  test=0.350
+[WFO]  Fold 7 done in 69.5s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2478 isotonic=0.2489)
+[META]  Trained on 138 events  (success rate=0.572)
+[PRIM]  wavelet_trend: long share val=0.464  test=0.667
+[WFO]  Fold 8 done in 67.2s  |  OOS events=18  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=sigmoid (cv Brier sigmoid=0.2466 isotonic=0.2492)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  wavelet_trend: long share val=0.445  test=0.933
+[PRIM]  Warning: fold 9 test sides are 93.3% long (one-sided primary)
+[WFO]  Fold 9 done in 65.4s  |  OOS events=15  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2480 isotonic=0.2393)
+[META]  Trained on 131 events  (success rate=0.611)
+[PRIM]  wavelet_trend: long share val=0.534  test=0.588
+[WFO]  Fold 10 done in 67.9s  |  OOS events=17  approved=17
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2427 isotonic=0.2422)
+[META]  Trained on 126 events  (success rate=0.595)
+[PRIM]  wavelet_trend: long share val=0.595  test=0.500
+[WFO]  Fold 11 done in 81.6s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.3131 isotonic=0.2625)
+[META]  Trained on 131 events  (success rate=0.550)
+[PRIM]  wavelet_trend: long share val=0.618  test=0.600
+[WFO]  Fold 12 done in 91.7s  |  OOS events=15  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2883 isotonic=0.2752)
+[META]  Trained on 131 events  (success rate=0.527)
+[PRIM]  wavelet_trend: long share val=0.634  test=0.263
+[WFO]  Fold 13 done in 89.7s  |  OOS events=19  approved=19
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l1 {'C': 0.1}  calibration=isotonic (cv Brier sigmoid=0.2643 isotonic=0.2516)
+[META]  Trained on 139 events  (success rate=0.532)
+[PRIM]  wavelet_trend: long share val=0.576  test=0.750
+[WFO]  Fold 14 done in 88.1s  |  OOS events=8  approved=8
+
+[WFO]  Total OOS events: 234  |  Approved trades: 216
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5513
+Meta-scored events       234.0000
+Meta log-loss              0.7012
+Meta Brier                 0.2539
+Meta AUC                   0.4328
+Approved share             0.9231
+Approved success rate      0.5556
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              33.348        37.815        49.906
+Annual Return (%)              8.047         9.009        11.503
+Annual Volatility (%)         15.153        15.411        18.019
+Sharpe Ratio                   0.586         0.637         0.694
+Max Drawdown (%)             -18.796       -18.796       -23.435
+Calmar Ratio                   0.428         0.479         0.491
+Num Trades                    88.000        95.000         0.000
+Win Rate (%)                  53.409        54.737           NaN
+Avg Trade (bp)                37.309        38.205           NaN
+Avg Bars Held                  7.591         7.611           NaN
+Exposure (%)                  71.291        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  logit_l1 split 1/45
+[CPCV]  logit_l1 split 2/45
+[CPCV]  logit_l1 split 3/45
+[CPCV]  logit_l1 split 4/45
+[CPCV]  logit_l1 split 5/45
+[CPCV]  logit_l1 split 6/45
+[CPCV]  logit_l1 split 7/45
+[CPCV]  logit_l1 split 8/45
+[CPCV]  logit_l1 split 9/45
+[CPCV]  logit_l1 split 10/45
+[CPCV]  logit_l1 split 11/45
+[CPCV]  logit_l1 split 12/45
+[CPCV]  logit_l1 split 13/45
+[CPCV]  logit_l1 split 14/45
+[CPCV]  logit_l1 split 15/45
+[CPCV]  logit_l1 split 16/45
+[CPCV]  logit_l1 split 17/45
+[CPCV]  logit_l1 split 18/45
+[CPCV]  logit_l1 split 19/45
+[CPCV]  logit_l1 split 20/45
+[CPCV]  logit_l1 split 21/45
+[CPCV]  logit_l1 split 22/45
+[CPCV]  logit_l1 split 23/45
+[CPCV]  logit_l1 split 24/45
+[CPCV]  logit_l1 split 25/45
+[CPCV]  logit_l1 split 26/45
+[CPCV]  logit_l1 split 27/45
+[CPCV]  logit_l1 split 28/45
+[CPCV]  logit_l1 split 29/45
+[CPCV]  logit_l1 split 30/45
+[CPCV]  logit_l1 split 31/45
+[CPCV]  logit_l1 split 32/45
+[CPCV]  logit_l1 split 33/45
+[CPCV]  logit_l1 split 34/45
+[CPCV]  logit_l1 split 35/45
+[CPCV]  logit_l1 split 36/45
+[CPCV]  logit_l1 split 37/45
+[CPCV]  logit_l1 split 38/45
+[CPCV]  logit_l1 split 39/45
+[CPCV]  logit_l1 split 40/45
+[CPCV]  logit_l1 split 41/45
+[CPCV]  logit_l1 split 42/45
+[CPCV]  logit_l1 split 43/45
+[CPCV]  logit_l1 split 44/45
+[CPCV]  logit_l1 split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.3005 isotonic=0.2767)
+[META]  Trained on 135 events  (success rate=0.519)
+[PRIM]  wavelet_trend: long share val=0.622  test=0.318
+[WFO]  Fold 1 done in 47.5s  |  OOS events=22  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2596 isotonic=0.2911)
+[META]  Trained on 128 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share val=0.633  test=0.143
+[WFO]  Fold 2 done in 52.1s  |  OOS events=21  approved=3
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2716 isotonic=0.2667)
+[META]  Trained on 139 events  (success rate=0.511)
+[PRIM]  wavelet_trend: long share val=0.568  test=0.389
+[WFO]  Fold 3 done in 50.5s  |  OOS events=18  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2650 isotonic=0.3077)
+[META]  Trained on 144 events  (success rate=0.521)
+[PRIM]  wavelet_trend: long share val=0.542  test=0.583
+[WFO]  Fold 4 done in 64.5s  |  OOS events=12  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2458 isotonic=0.2662)
+[META]  Trained on 143 events  (success rate=0.545)
+[PRIM]  wavelet_trend: long share val=0.503  test=0.615
+[WFO]  Fold 5 done in 61.7s  |  OOS events=13  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2454 isotonic=0.2404)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  wavelet_trend: long share val=0.471  test=0.812
+[WFO]  Fold 6 done in 64.2s  |  OOS events=16  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2553 isotonic=0.2901)
+[META]  Trained on 137 events  (success rate=0.569)
+[PRIM]  wavelet_trend: long share val=0.482  test=0.350
+[WFO]  Fold 7 done in 74.0s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2483 isotonic=0.2596)
+[META]  Trained on 138 events  (success rate=0.572)
+[PRIM]  wavelet_trend: long share val=0.464  test=0.667
+[WFO]  Fold 8 done in 77.7s  |  OOS events=18  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2552 isotonic=0.2770)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  wavelet_trend: long share val=0.445  test=0.933
+[PRIM]  Warning: fold 9 test sides are 93.3% long (one-sided primary)
+[WFO]  Fold 9 done in 74.9s  |  OOS events=15  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2545 isotonic=0.2956)
+[META]  Trained on 131 events  (success rate=0.611)
+[PRIM]  wavelet_trend: long share val=0.534  test=0.588
+[WFO]  Fold 10 done in 78.9s  |  OOS events=17  approved=17
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2693 isotonic=0.2880)
+[META]  Trained on 126 events  (success rate=0.595)
+[PRIM]  wavelet_trend: long share val=0.595  test=0.500
+[WFO]  Fold 11 done in 91.3s  |  OOS events=20  approved=19
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2475 isotonic=0.2608)
+[META]  Trained on 131 events  (success rate=0.550)
+[PRIM]  wavelet_trend: long share val=0.618  test=0.600
+[WFO]  Fold 12 done in 95.4s  |  OOS events=15  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2540 isotonic=0.2284)
+[META]  Trained on 131 events  (success rate=0.527)
+[PRIM]  wavelet_trend: long share val=0.634  test=0.263
+[WFO]  Fold 13 done in 89.0s  |  OOS events=19  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2782 isotonic=0.2946)
+[META]  Trained on 139 events  (success rate=0.532)
+[PRIM]  wavelet_trend: long share val=0.576  test=0.750
+[WFO]  Fold 14 done in 64.3s  |  OOS events=8  approved=8
+
+[WFO]  Total OOS events: 234  |  Approved trades: 170
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5513
+Meta-scored events       234.0000
+Meta log-loss              0.8732
+Meta Brier                 0.2703
+Meta AUC                   0.5292
+Approved share             0.7265
+Approved success rate      0.5706
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              19.070        37.815        49.906
+Annual Return (%)              4.806         9.009        11.503
+Annual Volatility (%)         11.633        15.411        18.019
+Sharpe Ratio                   0.462         0.637         0.694
+Max Drawdown (%)             -13.854       -18.796       -23.435
+Calmar Ratio                   0.347         0.479         0.491
+Num Trades                    72.000        95.000         0.000
+Win Rate (%)                  58.333        54.737           NaN
+Avg Trade (bp)                27.801        38.205           NaN
+Avg Bars Held                  8.222         7.611           NaN
+Exposure (%)                  63.180        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  logit_l2 split 1/45
+[CPCV]  logit_l2 split 2/45
+[CPCV]  logit_l2 split 3/45
+[CPCV]  logit_l2 split 4/45
+[CPCV]  logit_l2 split 5/45
+[CPCV]  logit_l2 split 6/45
+[CPCV]  logit_l2 split 7/45
+[CPCV]  logit_l2 split 8/45
+[CPCV]  logit_l2 split 9/45
+[CPCV]  logit_l2 split 10/45
+[CPCV]  logit_l2 split 11/45
+[CPCV]  logit_l2 split 12/45
+[CPCV]  logit_l2 split 13/45
+[CPCV]  logit_l2 split 14/45
+[CPCV]  logit_l2 split 15/45
+[CPCV]  logit_l2 split 16/45
+[CPCV]  logit_l2 split 17/45
+[CPCV]  logit_l2 split 18/45
+[CPCV]  logit_l2 split 19/45
+[CPCV]  logit_l2 split 20/45
+[CPCV]  logit_l2 split 21/45
+[CPCV]  logit_l2 split 22/45
+[CPCV]  logit_l2 split 23/45
+[CPCV]  logit_l2 split 24/45
+[CPCV]  logit_l2 split 25/45
+[CPCV]  logit_l2 split 26/45
+[CPCV]  logit_l2 split 27/45
+[CPCV]  logit_l2 split 28/45
+[CPCV]  logit_l2 split 29/45
+[CPCV]  logit_l2 split 30/45
+[CPCV]  logit_l2 split 31/45
+[CPCV]  logit_l2 split 32/45
+[CPCV]  logit_l2 split 33/45
+[CPCV]  logit_l2 split 34/45
+[CPCV]  logit_l2 split 35/45
+[CPCV]  logit_l2 split 36/45
+[CPCV]  logit_l2 split 37/45
+[CPCV]  logit_l2 split 38/45
+[CPCV]  logit_l2 split 39/45
+[CPCV]  logit_l2 split 40/45
+[CPCV]  logit_l2 split 41/45
+[CPCV]  logit_l2 split 42/45
+[CPCV]  logit_l2 split 43/45
+[CPCV]  logit_l2 split 44/45
+[CPCV]  logit_l2 split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2615 isotonic=0.2798)
+[META]  Trained on 135 events  (success rate=0.519)
+[PRIM]  wavelet_trend: long share val=0.622  test=0.318
+[WFO]  Fold 1 done in 27.0s  |  OOS events=22  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2599 isotonic=0.2741)
+[META]  Trained on 128 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share val=0.633  test=0.143
+[WFO]  Fold 2 done in 8.3s  |  OOS events=21  approved=3
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2586 isotonic=0.2624)
+[META]  Trained on 139 events  (success rate=0.511)
+[PRIM]  wavelet_trend: long share val=0.568  test=0.389
+[WFO]  Fold 3 done in 33.0s  |  OOS events=18  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2578 isotonic=0.2712)
+[META]  Trained on 144 events  (success rate=0.521)
+[PRIM]  wavelet_trend: long share val=0.542  test=0.583
+[WFO]  Fold 4 done in 24.4s  |  OOS events=12  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2465 isotonic=0.2674)
+[META]  Trained on 143 events  (success rate=0.545)
+[PRIM]  wavelet_trend: long share val=0.503  test=0.615
+[WFO]  Fold 5 done in 23.5s  |  OOS events=13  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2520 isotonic=0.2783)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  wavelet_trend: long share val=0.471  test=0.812
+[WFO]  Fold 6 done in 8.3s  |  OOS events=16  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2659 isotonic=0.2841)
+[META]  Trained on 137 events  (success rate=0.569)
+[PRIM]  wavelet_trend: long share val=0.482  test=0.350
+[WFO]  Fold 7 done in 30.6s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 'sqrt'}  calibration=sigmoid (cv Brier sigmoid=0.2458 isotonic=0.2679)
+[META]  Trained on 138 events  (success rate=0.572)
+[PRIM]  wavelet_trend: long share val=0.464  test=0.667
+[WFO]  Fold 8 done in 7.3s  |  OOS events=18  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2589 isotonic=0.2740)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  wavelet_trend: long share val=0.445  test=0.933
+[PRIM]  Warning: fold 9 test sides are 93.3% long (one-sided primary)
+[WFO]  Fold 9 done in 34.4s  |  OOS events=15  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2436 isotonic=0.2700)
+[META]  Trained on 131 events  (success rate=0.611)
+[PRIM]  wavelet_trend: long share val=0.534  test=0.588
+[WFO]  Fold 10 done in 8.0s  |  OOS events=17  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2400 isotonic=0.2714)
+[META]  Trained on 126 events  (success rate=0.595)
+[PRIM]  wavelet_trend: long share val=0.595  test=0.500
+[WFO]  Fold 11 done in 41.7s  |  OOS events=20  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 'sqrt'}  calibration=isotonic (cv Brier sigmoid=0.2298 isotonic=0.2124)
+[META]  Trained on 131 events  (success rate=0.550)
+[PRIM]  wavelet_trend: long share val=0.618  test=0.600
+[WFO]  Fold 12 done in 7.1s  |  OOS events=15  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2364 isotonic=0.2544)
+[META]  Trained on 131 events  (success rate=0.527)
+[PRIM]  wavelet_trend: long share val=0.634  test=0.263
+[WFO]  Fold 13 done in 7.5s  |  OOS events=19  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[META]  rf_ldp {'max_features': 1}  calibration=sigmoid (cv Brier sigmoid=0.2808 isotonic=0.3011)
+[META]  Trained on 139 events  (success rate=0.532)
+[PRIM]  wavelet_trend: long share val=0.576  test=0.750
+[WFO]  Fold 14 done in 33.2s  |  OOS events=8  approved=8
+
+[WFO]  Total OOS events: 234  |  Approved trades: 177
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5513
+Meta-scored events       234.0000
+Meta log-loss              0.6953
+Meta Brier                 0.2512
+Meta AUC                   0.5423
+Approved share             0.7564
+Approved success rate      0.5650
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              -9.209        37.815        49.906
+Annual Return (%)             -2.565         9.009        11.503
+Annual Volatility (%)         12.515        15.411        18.019
+Sharpe Ratio                  -0.145         0.637         0.694
+Max Drawdown (%)             -24.809       -18.796       -23.435
+Calmar Ratio                  -0.103         0.479         0.491
+Num Trades                    75.000        95.000         0.000
+Win Rate (%)                  53.333        54.737           NaN
+Avg Trade (bp)                -8.930        38.205           NaN
+Avg Bars Held                  8.093         7.611           NaN
+Exposure (%)                  64.781        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  rf_ldp split 1/45
+[CPCV]  rf_ldp split 2/45
+[CPCV]  rf_ldp split 3/45
+[CPCV]  rf_ldp split 4/45
+[CPCV]  rf_ldp split 5/45
+[CPCV]  rf_ldp split 6/45
+[CPCV]  rf_ldp split 7/45
+[CPCV]  rf_ldp split 8/45
+[CPCV]  rf_ldp split 9/45
+[CPCV]  rf_ldp split 10/45
+[CPCV]  rf_ldp split 11/45
+[CPCV]  rf_ldp split 12/45
+[CPCV]  rf_ldp split 13/45
+[CPCV]  rf_ldp split 14/45
+[CPCV]  rf_ldp split 15/45
+[CPCV]  rf_ldp split 16/45
+[CPCV]  rf_ldp split 17/45
+[CPCV]  rf_ldp split 18/45
+[CPCV]  rf_ldp split 19/45
+[CPCV]  rf_ldp split 20/45
+[CPCV]  rf_ldp split 21/45
+[CPCV]  rf_ldp split 22/45
+[CPCV]  rf_ldp split 23/45
+[CPCV]  rf_ldp split 24/45
+[CPCV]  rf_ldp split 25/45
+[CPCV]  rf_ldp split 26/45
+[CPCV]  rf_ldp split 27/45
+[CPCV]  rf_ldp split 28/45
+[CPCV]  rf_ldp split 29/45
+[CPCV]  rf_ldp split 30/45
+[CPCV]  rf_ldp split 31/45
+[CPCV]  rf_ldp split 32/45
+[CPCV]  rf_ldp split 33/45
+[CPCV]  rf_ldp split 34/45
+[CPCV]  rf_ldp split 35/45
+[CPCV]  rf_ldp split 36/45
+[CPCV]  rf_ldp split 37/45
+[CPCV]  rf_ldp split 38/45
+[CPCV]  rf_ldp split 39/45
+[CPCV]  rf_ldp split 40/45
+[CPCV]  rf_ldp split 41/45
+[CPCV]  rf_ldp split 42/45
+[CPCV]  rf_ldp split 43/45
+[CPCV]  rf_ldp split 44/45
+[CPCV]  rf_ldp split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2637 isotonic=0.2733)
+[META]  Trained on 135 events  (success rate=0.519)
+[PRIM]  wavelet_trend: long share val=0.622  test=0.318
+[WFO]  Fold 1 done in 3.8s  |  OOS events=22  approved=11
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2679 isotonic=0.2957)
+[META]  Trained on 128 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share val=0.633  test=0.143
+[WFO]  Fold 2 done in 4.1s  |  OOS events=21  approved=3
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2562 isotonic=0.2563)
+[META]  Trained on 139 events  (success rate=0.511)
+[PRIM]  wavelet_trend: long share val=0.568  test=0.389
+[WFO]  Fold 3 done in 3.9s  |  OOS events=18  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2559 isotonic=0.2671)
+[META]  Trained on 144 events  (success rate=0.521)
+[PRIM]  wavelet_trend: long share val=0.542  test=0.583
+[WFO]  Fold 4 done in 3.4s  |  OOS events=12  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2443 isotonic=0.2601)
+[META]  Trained on 143 events  (success rate=0.545)
+[PRIM]  wavelet_trend: long share val=0.503  test=0.615
+[WFO]  Fold 5 done in 2.7s  |  OOS events=13  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2530 isotonic=0.2630)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  wavelet_trend: long share val=0.471  test=0.812
+[WFO]  Fold 6 done in 2.6s  |  OOS events=16  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2671 isotonic=0.3118)
+[META]  Trained on 137 events  (success rate=0.569)
+[PRIM]  wavelet_trend: long share val=0.482  test=0.350
+[WFO]  Fold 7 done in 2.7s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2440 isotonic=0.2708)
+[META]  Trained on 138 events  (success rate=0.572)
+[PRIM]  wavelet_trend: long share val=0.464  test=0.667
+[WFO]  Fold 8 done in 2.7s  |  OOS events=18  approved=17
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=isotonic (cv Brier sigmoid=0.2599 isotonic=0.2567)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  wavelet_trend: long share val=0.445  test=0.933
+[PRIM]  Warning: fold 9 test sides are 93.3% long (one-sided primary)
+[WFO]  Fold 9 done in 3.1s  |  OOS events=15  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2525 isotonic=0.2646)
+[META]  Trained on 131 events  (success rate=0.611)
+[PRIM]  wavelet_trend: long share val=0.534  test=0.588
+[WFO]  Fold 10 done in 2.7s  |  OOS events=17  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2256 isotonic=0.2304)
+[META]  Trained on 126 events  (success rate=0.595)
+[PRIM]  wavelet_trend: long share val=0.595  test=0.500
+[WFO]  Fold 11 done in 2.9s  |  OOS events=20  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2291 isotonic=0.2435)
+[META]  Trained on 131 events  (success rate=0.550)
+[PRIM]  wavelet_trend: long share val=0.618  test=0.600
+[WFO]  Fold 12 done in 7.9s  |  OOS events=15  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2430 isotonic=0.2612)
+[META]  Trained on 131 events  (success rate=0.527)
+[PRIM]  wavelet_trend: long share val=0.634  test=0.263
+[WFO]  Fold 13 done in 4.2s  |  OOS events=19  approved=5
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[META]  extra_trees {'min_weight_fraction_leaf': 0.05}  calibration=sigmoid (cv Brier sigmoid=0.2812 isotonic=0.2948)
+[META]  Trained on 139 events  (success rate=0.532)
+[PRIM]  wavelet_trend: long share val=0.576  test=0.750
+[WFO]  Fold 14 done in 3.5s  |  OOS events=8  approved=8
+
+[WFO]  Total OOS events: 234  |  Approved trades: 180
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5513
+Meta-scored events       234.0000
+Meta log-loss              0.7070
+Meta Brier                 0.2562
+Meta AUC                   0.5288
+Approved share             0.7692
+Approved success rate      0.5444
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)             -12.716        37.815        49.906
+Annual Return (%)             -3.592         9.009        11.503
+Annual Volatility (%)         12.662        15.411        18.019
+Sharpe Ratio                  -0.226         0.637         0.694
+Max Drawdown (%)             -24.809       -18.796       -23.435
+Calmar Ratio                  -0.145         0.479         0.491
+Num Trades                    78.000        95.000         0.000
+Win Rate (%)                  51.282        54.737           NaN
+Avg Trade (bp)               -13.433        38.205           NaN
+Avg Bars Held                  8.090         7.611           NaN
+Exposure (%)                  67.343        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  extra_trees split 1/45
+[CPCV]  extra_trees split 2/45
+[CPCV]  extra_trees split 3/45
+[CPCV]  extra_trees split 4/45
+[CPCV]  extra_trees split 5/45
+[CPCV]  extra_trees split 6/45
+[CPCV]  extra_trees split 7/45
+[CPCV]  extra_trees split 8/45
+[CPCV]  extra_trees split 9/45
+[CPCV]  extra_trees split 10/45
+[CPCV]  extra_trees split 11/45
+[CPCV]  extra_trees split 12/45
+[CPCV]  extra_trees split 13/45
+[CPCV]  extra_trees split 14/45
+[CPCV]  extra_trees split 15/45
+[CPCV]  extra_trees split 16/45
+[CPCV]  extra_trees split 17/45
+[CPCV]  extra_trees split 18/45
+[CPCV]  extra_trees split 19/45
+[CPCV]  extra_trees split 20/45
+[CPCV]  extra_trees split 21/45
+[CPCV]  extra_trees split 22/45
+[CPCV]  extra_trees split 23/45
+[CPCV]  extra_trees split 24/45
+[CPCV]  extra_trees split 25/45
+[CPCV]  extra_trees split 26/45
+[CPCV]  extra_trees split 27/45
+[CPCV]  extra_trees split 28/45
+[CPCV]  extra_trees split 29/45
+[CPCV]  extra_trees split 30/45
+[CPCV]  extra_trees split 31/45
+[CPCV]  extra_trees split 32/45
+[CPCV]  extra_trees split 33/45
+[CPCV]  extra_trees split 34/45
+[CPCV]  extra_trees split 35/45
+[CPCV]  extra_trees split 36/45
+[CPCV]  extra_trees split 37/45
+[CPCV]  extra_trees split 38/45
+[CPCV]  extra_trees split 39/45
+[CPCV]  extra_trees split 40/45
+[CPCV]  extra_trees split 41/45
+[CPCV]  extra_trees split 42/45
+[CPCV]  extra_trees split 43/45
+[CPCV]  extra_trees split 44/45
+[CPCV]  extra_trees split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 4}  calibration=sigmoid (cv Brier sigmoid=0.2493 isotonic=0.2557)
+[META]  Trained on 135 events  (success rate=0.519)
+[PRIM]  wavelet_trend: long share val=0.622  test=0.318
+[WFO]  Fold 1 done in 4.5s  |  OOS events=22  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2546 isotonic=0.2650)
+[META]  Trained on 128 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share val=0.633  test=0.143
+[WFO]  Fold 2 done in 4.2s  |  OOS events=21  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2526 isotonic=0.2683)
+[META]  Trained on 139 events  (success rate=0.511)
+[PRIM]  wavelet_trend: long share val=0.568  test=0.389
+[WFO]  Fold 3 done in 4.4s  |  OOS events=18  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2591 isotonic=0.2754)
+[META]  Trained on 144 events  (success rate=0.521)
+[PRIM]  wavelet_trend: long share val=0.542  test=0.583
+[WFO]  Fold 4 done in 4.2s  |  OOS events=12  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 4}  calibration=sigmoid (cv Brier sigmoid=0.2475 isotonic=0.2679)
+[META]  Trained on 143 events  (success rate=0.545)
+[PRIM]  wavelet_trend: long share val=0.503  test=0.615
+[WFO]  Fold 5 done in 4.7s  |  OOS events=13  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 4}  calibration=sigmoid (cv Brier sigmoid=0.2515 isotonic=0.2649)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  wavelet_trend: long share val=0.471  test=0.812
+[WFO]  Fold 6 done in 4.5s  |  OOS events=16  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2513 isotonic=0.2719)
+[META]  Trained on 137 events  (success rate=0.569)
+[PRIM]  wavelet_trend: long share val=0.482  test=0.350
+[WFO]  Fold 7 done in 4.3s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2450 isotonic=0.2661)
+[META]  Trained on 138 events  (success rate=0.572)
+[PRIM]  wavelet_trend: long share val=0.464  test=0.667
+[WFO]  Fold 8 done in 4.3s  |  OOS events=18  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 4}  calibration=sigmoid (cv Brier sigmoid=0.2480 isotonic=0.2803)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  wavelet_trend: long share val=0.445  test=0.933
+[PRIM]  Warning: fold 9 test sides are 93.3% long (one-sided primary)
+[WFO]  Fold 9 done in 4.5s  |  OOS events=15  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 4}  calibration=sigmoid (cv Brier sigmoid=0.2390 isotonic=0.2794)
+[META]  Trained on 131 events  (success rate=0.611)
+[PRIM]  wavelet_trend: long share val=0.534  test=0.588
+[WFO]  Fold 10 done in 4.4s  |  OOS events=17  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 4}  calibration=sigmoid (cv Brier sigmoid=0.2339 isotonic=0.2649)
+[META]  Trained on 126 events  (success rate=0.595)
+[PRIM]  wavelet_trend: long share val=0.595  test=0.500
+[WFO]  Fold 11 done in 4.4s  |  OOS events=20  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 2}  calibration=isotonic (cv Brier sigmoid=0.2463 isotonic=0.2407)
+[META]  Trained on 131 events  (success rate=0.550)
+[PRIM]  wavelet_trend: long share val=0.618  test=0.600
+[WFO]  Fold 12 done in 4.3s  |  OOS events=15  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2529 isotonic=0.2577)
+[META]  Trained on 131 events  (success rate=0.527)
+[PRIM]  wavelet_trend: long share val=0.634  test=0.263
+[WFO]  Fold 13 done in 4.3s  |  OOS events=19  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[META]  xgb {'max_depth': 2}  calibration=sigmoid (cv Brier sigmoid=0.2582 isotonic=0.2767)
+[META]  Trained on 139 events  (success rate=0.532)
+[PRIM]  wavelet_trend: long share val=0.576  test=0.750
+[WFO]  Fold 14 done in 4.4s  |  OOS events=8  approved=8
+
+[WFO]  Total OOS events: 234  |  Approved trades: 178
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5513
+Meta-scored events       234.0000
+Meta log-loss              0.7111
+Meta Brier                 0.2584
+Meta AUC                   0.4750
+Approved share             0.7607
+Approved success rate      0.5337
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              -3.786        37.815        49.906
+Annual Return (%)             -1.033         9.009        11.503
+Annual Volatility (%)         12.562        15.411        18.019
+Sharpe Ratio                  -0.020         0.637         0.694
+Max Drawdown (%)             -19.006       -18.796       -23.435
+Calmar Ratio                  -0.054         0.479         0.491
+Num Trades                    77.000        95.000         0.000
+Win Rate (%)                  53.247        54.737           NaN
+Avg Trade (bp)                -1.219        38.205           NaN
+Avg Bars Held                  8.182         7.611           NaN
+Exposure (%)                  67.236        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  xgb split 1/45
+[CPCV]  xgb split 2/45
+[CPCV]  xgb split 3/45
+[CPCV]  xgb split 4/45
+[CPCV]  xgb split 5/45
+[CPCV]  xgb split 6/45
+[CPCV]  xgb split 7/45
+[CPCV]  xgb split 8/45
+[CPCV]  xgb split 9/45
+[CPCV]  xgb split 10/45
+[CPCV]  xgb split 11/45
+[CPCV]  xgb split 12/45
+[CPCV]  xgb split 13/45
+[CPCV]  xgb split 14/45
+[CPCV]  xgb split 15/45
+[CPCV]  xgb split 16/45
+[CPCV]  xgb split 17/45
+[CPCV]  xgb split 18/45
+[CPCV]  xgb split 19/45
+[CPCV]  xgb split 20/45
+[CPCV]  xgb split 21/45
+[CPCV]  xgb split 22/45
+[CPCV]  xgb split 23/45
+[CPCV]  xgb split 24/45
+[CPCV]  xgb split 25/45
+[CPCV]  xgb split 26/45
+[CPCV]  xgb split 27/45
+[CPCV]  xgb split 28/45
+[CPCV]  xgb split 29/45
+[CPCV]  xgb split 30/45
+[CPCV]  xgb split 31/45
+[CPCV]  xgb split 32/45
+[CPCV]  xgb split 33/45
+[CPCV]  xgb split 34/45
+[CPCV]  xgb split 35/45
+[CPCV]  xgb split 36/45
+[CPCV]  xgb split 37/45
+[CPCV]  xgb split 38/45
+[CPCV]  xgb split 39/45
+[CPCV]  xgb split 40/45
+[CPCV]  xgb split 41/45
+[CPCV]  xgb split 42/45
+[CPCV]  xgb split 43/45
+[CPCV]  xgb split 44/45
+[CPCV]  xgb split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2515 isotonic=0.2699)
+[META]  Trained on 135 events  (success rate=0.519)
+[PRIM]  wavelet_trend: long share val=0.622  test=0.318
+[WFO]  Fold 1 done in 0.8s  |  OOS events=22  approved=21
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2509 isotonic=0.2563)
+[META]  Trained on 128 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share val=0.633  test=0.143
+[WFO]  Fold 2 done in 0.9s  |  OOS events=21  approved=3
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2515 isotonic=0.2623)
+[META]  Trained on 139 events  (success rate=0.511)
+[PRIM]  wavelet_trend: long share val=0.568  test=0.389
+[WFO]  Fold 3 done in 1.0s  |  OOS events=18  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2641 isotonic=0.2878)
+[META]  Trained on 144 events  (success rate=0.521)
+[PRIM]  wavelet_trend: long share val=0.542  test=0.583
+[WFO]  Fold 4 done in 1.2s  |  OOS events=12  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2496 isotonic=0.2619)
+[META]  Trained on 143 events  (success rate=0.545)
+[PRIM]  wavelet_trend: long share val=0.503  test=0.615
+[WFO]  Fold 5 done in 2.0s  |  OOS events=13  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2527 isotonic=0.2720)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  wavelet_trend: long share val=0.471  test=0.812
+[WFO]  Fold 6 done in 2.1s  |  OOS events=16  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2523 isotonic=0.2829)
+[META]  Trained on 137 events  (success rate=0.569)
+[PRIM]  wavelet_trend: long share val=0.482  test=0.350
+[WFO]  Fold 7 done in 2.2s  |  OOS events=20  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2462 isotonic=0.2586)
+[META]  Trained on 138 events  (success rate=0.572)
+[PRIM]  wavelet_trend: long share val=0.464  test=0.667
+[WFO]  Fold 8 done in 1.0s  |  OOS events=18  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2485 isotonic=0.2809)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  wavelet_trend: long share val=0.445  test=0.933
+[PRIM]  Warning: fold 9 test sides are 93.3% long (one-sided primary)
+[WFO]  Fold 9 done in 1.0s  |  OOS events=15  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2385 isotonic=0.2690)
+[META]  Trained on 131 events  (success rate=0.611)
+[PRIM]  wavelet_trend: long share val=0.534  test=0.588
+[WFO]  Fold 10 done in 0.9s  |  OOS events=17  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2343 isotonic=0.2711)
+[META]  Trained on 126 events  (success rate=0.595)
+[PRIM]  wavelet_trend: long share val=0.595  test=0.500
+[WFO]  Fold 11 done in 1.0s  |  OOS events=20  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2399 isotonic=0.2459)
+[META]  Trained on 131 events  (success rate=0.550)
+[PRIM]  wavelet_trend: long share val=0.618  test=0.600
+[WFO]  Fold 12 done in 1.0s  |  OOS events=15  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=isotonic (cv Brier sigmoid=0.2538 isotonic=0.2275)
+[META]  Trained on 131 events  (success rate=0.527)
+[PRIM]  wavelet_trend: long share val=0.634  test=0.263
+[WFO]  Fold 13 done in 1.1s  |  OOS events=19  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[META]  lightgbm {'num_leaves': 7}  calibration=sigmoid (cv Brier sigmoid=0.2575 isotonic=0.2598)
+[META]  Trained on 139 events  (success rate=0.532)
+[PRIM]  wavelet_trend: long share val=0.576  test=0.750
+[WFO]  Fold 14 done in 1.1s  |  OOS events=8  approved=8
+
+[WFO]  Total OOS events: 234  |  Approved trades: 182
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5513
+Meta-scored events       234.0000
+Meta log-loss              0.7663
+Meta Brier                 0.2715
+Meta AUC                   0.4697
+Approved share             0.7778
+Approved success rate      0.5495
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              -6.365        37.815        49.906
+Annual Return (%)             -1.753         9.009        11.503
+Annual Volatility (%)         12.589        15.411        18.019
+Sharpe Ratio                  -0.078         0.637         0.694
+Max Drawdown (%)             -19.613       -18.796       -23.435
+Calmar Ratio                  -0.089         0.479         0.491
+Num Trades                    79.000        95.000         0.000
+Win Rate (%)                  55.696        54.737           NaN
+Avg Trade (bp)                -4.136        38.205           NaN
+Avg Bars Held                  7.873         7.611           NaN
+Exposure (%)                  66.382        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  lightgbm split 1/45
+[CPCV]  lightgbm split 2/45
+[CPCV]  lightgbm split 3/45
+[CPCV]  lightgbm split 4/45
+[CPCV]  lightgbm split 5/45
+[CPCV]  lightgbm split 6/45
+[CPCV]  lightgbm split 7/45
+[CPCV]  lightgbm split 8/45
+[CPCV]  lightgbm split 9/45
+[CPCV]  lightgbm split 10/45
+[CPCV]  lightgbm split 11/45
+[CPCV]  lightgbm split 12/45
+[CPCV]  lightgbm split 13/45
+[CPCV]  lightgbm split 14/45
+[CPCV]  lightgbm split 15/45
+[CPCV]  lightgbm split 16/45
+[CPCV]  lightgbm split 17/45
+[CPCV]  lightgbm split 18/45
+[CPCV]  lightgbm split 19/45
+[CPCV]  lightgbm split 20/45
+[CPCV]  lightgbm split 21/45
+[CPCV]  lightgbm split 22/45
+[CPCV]  lightgbm split 23/45
+[CPCV]  lightgbm split 24/45
+[CPCV]  lightgbm split 25/45
+[CPCV]  lightgbm split 26/45
+[CPCV]  lightgbm split 27/45
+[CPCV]  lightgbm split 28/45
+[CPCV]  lightgbm split 29/45
+[CPCV]  lightgbm split 30/45
+[CPCV]  lightgbm split 31/45
+[CPCV]  lightgbm split 32/45
+[CPCV]  lightgbm split 33/45
+[CPCV]  lightgbm split 34/45
+[CPCV]  lightgbm split 35/45
+[CPCV]  lightgbm split 36/45
+[CPCV]  lightgbm split 37/45
+[CPCV]  lightgbm split 38/45
+[CPCV]  lightgbm split 39/45
+[CPCV]  lightgbm split 40/45
+[CPCV]  lightgbm split 41/45
+[CPCV]  lightgbm split 42/45
+[CPCV]  lightgbm split 43/45
+[CPCV]  lightgbm split 44/45
+[CPCV]  lightgbm split 45/45
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1008]  val[1008:1512]  test[1512:1575]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.4848 %
+           Corr (raw) : 0.6094
+[WFO]  Fold 1: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 135 events  (success rate=0.519)
+[PRIM]  wavelet_trend: long share val=0.622  test=0.318
+[WFO]  Fold 1 done in 0.8s  |  OOS events=22  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1071]  val[1071:1575]  test[1575:1638]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6797
+           ADF p-val  : 4.5683 %
+           Corr (raw) : 0.7459
+[WFO]  Fold 2: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 128 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share val=0.633  test=0.143
+[WFO]  Fold 2 done in 0.9s  |  OOS events=21  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:1134]  val[1134:1638]  test[1638:1701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6094
+           ADF p-val  : 4.7181 %
+           Corr (raw) : 0.8480
+[WFO]  Fold 3: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 139 events  (success rate=0.511)
+[PRIM]  wavelet_trend: long share val=0.568  test=0.389
+[WFO]  Fold 3 done in 1.1s  |  OOS events=18  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:1197]  val[1197:1701]  test[1701:1764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.6250
+           ADF p-val  : 4.9745 %
+           Corr (raw) : 0.8472
+[WFO]  Fold 4: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 144 events  (success rate=0.521)
+[PRIM]  wavelet_trend: long share val=0.542  test=0.583
+[WFO]  Fold 4 done in 0.8s  |  OOS events=12  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:1260]  val[1260:1764]  test[1764:1827]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 4.7894 %
+           Corr (raw) : 0.6966
+[WFO]  Fold 5: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 143 events  (success rate=0.545)
+[PRIM]  wavelet_trend: long share val=0.503  test=0.615
+[WFO]  Fold 5 done in 1.0s  |  OOS events=13  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:1323]  val[1323:1827]  test[1827:1890]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.8763 %
+           Corr (raw) : 0.6148
+[WFO]  Fold 6: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 136 events  (success rate=0.559)
+[PRIM]  wavelet_trend: long share val=0.471  test=0.812
+[WFO]  Fold 6 done in 0.9s  |  OOS events=16  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:1386]  val[1386:1890]  test[1890:1953]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.3767 %
+           Corr (raw) : 0.6258
+[WFO]  Fold 7: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 137 events  (success rate=0.569)
+[PRIM]  wavelet_trend: long share val=0.482  test=0.350
+[WFO]  Fold 7 done in 0.9s  |  OOS events=20  approved=17
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:1449]  val[1449:1953]  test[1953:2016]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 4.7332 %
+           Corr (raw) : 0.6810
+[WFO]  Fold 8: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 138 events  (success rate=0.572)
+[PRIM]  wavelet_trend: long share val=0.464  test=0.667
+[WFO]  Fold 8 done in 0.9s  |  OOS events=18  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:1512]  val[1512:2016]  test[2016:2079]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 4.5944 %
+           Corr (raw) : 0.6348
+[WFO]  Fold 9: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 137 events  (success rate=0.555)
+[PRIM]  wavelet_trend: long share val=0.445  test=0.933
+[PRIM]  Warning: fold 9 test sides are 93.3% long (one-sided primary)
+[WFO]  Fold 9 done in 0.9s  |  OOS events=15  approved=11
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:1575]  val[1575:2079]  test[2079:2142]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 1.1261 %
+           Corr (raw) : 0.6027
+[WFO]  Fold 10: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 131 events  (success rate=0.611)
+[PRIM]  wavelet_trend: long share val=0.534  test=0.588
+[WFO]  Fold 10 done in 0.8s  |  OOS events=17  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:1638]  val[1638:2142]  test[2142:2205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.1460 %
+           Corr (raw) : 0.6416
+[WFO]  Fold 11: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 126 events  (success rate=0.595)
+[PRIM]  wavelet_trend: long share val=0.595  test=0.500
+[WFO]  Fold 11 done in 0.9s  |  OOS events=20  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:1701]  val[1701:2205]  test[2205:2268]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 3.1082 %
+           Corr (raw) : 0.6335
+[WFO]  Fold 12: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 131 events  (success rate=0.550)
+[PRIM]  wavelet_trend: long share val=0.618  test=0.600
+[WFO]  Fold 12 done in 1.0s  |  OOS events=15  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:1764]  val[1764:2268]  test[2268:2331]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.8820 %
+           Corr (raw) : 0.7310
+[WFO]  Fold 13: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 131 events  (success rate=0.527)
+[PRIM]  wavelet_trend: long share val=0.634  test=0.263
+[WFO]  Fold 13 done in 0.9s  |  OOS events=19  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:1827]  val[1827:2331]  test[2331:2394]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 4.4244 %
+           Corr (raw) : 0.6532
+[WFO]  Fold 14: 2 events dropped for NaN features (warm-up or gaps)
+[META]  Trained on 139 events  (success rate=0.532)
+[PRIM]  wavelet_trend: long share val=0.576  test=0.750
+[WFO]  Fold 14 done in 0.9s  |  OOS events=8  approved=6
+
+[WFO]  Total OOS events: 234  |  Approved trades: 143
+
+[DIAG]  OOS signal quality
+OOS events               234.0000
+Primary success rate       0.5513
+Meta-scored events       234.0000
+Meta log-loss              0.9395
+Meta Brier                 0.3157
+Meta AUC                   0.5448
+Approved share             0.6111
+Approved success rate      0.5804
+
+[BACKTEST]  Simulating barrier-exit trades ...
+
+══════════════════════════════════════════════════════════════════════
+  BACKTEST PERFORMANCE SUMMARY (OOS span)
+══════════════════════════════════════════════════════════════════════
+                       Meta-filtered  Primary only  Buy-and-Hold
+Total Return (%)              45.929        37.815        49.906
+Annual Return (%)             10.699         9.009        11.503
+Annual Volatility (%)         11.567        15.411        18.019
+Sharpe Ratio                   0.937         0.637         0.694
+Max Drawdown (%)             -10.871       -18.796       -23.435
+Calmar Ratio                   0.984         0.479         0.491
+Num Trades                    67.000        95.000         0.000
+Win Rate (%)                  61.194        54.737           NaN
+Avg Trade (bp)                60.214        38.205           NaN
+Avg Bars Held                  8.104         7.611           NaN
+Exposure (%)                  57.951        77.161         0.000
+══════════════════════════════════════════════════════════════════════
+[LABEL] 618 events from 2,449 bars  |  -1=228  0=2  1=388  |  barriers {'vertical': 259, 'upper': 197, 'lower': 162}
+[FEAT]  Skipping intraday-only group 'intraday' on 1Day bars
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.3705 %
+           Corr (raw) : 0.5039
+[CPCV]  legacy split 1/45
+[CPCV]  legacy split 2/45
+[CPCV]  legacy split 3/45
+[CPCV]  legacy split 4/45
+[CPCV]  legacy split 5/45
+[CPCV]  legacy split 6/45
+[CPCV]  legacy split 7/45
+[CPCV]  legacy split 8/45
+[CPCV]  legacy split 9/45
+[CPCV]  legacy split 10/45
+[CPCV]  legacy split 11/45
+[CPCV]  legacy split 12/45
+[CPCV]  legacy split 13/45
+[CPCV]  legacy split 14/45
+[CPCV]  legacy split 15/45
+[CPCV]  legacy split 16/45
+[CPCV]  legacy split 17/45
+[CPCV]  legacy split 18/45
+[CPCV]  legacy split 19/45
+[CPCV]  legacy split 20/45
+[CPCV]  legacy split 21/45
+[CPCV]  legacy split 22/45
+[CPCV]  legacy split 23/45
+[CPCV]  legacy split 24/45
+[CPCV]  legacy split 25/45
+[CPCV]  legacy split 26/45
+[CPCV]  legacy split 27/45
+[CPCV]  legacy split 28/45
+[CPCV]  legacy split 29/45
+[CPCV]  legacy split 30/45
+[CPCV]  legacy split 31/45
+[CPCV]  legacy split 32/45
+[CPCV]  legacy split 33/45
+[CPCV]  legacy split 34/45
+[CPCV]  legacy split 35/45
+[CPCV]  legacy split 36/45
+[CPCV]  legacy split 37/45
+[CPCV]  legacy split 38/45
+[CPCV]  legacy split 39/45
+[CPCV]  legacy split 40/45
+[CPCV]  legacy split 41/45
+[CPCV]  legacy split 42/45
+[CPCV]  legacy split 43/45
+[CPCV]  legacy split 44/45
+[CPCV]  legacy split 45/45
+
+      model  meta_logloss  brier  meta_auc  meta_precision  sharpe  cpcv_sr_mean  cpcv_sr_sd  runtime_s status
+   logit_l1        0.7012 0.2539    0.4328          0.5556  0.5864        0.7350      0.2256     1147.7     ok
+   logit_l2        0.8732 0.2703    0.5292          0.5706  0.4615        0.4938      0.1546     1734.5     ok
+     rf_ldp        0.6953 0.2512    0.5423          0.5650 -0.1451        0.8206      0.1691      594.8     ok
+extra_trees        0.7070 0.2562    0.5288          0.5444 -0.2256        0.8808      0.1515      154.1     ok
+        xgb        0.7111 0.2584    0.4750          0.5337 -0.0199        0.1960      0.1107      276.9     ok
+   lightgbm        0.7663 0.2715    0.4697          0.5495 -0.0776        0.1397      0.0801      101.5     ok
+     legacy        0.9395 0.3157    0.5448          0.5804  0.9365        0.4686      0.1679       44.4     ok
+[ZOO]  Saved results/model_zoo/comparison_SPY_1Day_meta_wavelet_trend_val.csv

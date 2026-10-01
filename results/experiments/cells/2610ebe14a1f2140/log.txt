@@ -1,0 +1,13 @@
+[EXP]  IWM: signals cache hit 1f6136ac812a55f895bedf7a.pkl
+
+[DIAG]  OOS signal quality
+OOS events               2880.0000
+Primary success rate        0.4826
+Meta-scored events       2880.0000
+Meta log-loss               0.6930
+Meta Brier                  0.2499
+Meta AUC                    0.5030
+Approved share              0.0823
+Approved success rate       0.5148
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...

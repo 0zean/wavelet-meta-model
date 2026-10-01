@@ -14,6 +14,7 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB
     os.environ.setdefault(_v, "1")
 
 import argparse
+import sys
 from pathlib import Path
 
 from experiments.ledger import DEFAULT_PATH, Ledger
@@ -21,6 +22,8 @@ from experiments.runner import DEFAULT_ROOT, ROOT
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):  # Windows writes a redirected stream in the ANSI code page otherwise
+        stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(
         prog="experiments", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -60,7 +63,7 @@ def main() -> None:
         from experiments.report import write_report
 
         paths = write_report(ledger, a.root, a.out or Path(a.root) / "report", a.stage, a.top)
-        print(paths["md"].read_text())
+        print(paths["md"].read_text(encoding="utf-8"))
         print(f"[EXP]  report → {paths['html']}")
     else:
         from experiments.legacy import import_legacy

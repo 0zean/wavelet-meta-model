@@ -1,0 +1,1201 @@
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 3,317 events from 17,079 bars  |  -1=1511  0=20  1=1786  |  barriers {'vertical': 2602, 'lower': 425, 'upper': 290}
+[FEAT]  wavelet_core      4 cols    0.01s
+[FEAT]  trend             9 cols    0.12s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.01s
+[FEAT]  intraday          4 cols    0.01s
+
+────────────────────────────────────────────────────────────
+  FOLD 1: train[0:1761]  val[1761:2640]  test[2640:2787]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 0.4076 %  (n=1745)
+           Corr (raw) : 0.6236
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2471 isotonic=0.2591)
+[META]  Trained on 495 events  (success rate=0.461)
+[PRIM]  wavelet_trend: long share oof=0.554  test=0.833
+[WFO]  Fold 1 done in 0.2s  |  OOS events=24  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 2: train[0:1908]  val[1908:2787]  test[2787:2934]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 0.4048 %  (n=1892)
+           Corr (raw) : 0.6227
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2469 isotonic=0.2603)
+[META]  Trained on 519 events  (success rate=0.470)
+[PRIM]  wavelet_trend: long share oof=0.565  test=0.481
+[WFO]  Fold 2 done in 0.2s  |  OOS events=27  approved=1
+
+────────────────────────────────────────────────────────────
+  FOLD 3: train[0:2055]  val[2055:2934]  test[2934:3081]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8203
+           ADF p-val  : 0.3096 %  (n=2039)
+           Corr (raw) : 0.5983
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2454 isotonic=0.2604)
+[META]  Trained on 546 events  (success rate=0.478)
+[PRIM]  wavelet_trend: long share oof=0.560  test=0.438
+[WFO]  Fold 3 done in 0.2s  |  OOS events=32  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 4: train[0:2202]  val[2202:3081]  test[3081:3228]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 0.2284 %  (n=2186)
+           Corr (raw) : 0.5960
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2452 isotonic=0.2704)
+[META]  Trained on 577 events  (success rate=0.477)
+[PRIM]  wavelet_trend: long share oof=0.553  test=0.545
+[WFO]  Fold 4 done in 0.3s  |  OOS events=22  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 5: train[0:2349]  val[2349:3228]  test[3228:3372]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8516
+           ADF p-val  : 0.2294 %  (n=2333)
+           Corr (raw) : 0.5862
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2490 isotonic=0.2652)
+[META]  Trained on 600 events  (success rate=0.482)
+[PRIM]  wavelet_trend: long share oof=0.553  test=0.500
+[WFO]  Fold 5 done in 0.3s  |  OOS events=22  approved=1
+
+────────────────────────────────────────────────────────────
+  FOLD 6: train[0:2496]  val[2496:3372]  test[3372:3519]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8594
+           ADF p-val  : 0.3112 %  (n=2480)
+           Corr (raw) : 0.6049
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2508 isotonic=0.2607)
+[META]  Trained on 622 events  (success rate=0.482)
+[PRIM]  wavelet_trend: long share oof=0.553  test=0.435
+[WFO]  Fold 6 done in 0.3s  |  OOS events=23  approved=2
+
+────────────────────────────────────────────────────────────
+  FOLD 7: train[0:2640]  val[2640:3519]  test[3519:3666]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8672
+           ADF p-val  : 0.0776 %  (n=2627)
+           Corr (raw) : 0.5899
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2496 isotonic=0.2604)
+[META]  Trained on 645 events  (success rate=0.482)
+[PRIM]  wavelet_trend: long share oof=0.547  test=0.758
+[WFO]  Fold 7 done in 0.3s  |  OOS events=33  approved=1
+
+────────────────────────────────────────────────────────────
+  FOLD 8: train[0:2787]  val[2787:3666]  test[3666:3813]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8750
+           ADF p-val  : 0.0806 %  (n=2771)
+           Corr (raw) : 0.5883
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2505 isotonic=0.2543)
+[META]  Trained on 677 events  (success rate=0.482)
+[PRIM]  wavelet_trend: long share oof=0.558  test=0.353
+[WFO]  Fold 8 done in 0.3s  |  OOS events=34  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 9: train[0:2934]  val[2934:3813]  test[3813:3960]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0356 %  (n=2918)
+           Corr (raw) : 0.5733
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2523 isotonic=0.2504)
+[META]  Trained on 712 events  (success rate=0.487)
+[PRIM]  wavelet_trend: long share oof=0.549  test=0.263
+[WFO]  Fold 9 done in 0.4s  |  OOS events=38  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 10: train[0:3081]  val[3081:3960]  test[3960:4107]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0380 %  (n=3065)
+           Corr (raw) : 0.5910
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2519 isotonic=0.2566)
+[META]  Trained on 748 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share oof=0.533  test=0.429
+[WFO]  Fold 10 done in 0.4s  |  OOS events=28  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 11: train[0:3228]  val[3228:4107]  test[4107:4254]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0302 %  (n=3212)
+           Corr (raw) : 0.5799
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2521 isotonic=0.2599)
+[META]  Trained on 778 events  (success rate=0.496)
+[PRIM]  wavelet_trend: long share oof=0.530  test=0.778
+[WFO]  Fold 11 done in 0.4s  |  OOS events=27  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 12: train[0:3372]  val[3372:4254]  test[4254:4398]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0722 %  (n=3356)
+           Corr (raw) : 0.6354
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2516 isotonic=0.2563)
+[META]  Trained on 805 events  (success rate=0.494)
+[PRIM]  wavelet_trend: long share oof=0.538  test=0.433
+[WFO]  Fold 12 done in 0.4s  |  OOS events=30  approved=2
+
+────────────────────────────────────────────────────────────
+  FOLD 13: train[0:3519]  val[3519:4398]  test[4398:4545]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0159 %  (n=3503)
+           Corr (raw) : 0.5871
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2510 isotonic=0.2591)
+[META]  Trained on 834 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share oof=0.534  test=0.655
+[WFO]  Fold 13 done in 0.5s  |  OOS events=29  approved=1
+
+────────────────────────────────────────────────────────────
+  FOLD 14: train[0:3666]  val[3666:4545]  test[4545:4692]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0042 %  (n=3650)
+           Corr (raw) : 0.5469
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2513 isotonic=0.2556)
+[META]  Trained on 864 events  (success rate=0.495)
+[PRIM]  wavelet_trend: long share oof=0.538  test=0.519
+[WFO]  Fold 14 done in 0.5s  |  OOS events=27  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 15: train[0:3813]  val[3813:4692]  test[4692:4839]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.1143 %  (n=3797)
+           Corr (raw) : 0.6345
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2504 isotonic=0.2571)
+[META]  Trained on 890 events  (success rate=0.490)
+[PRIM]  wavelet_trend: long share oof=0.539  test=0.483
+[WFO]  Fold 15 done in 0.5s  |  OOS events=29  approved=1
+
+────────────────────────────────────────────────────────────
+  FOLD 16: train[0:3960]  val[3960:4839]  test[4839:4986]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0783 %  (n=3944)
+           Corr (raw) : 0.6243
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2509 isotonic=0.2548)
+[META]  Trained on 919 events  (success rate=0.491)
+[PRIM]  wavelet_trend: long share oof=0.538  test=0.231
+[WFO]  Fold 16 done in 0.6s  |  OOS events=39  approved=1
+
+────────────────────────────────────────────────────────────
+  FOLD 17: train[0:4107]  val[4107:4986]  test[4986:5130]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0177 %  (n=4091)
+           Corr (raw) : 0.5865
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2511 isotonic=0.2525)
+[META]  Trained on 959 events  (success rate=0.493)
+[PRIM]  wavelet_trend: long share oof=0.523  test=0.333
+[WFO]  Fold 17 done in 0.6s  |  OOS events=30  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 18: train[0:4254]  val[4254:5130]  test[5130:5274]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0069 %  (n=4238)
+           Corr (raw) : 0.5673
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2521 isotonic=0.2520)
+[META]  Trained on 987 events  (success rate=0.493)
+[PRIM]  wavelet_trend: long share oof=0.519  test=0.265
+[WFO]  Fold 18 done in 0.6s  |  OOS events=34  approved=10
+
+────────────────────────────────────────────────────────────
+  FOLD 19: train[0:4398]  val[4398:5274]  test[5274:5421]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0238 %  (n=4382)
+           Corr (raw) : 0.6125
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2523 isotonic=0.2547)
+[META]  Trained on 1023 events  (success rate=0.496)
+[PRIM]  wavelet_trend: long share oof=0.509  test=0.636
+[WFO]  Fold 19 done in 0.6s  |  OOS events=22  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 20: train[0:4545]  val[4545:5421]  test[5421:5568]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0087 %  (n=4529)
+           Corr (raw) : 0.5914
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2533 isotonic=0.2599)
+[META]  Trained on 1045 events  (success rate=0.498)
+[PRIM]  wavelet_trend: long share oof=0.512  test=0.464
+[WFO]  Fold 20 done in 0.7s  |  OOS events=28  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 21: train[0:4692]  val[4692:5568]  test[5568:5715]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0126 %  (n=4676)
+           Corr (raw) : 0.6067
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2530 isotonic=0.2606)
+[META]  Trained on 1073 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share oof=0.512  test=0.727
+[WFO]  Fold 21 done in 0.7s  |  OOS events=33  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 22: train[0:4839]  val[4839:5715]  test[5715:5862]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0161 %  (n=4823)
+           Corr (raw) : 0.6164
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2521 isotonic=0.2545)
+[META]  Trained on 1106 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share oof=0.517  test=0.567
+[WFO]  Fold 22 done in 0.7s  |  OOS events=30  approved=7
+
+────────────────────────────────────────────────────────────
+  FOLD 23: train[0:4986]  val[4986:5862]  test[5862:6009]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0300 %  (n=4970)
+           Corr (raw) : 0.6183
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2513 isotonic=0.2520)
+[META]  Trained on 1137 events  (success rate=0.491)
+[PRIM]  wavelet_trend: long share oof=0.519  test=0.259
+[WFO]  Fold 23 done in 0.7s  |  OOS events=27  approved=8
+
+────────────────────────────────────────────────────────────
+  FOLD 24: train[0:5130]  val[5130:6009]  test[6009:6153]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0194 %  (n=5114)
+           Corr (raw) : 0.6403
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2509 isotonic=0.2500)
+[META]  Trained on 1163 events  (success rate=0.490)
+[PRIM]  wavelet_trend: long share oof=0.512  test=0.682
+[WFO]  Fold 24 done in 0.8s  |  OOS events=22  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 25: train[0:5274]  val[5274:6153]  test[6153:6300]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8672
+           ADF p-val  : 0.0748 %  (n=5258)
+           Corr (raw) : 0.7059
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2510 isotonic=0.2511)
+[META]  Trained on 1185 events  (success rate=0.491)
+[PRIM]  wavelet_trend: long share oof=0.516  test=0.455
+[WFO]  Fold 25 done in 0.8s  |  OOS events=33  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 26: train[0:5421]  val[5421:6300]  test[6300:6447]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8672
+           ADF p-val  : 0.0698 %  (n=5405)
+           Corr (raw) : 0.7057
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2502 isotonic=0.2525)
+[META]  Trained on 1217 events  (success rate=0.496)
+[PRIM]  wavelet_trend: long share oof=0.514  test=0.522
+[WFO]  Fold 26 done in 0.9s  |  OOS events=23  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 27: train[0:5568]  val[5568:6447]  test[6447:6594]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8672
+           ADF p-val  : 0.0328 %  (n=5552)
+           Corr (raw) : 0.7084
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2505 isotonic=0.2532)
+[META]  Trained on 1242 events  (success rate=0.495)
+[PRIM]  wavelet_trend: long share oof=0.514  test=0.276
+[WFO]  Fold 27 done in 0.8s  |  OOS events=29  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 28: train[0:5715]  val[5715:6594]  test[6594:6741]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8750
+           ADF p-val  : 0.0162 %  (n=5699)
+           Corr (raw) : 0.6867
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2506 isotonic=0.2519)
+[META]  Trained on 1271 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share oof=0.509  test=0.609
+[WFO]  Fold 28 done in 0.9s  |  OOS events=23  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 29: train[0:5862]  val[5862:6741]  test[6741:6885]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8750
+           ADF p-val  : 0.0145 %  (n=5846)
+           Corr (raw) : 0.6952
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2510 isotonic=0.2527)
+[META]  Trained on 1294 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share oof=0.511  test=0.583
+[WFO]  Fold 29 done in 1.0s  |  OOS events=24  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 30: train[0:6009]  val[6009:6885]  test[6885:7029]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0031 %  (n=5993)
+           Corr (raw) : 0.6583
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2505 isotonic=0.2553)
+[META]  Trained on 1318 events  (success rate=0.491)
+[PRIM]  wavelet_trend: long share oof=0.512  test=0.826
+[WFO]  Fold 30 done in 1.0s  |  OOS events=23  approved=1
+
+────────────────────────────────────────────────────────────
+  FOLD 31: train[0:6153]  val[6153:7029]  test[7029:7176]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0049 %  (n=6137)
+           Corr (raw) : 0.6644
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2504 isotonic=0.2634)
+[META]  Trained on 1340 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share oof=0.518  test=0.700
+[WFO]  Fold 31 done in 1.0s  |  OOS events=30  approved=4
+
+────────────────────────────────────────────────────────────
+  FOLD 32: train[0:6300]  val[6300:7176]  test[7176:7323]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8672
+           ADF p-val  : 0.0401 %  (n=6284)
+           Corr (raw) : 0.7258
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2506 isotonic=0.2597)
+[META]  Trained on 1370 events  (success rate=0.493)
+[PRIM]  wavelet_trend: long share oof=0.521  test=0.371
+[WFO]  Fold 32 done in 1.0s  |  OOS events=35  approved=6
+
+────────────────────────────────────────────────────────────
+  FOLD 33: train[0:6447]  val[6447:7323]  test[7323:7470]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8750
+           ADF p-val  : 0.0188 %  (n=6431)
+           Corr (raw) : 0.6967
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2511 isotonic=0.2569)
+[META]  Trained on 1404 events  (success rate=0.494)
+[PRIM]  wavelet_trend: long share oof=0.519  test=0.360
+[WFO]  Fold 33 done in 1.0s  |  OOS events=25  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 34: train[0:6594]  val[6594:7470]  test[7470:7617]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8750
+           ADF p-val  : 0.0131 %  (n=6578)
+           Corr (raw) : 0.7005
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2510 isotonic=0.2548)
+[META]  Trained on 1429 events  (success rate=0.495)
+[PRIM]  wavelet_trend: long share oof=0.514  test=0.667
+[WFO]  Fold 34 done in 1.1s  |  OOS events=21  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 35: train[0:6741]  val[6741:7617]  test[7617:7764]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0039 %  (n=6725)
+           Corr (raw) : 0.6774
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2510 isotonic=0.2559)
+[META]  Trained on 1451 events  (success rate=0.495)
+[PRIM]  wavelet_trend: long share oof=0.517  test=0.688
+[WFO]  Fold 35 done in 1.2s  |  OOS events=32  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 36: train[0:6885]  val[6885:7764]  test[7764:7911]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0040 %  (n=6869)
+           Corr (raw) : 0.6865
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2509 isotonic=0.2571)
+[META]  Trained on 1482 events  (success rate=0.496)
+[PRIM]  wavelet_trend: long share oof=0.520  test=0.700
+[WFO]  Fold 36 done in 1.2s  |  OOS events=30  approved=2
+
+────────────────────────────────────────────────────────────
+  FOLD 37: train[0:7029]  val[7029:7911]  test[7911:8058]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0022 %  (n=7013)
+           Corr (raw) : 0.6682
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2511 isotonic=0.2584)
+[META]  Trained on 1512 events  (success rate=0.494)
+[PRIM]  wavelet_trend: long share oof=0.524  test=0.606
+[WFO]  Fold 37 done in 1.2s  |  OOS events=33  approved=0
+
+────────────────────────────────────────────────────────────
+  FOLD 38: train[0:7176]  val[7176:8058]  test[8058:8205]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0002 %  (n=7160)
+           Corr (raw) : 0.6110
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2510 isotonic=0.2574)
+[META]  Trained on 1545 events  (success rate=0.494)
+[PRIM]  wavelet_trend: long share oof=0.526  test=0.722
+[WFO]  Fold 38 done in 1.2s  |  OOS events=36  approved=1
+
+────────────────────────────────────────────────────────────
+  FOLD 39: train[0:7323]  val[7323:8205]  test[8205:8352]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0051 %  (n=7307)
+           Corr (raw) : 0.6952
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2509 isotonic=0.2556)
+[META]  Trained on 1580 events  (success rate=0.498)
+[PRIM]  wavelet_trend: long share oof=0.532  test=0.414
+[WFO]  Fold 39 done in 1.3s  |  OOS events=29  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 40: train[0:7470]  val[7470:8352]  test[8352:8499]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8750
+           ADF p-val  : 0.0068 %  (n=7454)
+           Corr (raw) : 0.6458
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2510 isotonic=0.2531)
+[META]  Trained on 1611 events  (success rate=0.497)
+[PRIM]  wavelet_trend: long share oof=0.528  test=0.333
+[WFO]  Fold 40 done in 1.3s  |  OOS events=27  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 41: train[0:7617]  val[7617:8499]  test[8499:8643]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8750
+           ADF p-val  : 0.0040 %  (n=7601)
+           Corr (raw) : 0.6475
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2511 isotonic=0.2563)
+[META]  Trained on 1638 events  (success rate=0.499)
+[PRIM]  wavelet_trend: long share oof=0.525  test=0.824
+[WFO]  Fold 41 done in 1.4s  |  OOS events=17  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 42: train[0:7764]  val[7764:8643]  test[8643:8787]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8828
+           ADF p-val  : 0.0015 %  (n=7748)
+           Corr (raw) : 0.6281
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2512 isotonic=0.2559)
+[META]  Trained on 1656 events  (success rate=0.498)
+[PRIM]  wavelet_trend: long share oof=0.528  test=0.444
+[WFO]  Fold 42 done in 1.4s  |  OOS events=27  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 43: train[0:7911]  val[7911:8787]  test[8787:8934]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0003 %  (n=7895)
+           Corr (raw) : 0.6091
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2512 isotonic=0.2553)
+[META]  Trained on 1680 events  (success rate=0.498)
+[PRIM]  wavelet_trend: long share oof=0.527  test=0.531
+[WFO]  Fold 43 done in 1.4s  |  OOS events=32  approved=19
+
+────────────────────────────────────────────────────────────
+  FOLD 44: train[0:8058]  val[8058:8934]  test[8934:9081]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0001 %  (n=8042)
+           Corr (raw) : 0.5922
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2513 isotonic=0.2562)
+[META]  Trained on 1714 events  (success rate=0.499)
+[PRIM]  wavelet_trend: long share oof=0.527  test=0.206
+[WFO]  Fold 44 done in 1.5s  |  OOS events=34  approved=24
+
+────────────────────────────────────────────────────────────
+  FOLD 45: train[0:8205]  val[8205:9081]  test[9081:9228]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0009 %  (n=8189)
+           Corr (raw) : 0.6490
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2509 isotonic=0.2557)
+[META]  Trained on 1748 events  (success rate=0.497)
+[PRIM]  wavelet_trend: long share oof=0.521  test=0.583
+[WFO]  Fold 45 done in 1.6s  |  OOS events=24  approved=19
+
+────────────────────────────────────────────────────────────
+  FOLD 46: train[0:8352]  val[8352:9228]  test[9228:9375]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0001 %  (n=8336)
+           Corr (raw) : 0.6126
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2509 isotonic=0.2551)
+[META]  Trained on 1772 events  (success rate=0.497)
+[PRIM]  wavelet_trend: long share oof=0.521  test=0.560
+[WFO]  Fold 46 done in 1.6s  |  OOS events=25  approved=22
+
+────────────────────────────────────────────────────────────
+  FOLD 47: train[0:8499]  val[8499:9375]  test[9375:9522]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0009 %  (n=8483)
+           Corr (raw) : 0.6552
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2507 isotonic=0.2539)
+[META]  Trained on 1796 events  (success rate=0.497)
+[PRIM]  wavelet_trend: long share oof=0.522  test=0.381
+[WFO]  Fold 47 done in 1.6s  |  OOS events=21  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 48: train[0:8643]  val[8643:9522]  test[9522:9669]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0001 %  (n=8627)
+           Corr (raw) : 0.6358
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2506 isotonic=0.2525)
+[META]  Trained on 1819 events  (success rate=0.496)
+[PRIM]  wavelet_trend: long share oof=0.521  test=0.774
+[WFO]  Fold 48 done in 1.7s  |  OOS events=31  approved=22
+
+────────────────────────────────────────────────────────────
+  FOLD 49: train[0:8787]  val[8787:9669]  test[9669:9816]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0004 %  (n=8771)
+           Corr (raw) : 0.6550
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2505 isotonic=0.2516)
+[META]  Trained on 1848 events  (success rate=0.497)
+[PRIM]  wavelet_trend: long share oof=0.525  test=0.500
+[WFO]  Fold 49 done in 1.7s  |  OOS events=32  approved=21
+
+────────────────────────────────────────────────────────────
+  FOLD 50: train[0:8934]  val[8934:9816]  test[9816:9963]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0002 %  (n=8918)
+           Corr (raw) : 0.6361
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2505 isotonic=0.2525)
+[META]  Trained on 1881 events  (success rate=0.498)
+[PRIM]  wavelet_trend: long share oof=0.524  test=0.478
+[WFO]  Fold 50 done in 1.8s  |  OOS events=23  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 51: train[0:9081]  val[9081:9963]  test[9963:10110]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0006 %  (n=9065)
+           Corr (raw) : 0.6772
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2508 isotonic=0.2513)
+[META]  Trained on 1904 events  (success rate=0.499)
+[PRIM]  wavelet_trend: long share oof=0.524  test=0.361
+[WFO]  Fold 51 done in 1.9s  |  OOS events=36  approved=29
+
+────────────────────────────────────────────────────────────
+  FOLD 52: train[0:9228]  val[9228:10110]  test[10110:10257]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0002 %  (n=9212)
+           Corr (raw) : 0.6503
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2506 isotonic=0.2513)
+[META]  Trained on 1939 events  (success rate=0.497)
+[PRIM]  wavelet_trend: long share oof=0.521  test=0.852
+[WFO]  Fold 52 done in 1.9s  |  OOS events=27  approved=9
+
+────────────────────────────────────────────────────────────
+  FOLD 53: train[0:9375]  val[9375:10257]  test[10257:10401]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0004 %  (n=9359)
+           Corr (raw) : 0.6644
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2506 isotonic=0.2550)
+[META]  Trained on 1966 events  (success rate=0.499)
+[PRIM]  wavelet_trend: long share oof=0.525  test=0.429
+[WFO]  Fold 53 done in 2.0s  |  OOS events=35  approved=23
+
+────────────────────────────────────────────────────────────
+  FOLD 54: train[0:9522]  val[9522:10401]  test[10401:10548]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=9506)
+           Corr (raw) : 0.6336
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2508 isotonic=0.2545)
+[META]  Trained on 2001 events  (success rate=0.500)
+[PRIM]  wavelet_trend: long share oof=0.524  test=0.323
+[WFO]  Fold 54 done in 2.0s  |  OOS events=31  approved=23
+
+────────────────────────────────────────────────────────────
+  FOLD 55: train[0:9669]  val[9669:10548]  test[10548:10695]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9219
+           ADF p-val  : 0.0000 %  (n=9653)
+           Corr (raw) : 0.6082
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2509 isotonic=0.2533)
+[META]  Trained on 2030 events  (success rate=0.500)
+[PRIM]  wavelet_trend: long share oof=0.522  test=0.235
+[WFO]  Fold 55 done in 2.0s  |  OOS events=34  approved=24
+
+────────────────────────────────────────────────────────────
+  FOLD 56: train[0:9816]  val[9816:10695]  test[10695:10842]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9219
+           ADF p-val  : 0.0000 %  (n=9800)
+           Corr (raw) : 0.6235
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2507 isotonic=0.2525)
+[META]  Trained on 2067 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.516  test=0.324
+[WFO]  Fold 56 done in 2.1s  |  OOS events=37  approved=27
+
+────────────────────────────────────────────────────────────
+  FOLD 57: train[0:9963]  val[9963:10842]  test[10842:10989]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9219
+           ADF p-val  : 0.0000 %  (n=9947)
+           Corr (raw) : 0.6392
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2503 isotonic=0.2523)
+[META]  Trained on 2102 events  (success rate=0.505)
+[PRIM]  wavelet_trend: long share oof=0.513  test=0.710
+[WFO]  Fold 57 done in 2.1s  |  OOS events=31  approved=28
+
+────────────────────────────────────────────────────────────
+  FOLD 58: train[0:10110]  val[10110:10989]  test[10989:11136]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9219
+           ADF p-val  : 0.0000 %  (n=10094)
+           Corr (raw) : 0.6437
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2502 isotonic=0.2527)
+[META]  Trained on 2135 events  (success rate=0.506)
+[PRIM]  wavelet_trend: long share oof=0.516  test=0.282
+[WFO]  Fold 58 done in 2.3s  |  OOS events=39  approved=33
+
+────────────────────────────────────────────────────────────
+  FOLD 59: train[0:10257]  val[10257:11136]  test[11136:11283]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9297
+           ADF p-val  : 0.0000 %  (n=10241)
+           Corr (raw) : 0.6116
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2501 isotonic=0.2529)
+[META]  Trained on 2174 events  (success rate=0.507)
+[PRIM]  wavelet_trend: long share oof=0.511  test=0.400
+[WFO]  Fold 59 done in 2.3s  |  OOS events=30  approved=25
+
+────────────────────────────────────────────────────────────
+  FOLD 60: train[0:10401]  val[10401:11283]  test[11283:11430]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9219
+           ADF p-val  : 0.0000 %  (n=10385)
+           Corr (raw) : 0.6644
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2501 isotonic=0.2517)
+[META]  Trained on 2205 events  (success rate=0.507)
+[PRIM]  wavelet_trend: long share oof=0.510  test=0.364
+[WFO]  Fold 60 done in 2.2s  |  OOS events=22  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 61: train[0:10548]  val[10548:11430]  test[11430:11577]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9297
+           ADF p-val  : 0.0000 %  (n=10532)
+           Corr (raw) : 0.6248
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2498 isotonic=0.2508)
+[META]  Trained on 2226 events  (success rate=0.509)
+[PRIM]  wavelet_trend: long share oof=0.508  test=0.625
+[WFO]  Fold 61 done in 2.3s  |  OOS events=32  approved=28
+
+────────────────────────────────────────────────────────────
+  FOLD 62: train[0:10695]  val[10695:11577]  test[11577:11724]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9219
+           ADF p-val  : 0.0000 %  (n=10679)
+           Corr (raw) : 0.6598
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2497 isotonic=0.2508)
+[META]  Trained on 2257 events  (success rate=0.510)
+[PRIM]  wavelet_trend: long share oof=0.510  test=0.323
+[WFO]  Fold 62 done in 2.3s  |  OOS events=31  approved=19
+
+────────────────────────────────────────────────────────────
+  FOLD 63: train[0:10842]  val[10842:11724]  test[11724:11871]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=10826)
+           Corr (raw) : 0.6970
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2496 isotonic=0.2507)
+[META]  Trained on 2288 events  (success rate=0.510)
+[PRIM]  wavelet_trend: long share oof=0.508  test=0.433
+[WFO]  Fold 63 done in 2.3s  |  OOS events=30  approved=23
+
+────────────────────────────────────────────────────────────
+  FOLD 64: train[0:10989]  val[10989:11871]  test[11871:12018]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0001 %  (n=10973)
+           Corr (raw) : 0.6948
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2497 isotonic=0.2496)
+[META]  Trained on 2320 events  (success rate=0.510)
+[PRIM]  wavelet_trend: long share oof=0.506  test=0.387
+[WFO]  Fold 64 done in 2.4s  |  OOS events=31  approved=21
+
+────────────────────────────────────────────────────────────
+  FOLD 65: train[0:11136]  val[11136:12018]  test[12018:12162]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=11120)
+           Corr (raw) : 0.6851
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2497 isotonic=0.2506)
+[META]  Trained on 2349 events  (success rate=0.509)
+[PRIM]  wavelet_trend: long share oof=0.505  test=0.565
+[WFO]  Fold 65 done in 2.4s  |  OOS events=23  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 66: train[0:11283]  val[11283:12162]  test[12162:12309]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0001 %  (n=11267)
+           Corr (raw) : 0.7146
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2494 isotonic=0.2496)
+[META]  Trained on 2372 events  (success rate=0.508)
+[PRIM]  wavelet_trend: long share oof=0.506  test=0.320
+[WFO]  Fold 66 done in 2.6s  |  OOS events=25  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 67: train[0:11430]  val[11430:12309]  test[12309:12456]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0001 %  (n=11414)
+           Corr (raw) : 0.7072
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2495 isotonic=0.2499)
+[META]  Trained on 2397 events  (success rate=0.507)
+[PRIM]  wavelet_trend: long share oof=0.503  test=0.731
+[WFO]  Fold 67 done in 2.6s  |  OOS events=26  approved=21
+
+────────────────────────────────────────────────────────────
+  FOLD 68: train[0:11577]  val[11577:12456]  test[12456:12603]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0000 %  (n=11561)
+           Corr (raw) : 0.7052
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2496 isotonic=0.2506)
+[META]  Trained on 2424 events  (success rate=0.507)
+[PRIM]  wavelet_trend: long share oof=0.506  test=0.406
+[WFO]  Fold 68 done in 2.6s  |  OOS events=32  approved=24
+
+────────────────────────────────────────────────────────────
+  FOLD 69: train[0:11724]  val[11724:12603]  test[12603:12750]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0002 %  (n=11708)
+           Corr (raw) : 0.7377
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2498 isotonic=0.2506)
+[META]  Trained on 2454 events  (success rate=0.505)
+[PRIM]  wavelet_trend: long share oof=0.505  test=0.643
+[WFO]  Fold 69 done in 2.7s  |  OOS events=28  approved=23
+
+────────────────────────────────────────────────────────────
+  FOLD 70: train[0:11871]  val[11871:12750]  test[12750:12897]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0001 %  (n=11855)
+           Corr (raw) : 0.7327
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2499 isotonic=0.2508)
+[META]  Trained on 2483 events  (success rate=0.507)
+[PRIM]  wavelet_trend: long share oof=0.506  test=0.303
+[WFO]  Fold 70 done in 2.7s  |  OOS events=33  approved=26
+
+────────────────────────────────────────────────────────────
+  FOLD 71: train[0:12018]  val[12018:12897]  test[12897:13044]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0004 %  (n=12002)
+           Corr (raw) : 0.7587
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2498 isotonic=0.2505)
+[META]  Trained on 2517 events  (success rate=0.508)
+[PRIM]  wavelet_trend: long share oof=0.503  test=0.710
+[WFO]  Fold 71 done in 2.8s  |  OOS events=31  approved=28
+
+────────────────────────────────────────────────────────────
+  FOLD 72: train[0:12162]  val[12162:13044]  test[13044:13188]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0004 %  (n=12146)
+           Corr (raw) : 0.7550
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2499 isotonic=0.2504)
+[META]  Trained on 2547 events  (success rate=0.507)
+[PRIM]  wavelet_trend: long share oof=0.506  test=0.571
+[WFO]  Fold 72 done in 2.8s  |  OOS events=28  approved=23
+
+────────────────────────────────────────────────────────────
+  FOLD 73: train[0:12309]  val[12309:13188]  test[13188:13335]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0003 %  (n=12293)
+           Corr (raw) : 0.7522
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2501 isotonic=0.2503)
+[META]  Trained on 2577 events  (success rate=0.506)
+[PRIM]  wavelet_trend: long share oof=0.507  test=0.645
+[WFO]  Fold 73 done in 2.8s  |  OOS events=31  approved=27
+
+────────────────────────────────────────────────────────────
+  FOLD 74: train[0:12456]  val[12456:13335]  test[13335:13482]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0002 %  (n=12440)
+           Corr (raw) : 0.7508
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2500 isotonic=0.2503)
+[META]  Trained on 2606 events  (success rate=0.507)
+[PRIM]  wavelet_trend: long share oof=0.509  test=0.375
+[WFO]  Fold 74 done in 3.0s  |  OOS events=32  approved=30
+
+────────────────────────────────────────────────────────────
+  FOLD 75: train[0:12603]  val[12603:13482]  test[13482:13629]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0001 %  (n=12587)
+           Corr (raw) : 0.7500
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2500 isotonic=0.2502)
+[META]  Trained on 2638 events  (success rate=0.507)
+[PRIM]  wavelet_trend: long share oof=0.507  test=0.447
+[WFO]  Fold 75 done in 3.1s  |  OOS events=38  approved=32
+
+────────────────────────────────────────────────────────────
+  FOLD 76: train[0:12750]  val[12750:13629]  test[13629:13776]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0002 %  (n=12734)
+           Corr (raw) : 0.7497
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2501 isotonic=0.2502)
+[META]  Trained on 2676 events  (success rate=0.506)
+[PRIM]  wavelet_trend: long share oof=0.506  test=0.417
+[WFO]  Fold 76 done in 3.1s  |  OOS events=36  approved=32
+
+────────────────────────────────────────────────────────────
+  FOLD 77: train[0:12897]  val[12897:13776]  test[13776:13920]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0002 %  (n=12881)
+           Corr (raw) : 0.7507
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2502 isotonic=0.2512)
+[META]  Trained on 2713 events  (success rate=0.506)
+[PRIM]  wavelet_trend: long share oof=0.505  test=0.593
+[WFO]  Fold 77 done in 3.1s  |  OOS events=27  approved=22
+
+────────────────────────────────────────────────────────────
+  FOLD 78: train[0:13044]  val[13044:13920]  test[13920:14067]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0001 %  (n=13028)
+           Corr (raw) : 0.7532
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2501 isotonic=0.2508)
+[META]  Trained on 2739 events  (success rate=0.505)
+[PRIM]  wavelet_trend: long share oof=0.505  test=0.556
+[WFO]  Fold 78 done in 3.2s  |  OOS events=27  approved=19
+
+────────────────────────────────────────────────────────────
+  FOLD 79: train[0:13188]  val[13188:14067]  test[14067:14214]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0002 %  (n=13172)
+           Corr (raw) : 0.7564
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2500 isotonic=0.2505)
+[META]  Trained on 2767 events  (success rate=0.505)
+[PRIM]  wavelet_trend: long share oof=0.506  test=0.759
+[WFO]  Fold 79 done in 3.2s  |  OOS events=29  approved=24
+
+────────────────────────────────────────────────────────────
+  FOLD 80: train[0:13335]  val[13335:14214]  test[14214:14361]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0002 %  (n=13319)
+           Corr (raw) : 0.7594
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2498 isotonic=0.2510)
+[META]  Trained on 2797 events  (success rate=0.506)
+[PRIM]  wavelet_trend: long share oof=0.509  test=0.448
+[WFO]  Fold 80 done in 3.2s  |  OOS events=29  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 81: train[0:13482]  val[13482:14361]  test[14361:14508]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0002 %  (n=13466)
+           Corr (raw) : 0.7619
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2499 isotonic=0.2507)
+[META]  Trained on 2825 events  (success rate=0.504)
+[PRIM]  wavelet_trend: long share oof=0.508  test=0.375
+[WFO]  Fold 81 done in 3.3s  |  OOS events=24  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 82: train[0:13629]  val[13629:14508]  test[14508:14655]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.0002 %  (n=13613)
+           Corr (raw) : 0.7636
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2502 isotonic=0.2508)
+[META]  Trained on 2849 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.507  test=0.462
+[WFO]  Fold 82 done in 3.3s  |  OOS events=26  approved=19
+
+────────────────────────────────────────────────────────────
+  FOLD 83: train[0:13776]  val[13776:14655]  test[14655:14802]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0000 %  (n=13760)
+           Corr (raw) : 0.7343
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2498 isotonic=0.2506)
+[META]  Trained on 2876 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.507  test=0.615
+[WFO]  Fold 83 done in 3.5s  |  OOS events=26  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 84: train[0:13920]  val[13920:14802]  test[14802:14946]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0000 %  (n=13904)
+           Corr (raw) : 0.7382
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2499 isotonic=0.2507)
+[META]  Trained on 2902 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.508  test=0.781
+[WFO]  Fold 84 done in 3.5s  |  OOS events=32  approved=25
+
+────────────────────────────────────────────────────────────
+  FOLD 85: train[0:14067]  val[14067:14946]  test[14946:15093]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.8984
+           ADF p-val  : 0.0000 %  (n=14051)
+           Corr (raw) : 0.7431
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2496 isotonic=0.2507)
+[META]  Trained on 2931 events  (success rate=0.504)
+[PRIM]  wavelet_trend: long share oof=0.511  test=0.310
+[WFO]  Fold 85 done in 3.5s  |  OOS events=29  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 86: train[0:14214]  val[14214:15093]  test[15093:15240]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0000 %  (n=14198)
+           Corr (raw) : 0.7149
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2497 isotonic=0.2511)
+[META]  Trained on 2962 events  (success rate=0.504)
+[PRIM]  wavelet_trend: long share oof=0.508  test=0.391
+[WFO]  Fold 86 done in 3.6s  |  OOS events=23  approved=14
+
+────────────────────────────────────────────────────────────
+  FOLD 87: train[0:14361]  val[14361:15240]  test[15240:15387]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0000 %  (n=14345)
+           Corr (raw) : 0.7192
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2497 isotonic=0.2505)
+[META]  Trained on 2984 events  (success rate=0.504)
+[PRIM]  wavelet_trend: long share oof=0.508  test=0.800
+[WFO]  Fold 87 done in 3.6s  |  OOS events=25  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 88: train[0:14508]  val[14508:15387]  test[15387:15534]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0000 %  (n=14492)
+           Corr (raw) : 0.7244
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2500 isotonic=0.2505)
+[META]  Trained on 3010 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.510  test=0.640
+[WFO]  Fold 88 done in 3.7s  |  OOS events=25  approved=16
+
+────────────────────────────────────────────────────────────
+  FOLD 89: train[0:14655]  val[14655:15534]  test[15534:15678]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0000 %  (n=14639)
+           Corr (raw) : 0.7274
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2500 isotonic=0.2506)
+[META]  Trained on 3035 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.511  test=0.636
+[WFO]  Fold 89 done in 3.7s  |  OOS events=22  approved=12
+
+────────────────────────────────────────────────────────────
+  FOLD 90: train[0:14802]  val[14802:15678]  test[15678:15822]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0000 %  (n=14786)
+           Corr (raw) : 0.7341
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2499 isotonic=0.2505)
+[META]  Trained on 3056 events  (success rate=0.504)
+[PRIM]  wavelet_trend: long share oof=0.512  test=0.516
+[WFO]  Fold 90 done in 3.7s  |  OOS events=31  approved=17
+
+────────────────────────────────────────────────────────────
+  FOLD 91: train[0:14946]  val[14946:15822]  test[15822:15969]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=14930)
+           Corr (raw) : 0.7066
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2498 isotonic=0.2509)
+[META]  Trained on 3088 events  (success rate=0.504)
+[PRIM]  wavelet_trend: long share oof=0.512  test=0.565
+[WFO]  Fold 91 done in 3.8s  |  OOS events=23  approved=13
+
+────────────────────────────────────────────────────────────
+  FOLD 92: train[0:15093]  val[15093:15969]  test[15969:16116]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0000 %  (n=15077)
+           Corr (raw) : 0.7378
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2497 isotonic=0.2501)
+[META]  Trained on 3112 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.513  test=0.211
+[WFO]  Fold 92 done in 4.1s  |  OOS events=38  approved=18
+
+────────────────────────────────────────────────────────────
+  FOLD 93: train[0:15240]  val[15240:16116]  test[16116:16263]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9062
+           ADF p-val  : 0.0000 %  (n=15224)
+           Corr (raw) : 0.7408
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2497 isotonic=0.2511)
+[META]  Trained on 3148 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.509  test=0.433
+[WFO]  Fold 93 done in 4.1s  |  OOS events=30  approved=21
+
+────────────────────────────────────────────────────────────
+  FOLD 94: train[0:15387]  val[15387:16263]  test[16263:16410]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=15371)
+           Corr (raw) : 0.7093
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2497 isotonic=0.2514)
+[META]  Trained on 3179 events  (success rate=0.502)
+[PRIM]  wavelet_trend: long share oof=0.508  test=0.579
+[WFO]  Fold 94 done in 4.1s  |  OOS events=19  approved=11
+
+────────────────────────────────────────────────────────────
+  FOLD 95: train[0:15534]  val[15534:16410]  test[16410:16557]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=15518)
+           Corr (raw) : 0.7146
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2496 isotonic=0.2511)
+[META]  Trained on 3198 events  (success rate=0.502)
+[PRIM]  wavelet_trend: long share oof=0.508  test=0.652
+[WFO]  Fold 95 done in 4.1s  |  OOS events=23  approved=15
+
+────────────────────────────────────────────────────────────
+  FOLD 96: train[0:15678]  val[15678:16557]  test[16557:16701]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=15662)
+           Corr (raw) : 0.7210
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2493 isotonic=0.2506)
+[META]  Trained on 3221 events  (success rate=0.503)
+[PRIM]  wavelet_trend: long share oof=0.509  test=0.690
+[WFO]  Fold 96 done in 4.2s  |  OOS events=29  approved=22
+
+────────────────────────────────────────────────────────────
+  FOLD 97: train[0:15822]  val[15822:16701]  test[16701:16848]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=15806)
+           Corr (raw) : 0.7236
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2496 isotonic=0.2506)
+[META]  Trained on 3249 events  (success rate=0.501)
+[PRIM]  wavelet_trend: long share oof=0.511  test=0.750
+[WFO]  Fold 97 done in 4.6s  |  OOS events=28  approved=20
+
+────────────────────────────────────────────────────────────
+  FOLD 98: train[0:15969]  val[15969:16848]  test[16848:16995]
+────────────────────────────────────────────────────────────
+
+[FRACDIFF] Optimal d  : 0.9141
+           ADF p-val  : 0.0000 %  (n=15953)
+           Corr (raw) : 0.7264
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2500 isotonic=0.2514)
+[META]  Trained on 3279 events  (success rate=0.499)
+[PRIM]  wavelet_trend: long share oof=0.513  test=0.480
+[WFO]  Fold 98 done in 4.5s  |  OOS events=25  approved=12
+
+[WFO]  Total OOS events: 2,808  |  Approved trades: 1344
+
+[DIAG]  OOS signal quality
+OOS events               2808.0000
+Primary success rate        0.5068
+Meta-scored events       2808.0000
+Meta log-loss               0.6954
+Meta Brier                  0.2510
+Meta AUC                    0.5057
+Approved share              0.4786
+Approved success rate       0.5171
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk standard) ...

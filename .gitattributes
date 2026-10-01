@@ -1,0 +1,6 @@
+# LF in the repo and in every checkout (the experiment code hash also normalizes CRLF)
+*.py text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.lock text eol=lf

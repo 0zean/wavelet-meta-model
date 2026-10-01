@@ -214,7 +214,7 @@ def expand(doc: dict) -> list[Cell]:
 
 
 def load_spec(path) -> tuple[dict, list[Cell]]:
-    doc = yaml.safe_load(Path(path).read_text())
+    doc = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if not isinstance(doc, dict):
         raise TypeError(f"{path}: a spec is a YAML mapping")
     return doc, expand(doc)

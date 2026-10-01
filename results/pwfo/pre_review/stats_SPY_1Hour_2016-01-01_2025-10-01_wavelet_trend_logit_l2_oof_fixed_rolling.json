@@ -1,0 +1,31 @@
+{
+  "n_combos": 16,
+  "n_run_combos": 8,
+  "n_decisions": 215,
+  "n_burn_in_days": 380,
+  "n_live_days": 1762,
+  "live_start": "2018-07-09",
+  "live_end": "2025-07-11",
+  "picks": {
+    "IS504_OOS21": 42,
+    "IS252_OOS5": 34,
+    "IS504_OOS63": 32,
+    "IS252_OOS63": 29,
+    "IS504_OOS5": 13,
+    "IS504_OOS10": 11,
+    "IS252_OOS21": 8,
+    "IS252_OOS10": 8
+  },
+  "pwfo_ret_ann": 0.0011636606357425805,
+  "pwfo_sharpe": 0.049943358666726195,
+  "pwfo_max_dd": -0.12540915309309686,
+  "pwfo_psr0": 0.5524845462802234,
+  "pwfo_dsr": 0.3294460890443633,
+  "dsr_n_trials": 16,
+  "dsr_var_trials": 5.766633297882201e-05,
+  "pbo": 0.7676767676767676,
+  "pbo_prob_oos_loss": 0.8091686091686092,
+  "pbo_degradation_slope": -0.7605647459270265,
+  "pbo_n_days": 1890,
+  "pbo_n_combos": 8
+}

@@ -1,0 +1,364 @@
+
+════════════════════════════════════════════════════════════
+  Sampling events, labels and causal features on the full dataset
+════════════════════════════════════════════════════════════
+[LABEL] 3,238 events from 17,093 bars  |  -1=1462  0=15  1=1761  |  barriers {'vertical': 2454, 'lower': 439, 'upper': 345}
+[FEAT]  wavelet_core      4 cols    0.00s
+[FEAT]  trend             9 cols    0.00s
+[FEAT]  mean_reversion    3 cols    0.00s
+[FEAT]  volatility        6 cols    0.00s
+[FEAT]  microstructure    5 cols    0.00s
+[FEAT]  intraday          4 cols    0.00s
+
+[PWFO]  IS252_OOS63 window 0: IS[0:1761]  OOS[1761:2202]
+
+[FRACDIFF] Optimal d  : 0.7812
+           ADF p-val  : 1.0577 %  (n=1160)
+           Corr (raw) : 0.5744
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2532 isotonic=0.2605)
+[META]  Trained on 320 events  (success rate=0.475)
+[PRIM]  wavelet_trend: long share oof=0.506  test=0.588
+
+[PWFO]  IS252_OOS63 window 1: IS[441:2202]  OOS[2202:2640]
+
+[FRACDIFF] Optimal d  : 0.5781
+           ADF p-val  : 4.5308 %  (n=1157)
+           Corr (raw) : 0.8328
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2523 isotonic=0.2488)
+[META]  Trained on 333 events  (success rate=0.471)
+[PRIM]  wavelet_trend: long share oof=0.526  test=0.500
+
+[PWFO]  IS252_OOS63 window 2: IS[882:2640]  OOS[2640:3081]
+
+[FRACDIFF] Optimal d  : 0.8359
+           ADF p-val  : 0.6416 %  (n=1157)
+           Corr (raw) : 0.4957
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2508 isotonic=0.2561)
+[META]  Trained on 328 events  (success rate=0.448)
+[PRIM]  wavelet_trend: long share oof=0.546  test=0.564
+
+[PWFO]  IS252_OOS63 window 3: IS[1323:3081]  OOS[3081:3519]
+
+[FRACDIFF] Optimal d  : 0.8750
+           ADF p-val  : 0.7167 %  (n=1157)
+           Corr (raw) : 0.4451
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2473 isotonic=0.2490)
+[META]  Trained on 327 events  (success rate=0.453)
+[PRIM]  wavelet_trend: long share oof=0.554  test=0.633
+
+[PWFO]  IS252_OOS63 window 4: IS[1761:3519]  OOS[3519:3960]
+
+[FRACDIFF] Optimal d  : 0.7969
+           ADF p-val  : 1.6829 %  (n=1157)
+           Corr (raw) : 0.5618
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2479 isotonic=0.2590)
+[META]  Trained on 321 events  (success rate=0.442)
+[PRIM]  wavelet_trend: long share oof=0.570  test=0.491
+
+[PWFO]  IS252_OOS63 window 5: IS[2202:3960]  OOS[3960:4398]
+
+[FRACDIFF] Optimal d  : 0.8516
+           ADF p-val  : 3.9685 %  (n=1154)
+           Corr (raw) : 0.4987
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2523 isotonic=0.2584)
+[META]  Trained on 342 events  (success rate=0.474)
+[PRIM]  wavelet_trend: long share oof=0.541  test=0.459
+
+[PWFO]  IS252_OOS63 window 6: IS[2640:4398]  OOS[4398:4839]
+
+[FRACDIFF] Optimal d  : 0.8516
+           ADF p-val  : 1.1855 %  (n=1157)
+           Corr (raw) : 0.4602
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2479 isotonic=0.2711)
+[META]  Trained on 349 events  (success rate=0.484)
+[PRIM]  wavelet_trend: long share oof=0.530  test=0.620
+
+[PWFO]  IS252_OOS63 window 7: IS[3081:4839]  OOS[4839:5274]
+
+[FRACDIFF] Optimal d  : 0.7031
+           ADF p-val  : 1.6429 %  (n=1157)
+           Corr (raw) : 0.6129
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2511 isotonic=0.2682)
+[META]  Trained on 349 events  (success rate=0.487)
+[PRIM]  wavelet_trend: long share oof=0.542  test=0.243
+
+[PWFO]  IS252_OOS63 window 8: IS[3519:5274]  OOS[5274:5715]
+
+[FRACDIFF] Optimal d  : 0.7266
+           ADF p-val  : 0.5752 %  (n=1157)
+           Corr (raw) : 0.5482
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2496 isotonic=0.2613)
+[META]  Trained on 378 events  (success rate=0.479)
+[PRIM]  wavelet_trend: long share oof=0.442  test=0.667
+
+[PWFO]  IS252_OOS63 window 9: IS[3960:5715]  OOS[5715:6153]
+
+[FRACDIFF] Optimal d  : 0.6484
+           ADF p-val  : 4.8074 %  (n=1154)
+           Corr (raw) : 0.7253
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2487 isotonic=0.2817)
+[META]  Trained on 352 events  (success rate=0.443)
+[PRIM]  wavelet_trend: long share oof=0.477  test=0.519
+
+[PWFO]  IS252_OOS63 window 10: IS[4398:6153]  OOS[6153:6594]
+
+[FRACDIFF] Optimal d  : 0.6016
+           ADF p-val  : 4.9887 %  (n=1154)
+           Corr (raw) : 0.8310
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2484 isotonic=0.2673)
+[META]  Trained on 342 events  (success rate=0.444)
+[PRIM]  wavelet_trend: long share oof=0.488  test=0.437
+
+[PWFO]  IS252_OOS63 window 11: IS[4839:6594]  OOS[6594:7029]
+
+[FRACDIFF] Optimal d  : 0.6016
+           ADF p-val  : 4.6003 %  (n=1154)
+           Corr (raw) : 0.8314
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2467 isotonic=0.2530)
+[META]  Trained on 349 events  (success rate=0.473)
+[PRIM]  wavelet_trend: long share oof=0.453  test=0.650
+
+[PWFO]  IS252_OOS63 window 12: IS[5274:7029]  OOS[7029:7470]
+
+[FRACDIFF] Optimal d  : 0.6406
+           ADF p-val  : 4.7993 %  (n=1157)
+           Corr (raw) : 0.8093
+[WFO]  Fold 13: insufficient events (train=216, val=87) — skipping
+
+[PWFO]  IS252_OOS63 window 13: IS[5715:7470]  OOS[7470:7911]
+
+[FRACDIFF] Optimal d  : 0.6953
+           ADF p-val  : 4.8330 %  (n=1154)
+           Corr (raw) : 0.6668
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2558 isotonic=0.2814)
+[META]  Trained on 318 events  (success rate=0.509)
+[PRIM]  wavelet_trend: long share oof=0.484  test=0.580
+
+[PWFO]  IS252_OOS63 window 14: IS[6153:7911]  OOS[7911:8352]
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 1.6423 %  (n=1154)
+           Corr (raw) : 0.5207
+[WFO]  Fold 15: insufficient events (train=212, val=95) — skipping
+
+[PWFO]  IS252_OOS63 window 15: IS[6594:8352]  OOS[8352:8787]
+
+[FRACDIFF] Optimal d  : 0.7578
+           ADF p-val  : 4.8102 %  (n=1154)
+           Corr (raw) : 0.5376
+[WFO]  Fold 16: insufficient events (train=194, val=107) — skipping
+
+[PWFO]  IS252_OOS63 window 16: IS[7029:8787]  OOS[8787:9228]
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 3.6434 %  (n=1160)
+           Corr (raw) : 0.5048
+[WFO]  Fold 17: insufficient events (train=212, val=97) — skipping
+
+[PWFO]  IS252_OOS63 window 17: IS[7470:9228]  OOS[9228:9669]
+
+[FRACDIFF] Optimal d  : 0.7344
+           ADF p-val  : 3.9988 %  (n=1157)
+           Corr (raw) : 0.6873
+[WFO]  Fold 18: insufficient events (train=193, val=114) — skipping
+
+[PWFO]  IS252_OOS63 window 18: IS[7911:9669]  OOS[9669:10110]
+
+[FRACDIFF] Optimal d  : 0.7734
+           ADF p-val  : 4.3605 %  (n=1154)
+           Corr (raw) : 0.6019
+[WFO]  Fold 19: insufficient events (train=210, val=95) — skipping
+
+[PWFO]  IS252_OOS63 window 19: IS[8352:10110]  OOS[10110:10548]
+
+[FRACDIFF] Optimal d  : 0.7812
+           ADF p-val  : 4.9413 %  (n=1154)
+           Corr (raw) : 0.6416
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2499 isotonic=0.2609)
+[META]  Trained on 311 events  (success rate=0.450)
+[PRIM]  wavelet_trend: long share oof=0.505  test=0.622
+
+[PWFO]  IS252_OOS63 window 20: IS[8787:10548]  OOS[10548:10989]
+
+[FRACDIFF] Optimal d  : 0.8281
+           ADF p-val  : 1.8152 %  (n=1160)
+           Corr (raw) : 0.5336
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2512 isotonic=0.2593)
+[META]  Trained on 316 events  (success rate=0.475)
+[PRIM]  wavelet_trend: long share oof=0.525  test=0.412
+
+[PWFO]  IS252_OOS63 window 21: IS[9228:10989]  OOS[10989:11430]
+
+[FRACDIFF] Optimal d  : 0.7578
+           ADF p-val  : 0.7700 %  (n=1157)
+           Corr (raw) : 0.6189
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2471 isotonic=0.2752)
+[META]  Trained on 325 events  (success rate=0.520)
+[PRIM]  wavelet_trend: long share oof=0.498  test=0.344
+
+[PWFO]  IS252_OOS63 window 22: IS[9669:11430]  OOS[11430:11871]
+
+[FRACDIFF] Optimal d  : 0.6484
+           ADF p-val  : 0.6187 %  (n=1157)
+           Corr (raw) : 0.6734
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2506 isotonic=0.2539)
+[META]  Trained on 342 events  (success rate=0.538)
+[PRIM]  wavelet_trend: long share oof=0.439  test=0.500
+
+[PWFO]  IS252_OOS63 window 23: IS[10110:11871]  OOS[11871:12309]
+
+[FRACDIFF] Optimal d  : 0.7109
+           ADF p-val  : 1.3525 %  (n=1157)
+           Corr (raw) : 0.6199
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2513 isotonic=0.2661)
+[META]  Trained on 352 events  (success rate=0.520)
+[PRIM]  wavelet_trend: long share oof=0.460  test=0.573
+
+[PWFO]  IS252_OOS63 window 24: IS[10548:12309]  OOS[12309:12750]
+
+[FRACDIFF] Optimal d  : 0.4375
+           ADF p-val  : 4.5130 %  (n=1160)
+           Corr (raw) : 0.9514
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2528 isotonic=0.2590)
+[META]  Trained on 358 events  (success rate=0.520)
+[PRIM]  wavelet_trend: long share oof=0.453  test=0.505
+
+[PWFO]  IS252_OOS63 window 25: IS[10989:12750]  OOS[12750:13188]
+
+[FRACDIFF] Optimal d  : 0.2891
+           ADF p-val  : 4.8729 %  (n=1157)
+           Corr (raw) : 0.9825
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2511 isotonic=0.2621)
+[META]  Trained on 356 events  (success rate=0.500)
+[PRIM]  wavelet_trend: long share oof=0.480  test=0.533
+
+[PWFO]  IS252_OOS63 window 26: IS[11430:13188]  OOS[13188:13629]
+
+[FRACDIFF] Optimal d  : 0.3984
+           ADF p-val  : 4.7846 %  (n=1157)
+           Corr (raw) : 0.9444
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2499 isotonic=0.2592)
+[META]  Trained on 357 events  (success rate=0.501)
+[PRIM]  wavelet_trend: long share oof=0.529  test=0.441
+
+[PWFO]  IS252_OOS63 window 27: IS[11871:13629]  OOS[13629:14067]
+
+[FRACDIFF] Optimal d  : 0.5625
+           ADF p-val  : 4.7663 %  (n=1157)
+           Corr (raw) : 0.8351
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2557 isotonic=0.2675)
+[META]  Trained on 358 events  (success rate=0.506)
+[PRIM]  wavelet_trend: long share oof=0.511  test=0.570
+
+[PWFO]  IS252_OOS63 window 28: IS[12309:14067]  OOS[14067:14508]
+
+[FRACDIFF] Optimal d  : 0.8047
+           ADF p-val  : 0.8446 %  (n=1157)
+           Corr (raw) : 0.5340
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2502 isotonic=0.2689)
+[META]  Trained on 362 events  (success rate=0.525)
+[PRIM]  wavelet_trend: long share oof=0.514  test=0.647
+
+[PWFO]  IS252_OOS63 window 29: IS[12750:14508]  OOS[14508:14946]
+
+[FRACDIFF] Optimal d  : 0.6406
+           ADF p-val  : 4.3409 %  (n=1154)
+           Corr (raw) : 0.8098
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2519 isotonic=0.2589)
+[META]  Trained on 356 events  (success rate=0.492)
+[PRIM]  wavelet_trend: long share oof=0.545  test=0.538
+
+[PWFO]  IS252_OOS63 window 30: IS[13188:14946]  OOS[14946:15387]
+
+[FRACDIFF] Optimal d  : 0.8672
+           ADF p-val  : 0.2104 %  (n=1157)
+           Corr (raw) : 0.4600
+[META]  logit_l2 {'C': 0.01}  calibration=isotonic (cv Brier sigmoid=0.2504 isotonic=0.2504)
+[META]  Trained on 341 events  (success rate=0.484)
+[PRIM]  wavelet_trend: long share oof=0.545  test=0.553
+
+[PWFO]  IS252_OOS63 window 31: IS[13629:15387]  OOS[15387:15822]
+
+[FRACDIFF] Optimal d  : 0.8906
+           ADF p-val  : 0.2543 %  (n=1157)
+           Corr (raw) : 0.4058
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2604 isotonic=0.2765)
+[META]  Trained on 332 events  (success rate=0.491)
+[PRIM]  wavelet_trend: long share oof=0.575  test=0.519
+
+[PWFO]  IS252_OOS63 window 32: IS[14067:15822]  OOS[15822:16263]
+
+[FRACDIFF] Optimal d  : 0.7891
+           ADF p-val  : 0.7979 %  (n=1157)
+           Corr (raw) : 0.5444
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2522 isotonic=0.2709)
+[META]  Trained on 325 events  (success rate=0.480)
+[PRIM]  wavelet_trend: long share oof=0.566  test=0.319
+
+[PWFO]  IS252_OOS63 window 33: IS[14508:16263]  OOS[16263:16701]
+
+[FRACDIFF] Optimal d  : 0.8125
+           ADF p-val  : 4.6045 %  (n=1154)
+           Corr (raw) : 0.5352
+[META]  logit_l2 {'C': 0.01}  calibration=sigmoid (cv Brier sigmoid=0.2513 isotonic=0.2667)
+[META]  Trained on 334 events  (success rate=0.500)
+[PRIM]  wavelet_trend: long share oof=0.473  test=0.621
+[PWFO]  IS252_OOS63: 34 windows, status {'ok': 28, 'insufficient_events': 6}
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...
+
+[BACKTEST]  Simulating barrier-exit trades (sizer fixed, single positions, risk none) ...

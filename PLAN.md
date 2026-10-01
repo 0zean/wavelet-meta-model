@@ -747,7 +747,21 @@ too small to be meaningful, inner CV leaking across window boundaries.
 
 **Reviewer focus.** Any post-holdout tuning, cherry-picked reporting, trial undercount, survivorship bias in the universe.
 
-**Status.** Not started.
+**Status.** In progress — Stage A spec written; runner made Windows-portable for the Stage A run on the user's PC.
+- Stage A spec `experiments/specs/u11_a_screen.yaml`: 950 cells = 19 symbols × {5Min, 15Min, 30Min, 1Hour, 1Day} ×
+  {wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb} × meta {xgb, rf_ldp}; default features, oof,
+  fixed sizing, risk none, bi-weekly cadence (`TEST = 10` sessions on every timeframe). 1Min excluded (not cached).
+- Cost probe (SPY, 10 cells, 10 jobs, scratch ledger — not counted): ~3 s/fold xgb, ~9 s/fold rf_ldp early, rising
+  with the expanding train window; folds 92 (1Day) … ~240 (5Min); 1Day xgb 3 min, 1Day rf 13 min, 1Hour xgb 17 min CPU,
+  5Min rf ≈ 2.5 h. Stage A ≈ 860 CPU-hours → run on the user's Windows PC.
+- Portability: ledger locks via `msvcrt` byte-range locks on Windows (`fcntl.flock` elsewhere); every text file the
+  pipeline reads or writes is explicit UTF-8 (logs carry box-drawing / Greek characters cp1252 cannot encode), CLI
+  streams reconfigured to UTF-8; code hash normalizes CRLF and now includes the OS and CPU architecture (equal
+  library versions on arm64 macOS and x86-64 Windows need not give identical floats, so a result is reused only on
+  the platform that computed it); `.gitattributes` forces LF. Windows lock path untested on macOS (no msvcrt).
+- Ledger continuity: the PC run must start from the Mac's `results/ledger.jsonl` (181 rows) and `data/cache/`
+  (copied, not re-fetched: `adjustment=all` history re-adjusts on new dividends), and the PC ledger is canonical
+  from Stage A on, or N is undercounted.
 
 ---
 

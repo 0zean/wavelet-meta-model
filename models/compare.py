@@ -210,7 +210,7 @@ def main() -> None:
                 print(f"[ZOO]  {model} CPCV failed: {row['cpcv_error']}")
         row["runtime_s"] = round(time.time() - t, 1)
         row = {**row, "spec": spec}
-        with open(out / "trials.jsonl", "a") as f:
+        with open(out / "trials.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
         rows.append({**spec, **{k: v for k, v in row.items() if k not in ("spec", "cpcv_sharpes")}})
 

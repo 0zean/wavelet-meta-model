@@ -58,7 +58,7 @@ def import_legacy(paths, ledger: Ledger, base: Path | None = None) -> int:
     for p in paths:
         p = Path(p)
         src = str(p.relative_to(base)) if base is not None and p.is_relative_to(base) else str(p)
-        for line in p.read_text().splitlines():
+        for line in p.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             try:

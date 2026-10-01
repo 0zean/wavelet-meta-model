@@ -66,7 +66,7 @@ def get_calendar(end, cache_dir: Path = DEFAULT_CACHE_DIR, source=None) -> pd.Da
     path = Path(cache_dir) / "calendar.json"
     end = _day(end)
     if path.exists():
-        blob = json.loads(path.read_text())
+        blob = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(blob, dict):
             cal = calendar_from_raw(blob["rows"])
             age = pd.Timestamp.now(tz="UTC") - pd.Timestamp(blob["fetched_at"])
@@ -202,7 +202,7 @@ def load_bars(
     cached = meta = None
     if npz.exists():
         if refresh:  # re-fetch, but never shrink what the cache covered
-            old = json.loads(js.read_text()) if js.exists() else {}
+            old = json.loads(js.read_text(encoding="utf-8")) if js.exists() else {}
             if "coverage_start" in old:
                 start_all = min(start, _day(old["coverage_start"]))
                 end_all = max(end, _day(old["coverage_end"]))
