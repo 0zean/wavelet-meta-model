@@ -170,6 +170,19 @@ class RunConfig:
     MIN_TRAIN_EVENTS: int = 200
     MIN_VAL_EVENTS: int = 100
 
+    # Power Walk-Forward (SPEC §6, U9; wfo/pwfo.py). Windows in WINDOW_UNIT (exchange-calendar sessions in the
+    # runner): IS ∈ PWFO_IS_GRID × OOS ∈ PWFO_OOS_GRID, retraining every OOS. Each IS window splits into train and a
+    # final val of round(PWFO_VAL_FRAC · IS) units (None → VAL / (INITIAL_TRAIN + VAL), the WFO's own ratio).
+    PWFO_IS_GRID: tuple[int, ...] = (63, 126, 252, 504)
+    PWFO_OOS_GRID: tuple[int, ...] = (5, 10, 21, 63)
+    PWFO_EXPANDING: bool = False  # True: every IS window starts at the first unit
+    PWFO_VAL_FRAC: float | None = None
+    PWFO_DEFAULT: tuple[int, int] = (252, 10)  # (IS, OOS) used during the nested-selection burn-in
+    PWFO_MIN_WINDOWS: int = 50  # fewer OOS windows flags a combo as statistically weak (Meyers)
+    PWFO_WFE_MIN_T: float = 2.0  # WFE is reported only when the mean IS figure is > 0 with this t-statistic
+    SELECT_EVERY: int = 10  # nested selection: re-pick the combo every SELECT_EVERY trading days ...
+    SELECT_LOOKBACK: int = 126  # ... by its Sharpe over the prior SELECT_LOOKBACK days of OOS returns
+
     # Backtest
     # Zero commission, slippage adverse on every fill (buys up, sells down).
     # SPY @ ~$500, 1 bp ≈ $0.05 ≈ one-way spread / 2
@@ -251,6 +264,18 @@ class RunConfig:
                 raise ValueError(f"{name} must be >= 1")
         if not 0 <= self.EMBARGO < min(self.INITIAL_TRAIN, self.VAL):
             raise ValueError("EMBARGO must be >= 0 and shorter than the train and val windows")
+        for name in ("PWFO_IS_GRID", "PWFO_OOS_GRID"):
+            object.__setattr__(self, name, tuple(int(v) for v in getattr(self, name)))
+            if not getattr(self, name) or min(getattr(self, name)) < 1:
+                raise ValueError(f"{name} must be a non-empty tuple of positive lengths")
+        object.__setattr__(self, "PWFO_DEFAULT", tuple(int(v) for v in self.PWFO_DEFAULT))
+        if self.PWFO_VAL_FRAC is not None and not 0 < self.PWFO_VAL_FRAC < 1:
+            raise ValueError(f"PWFO_VAL_FRAC must be in (0, 1) or None, got {self.PWFO_VAL_FRAC}")
+        if not self.PWFO_WFE_MIN_T >= 0:
+            raise ValueError(f"PWFO_WFE_MIN_T must be >= 0, got {self.PWFO_WFE_MIN_T}")
+        for name in ("SELECT_EVERY", "SELECT_LOOKBACK", "PWFO_MIN_WINDOWS"):
+            if getattr(self, name) < 1:
+                raise ValueError(f"{name} must be >= 1")
         if self.TIMEFRAME == "1Day" and not self.HOLD_OVERNIGHT:
             raise ValueError("1Day bars are one per session: HOLD_OVERNIGHT must be True")
 

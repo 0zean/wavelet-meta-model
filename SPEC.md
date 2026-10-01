@@ -85,7 +85,7 @@ WFO windows (U2): the train window grows with bar length so every split clears `
 30Min 2.5, 1Hour 1.3, 1Day 0.25), the smallest val split is 246 / 168 / 122 / 145 / 126 events and the first
 train split 616 / 654 / 466 / 320 / 233; fold counts 238 / 108 / 104 / 98 / 14. 1Min was not measured (no
 cache yet). A "trading day" is a session **present in the data**: the few sessions the data layer drops
-(§1) are not counted, so a window spanning one is one calendar session longer. U9 moves to exchange-calendar windows.
+(§1) are not counted, so a window spanning one is one calendar session longer. The PWFO (§6, U9) counts exchange-calendar sessions instead; `run_wfo` keeps data sessions (regression).
 
 Timeframe-independent fields (existing semantics): `BARRIER_MULT`, `CUSUM_MULT`, `SLIPPAGE_PCT`,
 `META_MIN_RET = 2·SLIPPAGE_PCT`, `SEED`, model params. WFO windows (`INITIAL_TRAIN`, `VAL`, `TEST`,
@@ -273,28 +273,58 @@ Each sample i has span `[t0_i, t1_i]` = `[event bar, exit bar]`.
 
 ## §6 PWFO definitions and statistics (U5, U9)
 
-**Windows.** In trading days on the market calendar. For combo (IS, OOS): window w has
-IS = [s_w, s_w+IS), OOS = [s_w+IS+embargo, s_w+IS+embargo+OOS), s_{w+1} = s_w + OOS (rolling; `expanding=True` fixes s_w = start).
-Retraining cadence = OOS length. Default grid IS ∈ {63, 126, 252, 504}, OOS ∈ {5, 10, 21, 63}.
-Inside each IS window, the existing train/val split and inner purged CV apply.
+**Windows** (`wfo/pwfo.py`, U9). In trading days on the **exchange calendar** (`unit_bounds`: calendar sessions between
+the first and last data session; a session the data layer dropped counts as a day with no bars, a half-day is one
+session with fewer bars; a data session missing from the calendar raises). `unit="bars"` exists for the legacy
+regression. For combo (IS, OOS, val), window w (units):
+IS = [a_w, b_w) with b_w = IS + w·OOS and a_w = w·OOS (rolling) or 0 (`PWFO_EXPANDING`); train = [a_w, b_w − val),
+val = [b_w − val, b_w); OOS = [b_w, b_w + OOS). Retraining cadence = OOS length; the OOS windows tile
+[IS, IS + W·OOS) contiguously; only full OOS windows are run (a final partial one is dropped, as in the WFO).
+val = round(`PWFO_VAL_FRAC`·IS) (default VAL/(INITIAL_TRAIN+VAL), ⅓ on 1Hour). Default grid IS ∈ {63, 126, 252, 504},
+OOS ∈ {5, 10, 21, 63}.
+- *Refinement — embargo.* There is no gap between IS and OOS; the embargo is the WFO's (§5): train (val) samples
+  whose exit falls in the last `EMBARGO` sessions before val (OOS) starts are purged. Bars in a gap would never be
+  traded, and the purge already keeps every fitting label resolved before the OOS starts.
+- *Rolling isolation.* Everything fitted in window w (fracdiff d, cMDA selection, primary, meta-model, sizers) sees only
+  events with t ≥ a_w and bars from a_w on; primary *signals* still read the bar prefix as warm-up history (causal).
+- The legacy expanding WFO is the single combo (INITIAL_TRAIN+VAL, TEST, VAL) with `PWFO_EXPANDING` (tested in both
+  units; `legacy_5min` reproduces the `402ef202…` CSV through `run_combo`).
+- A window that cannot be fit is a counted skip (`status` = `insufficient_events` / `fracdiff_failed` /
+  `primary_failed` / `empty_oos`): its OOS is flat. A combo with no fitted window is reported (`n_ok_windows` = 0),
+  left out of selection and PBO, and still counts as a trial for the DSR.
 
-**Per-combo statistics.**
-- `n_oos_windows` (flag `< 50` as statistically weak, per Meyers).
-- `WFE = annualized OOS return / annualized IS return` (IS return = in-sample fit performance of the same
-  model on its IS window's val+train events). Reported NaN when IS return ≤ 0, with the count of such windows.
-  Also `WFE_sharpe` (ratio of Sharpes).
-- `pct_profitable_oos`, `oos_sharpe`, `oos_sortino`, `max_dd`, `IS↔OOS Spearman` across windows, trades, turnover.
-- PBO over the combo × window performance matrix (CSCV, `PBO_BLOCKS` S=16; `validation/pbo.py`): rows cut into S contiguous
+**Per-combo statistics** (`combo_stats`). The combo's stitched OOS signals are backtested once (`run_backtest`,
+meta-filtered, cfg sizing / risk profile) from its first OOS bar; daily close-to-close returns over its OOS sessions.
+Window w's OOS return = compounded daily return over its sessions. IS: window w's models predict their own fitting
+events (train+val purged at the IS end; `fit_window(in_sample=True)`), backtested on the IS bars → annualized return
+and Sharpe.
+- `n_oos_windows`, `n_ok_windows` (fitted); flag `weak` if `n_ok_windows < PWFO_MIN_WINDOWS` = 50, per Meyers.
+- `WFE = annualized stitched OOS return / mean annualized IS return` over **all** windows (an unfitted window is flat
+  on both sides, as in the OOS stream). *Refinement:* **NaN unless that mean is > 0 with t-statistic ≥
+  `PWFO_WFE_MIN_T` = 2** across windows (`is_ret_t` reported): a ratio to an IS loss is meaningless and a ratio to an IS
+  figure indistinguishable from 0 explodes (review: SPY IS504_OOS5 IS mean 0.0029, t 0.85 → WFE −6.5).
+  `n_is_nonpos` = fitted windows whose IS return ≤ 0. `WFE_sharpe` the same with annualized Sharpes (`is_sharpe_t`).
+- `pct_profitable_oos` (fitted windows; one without an OOS trade counts as not profitable), `pct_windows_traded`,
+  `pct_profitable_traded` (among windows that traded), `oos_sharpe`, `oos_sortino` (daily, ×√252), `max_dd`, PSR(0),
+  `is_oos_spearman` (IS annualized vs OOS window return across fitted windows), trades, turnover.
+- PBO over the combo × day matrix of daily OOS returns of the run combos, on the days all of them cover
+  (CSCV, `PBO_BLOCKS` S=16; `validation/pbo.py`): rows cut into S contiguous
   blocks; for each of the C(S, S/2) IS block sets, n* = best IS column (ties → lowest index), ω = OOS rank of n*
   (1 = worst, ties averaged)/(N+1), λ = log(ω/(1−ω)); PBO = P(λ < 0) + ½·P(λ = 0) (the exact-median case, odd N or
   ties, counts half, so noise gives ≈ 0.5 for any N). Default metric = per-period Sharpe from block moments of each column
   shifted by its first value (a flat column scores exactly 0, or ±inf with non-zero mean). `PBO_BLOCKS` must be even. Also reported: P(OOS loss of n*) and the IS→OOS degradation slope.
 
-**Nested selection (walk-forward of the walk-forward).** Each combo yields a causal daily OOS return stream.
-Every `SELECT_EVERY = 10` trading days at decision date d, pick the combo with the highest trailing
-`SELECT_LOOKBACK = 126`-day Sharpe computed from returns strictly before d (ties → higher WFE_sharpe → shorter IS).
-The PWFO equity curve = the chosen combo's returns over [d, d+SELECT_EVERY). Before every combo has a full
-lookback, use the default combo (IS=252, OOS=10); that period is labeled burn-in and excluded from headline stats.
+**Nested selection (walk-forward of the walk-forward)** (`nested_select`). Each run combo yields a causal daily OOS
+return stream. Every `SELECT_EVERY = 10` trading days from the default combo's first OOS session, at decision session d
+pick the combo with the highest Sharpe over its last `SELECT_LOOKBACK = 126` returns strictly before d (a flat
+stream scores 0). Ties → higher WFE_sharpe over the lookback (that Sharpe / mean IS Sharpe of the windows whose OOS
+started in it; a window's IS Sharpe is known when its OOS starts) → shorter IS → grid order. Until every run combo
+has a full lookback, use the default combo `PWFO_DEFAULT` = (IS=252, OOS=10); that period is labeled burn-in and
+excluded from headline stats. The PWFO stream = the chosen combo's returns over [d, d+SELECT_EVERY) (switching between
+the combos' paper return streams); it ends where the earliest run combo's OOS ends. Invariant (tested): perturbing
+returns or IS Sharpes from d on cannot change the combo chosen at d or before.
+**DSR of the PWFO** = DSR of the live (post-burn-in) PWFO daily returns with N = every grid combo and V[SR_n] = variance of
+the run combos' per-period Sharpes over the same days.
 
 **Probabilistic Sharpe** PSR(SR*) = Φ( (SR̂ − SR*)·√(T−1) / √(1 − γ₃·SR̂ + (γ₄−1)/4·SR̂²) ),
 γ₄ = raw (non-excess) kurtosis, SR per-period (not annualized).
