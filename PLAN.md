@@ -812,6 +812,18 @@ too small to be meaningful, inner CV leaking across window boundaries.
   first (no new fits), then `u11_a2.yaml` (the 475 xgb cells; 15 5Min + 81 15Min already cached). The other 392
   rf_ldp cells of `u11_a_screen.yaml` are not run. Resume:
   `scripts/run_specs.ps1 experiments/specs/u11_a_rf_cached.yaml experiments/specs/u11_a2.yaml`.
+  Proxy check on the pilot: rf_ldp − xgb AUC = 0.0049 ± 0.0016 over the 15 pairs (min 0.0008), Pearson 0.98,
+  Spearman 0.89 — a near-constant offset, so xgb ranks cells as rf_ldp does.
+- **Stage B meta-model axis (decided 2026-10-03):** xgb (the screen's model), rf_ldp, plus `logit_l2` (in the zoo
+  since U6), `rf_ldp_fast` and `catboost` — the last two on branch `unit/11-stage-b-models` (worktree
+  `../wavelet-meta-model-stage-b`), merged only after Stage A finishes (a zoo change alters the code hash). Cost of
+  one late SPY 5Min fold (wavelet_trend, 37.6k fitting events): logit_l2 4.5 s, rf_ldp_fast 8.9 s, xgb 15.6 s,
+  catboost (plain) 33 s, rf_ldp 43.5 s; catboost's ordered boosting 185 s, so plain is used. U6 (SPY 1Day, 234 events,
+  oof): rf_ldp best on log-loss / Brier / AUC (0.579) and CPCV SR 0.82 ± 0.17, logit_l2 AUC 0.576 and best WFO Sharpe
+  1.07, extra_trees best CPCV mean 0.88, xgb / lightgbm last — small samples, a lean not a ranking.
+  Open: the Stage B worktree's full test suite died twice (native crash, faulthandler frames) in 5 runs right after
+  catboost was added and could not be reproduced in 3 more full runs + 8 runs of `test_pwfo.py`; watch for
+  `WorkerDied` rows in Stage B.
 
 ---
 
