@@ -19,10 +19,12 @@ from data.bars import HoldoutError
 from experiments import ledger as L
 from experiments.legacy import import_legacy
 from experiments.report import (
+    alpha_stats,
     leaderboard,
     row_dsr,
     session_bootstrap_auc,
     stage_a_survivors,
+    stage_b1_selection,
     weighted_auc,
     write_report,
 )
@@ -611,3 +613,51 @@ def test_stage_a_survivors_gates_ranks_caps_and_ignores_other_meta_models():
     assert t.loc[["a1", "a2", "a3", "c1"], "passed"].all() and not t.loc[["b1", "b2"], "passed"].any()
     assert list(t.index[t["survivor"]]) == ["a1", "a2", "c1"]  # DSR order, a3 capped, k = 3
     assert t["n_trials"].eq(7).all()  # the rf_ldp row still counts as a trial
+
+
+def test_alpha_stats_hedges_beta_and_measures_top_day_share():
+    rng = np.random.default_rng(0)
+    idx = pd.date_range("2022-01-03", periods=500, freq="B", tz="America/New_York")
+    bh = pd.Series(rng.normal(0.0005, 0.01, len(idx)), idx)
+    alpha = pd.Series(rng.normal(0.0004, 0.005, len(idx)), idx)
+    st = alpha_stats(0.5 * bh + alpha, bh)
+    assert abs(st["beta"] - 0.5) < 0.05
+    assert abs(st["alpha_sr"] - alpha.mean() / alpha.std() * np.sqrt(252)) < 0.15
+    pure_beta = alpha_stats(0.5 * bh, bh)
+    assert abs(pure_beta["alpha_sr"]) < 1e-6 or np.isnan(pure_beta["alpha_sr"])
+    lucky = pd.Series(0.0, idx)
+    lucky.iloc[:5] = 0.02
+    lucky.iloc[5:] = -0.0001  # all of the P&L from 5 days
+    assert alpha_stats(lucky, bh)["top_days_share"] > 1
+    assert alpha_stats(-lucky.abs(), bh)["top_days_share"] == np.inf
+
+
+def test_stage_b1_selection_picks_max_auc_model_and_gates_it(tmp_path):
+    idx = pd.date_range("2022-01-03", periods=300, freq="B", tz="America/New_York")
+    rng = np.random.default_rng(1)
+    bh = pd.Series(rng.normal(0.0, 0.01, len(idx)), idx)
+    good = pd.Series(rng.normal(0.001, 0.005, len(idx)), idx)
+
+    def row(h, sym, meta, auc, psr, stage="B", **spec_extra):
+        r = _a_row(h, sym, "1Day", "p1", meta, auc, psr, 1.0)
+        spec = {**json.loads(r["spec_json"]), **spec_extra}
+        (tmp_path / "cells" / h).mkdir(parents=True)
+        (good if psr > 0.5 else -good).rename("ret").to_csv(tmp_path / "cells" / h / "daily_returns.csv")
+        return {**r, "stage": stage, "spec_json": json.dumps(spec)}
+
+    rows = [
+        row("a_spy", "SPY", "xgb", 0.53, 0.9, stage="A"),
+        row("b_spy_l", "SPY", "logit_l2", 0.56, 0.4),  # best AUC but PSR fails: SPY fails (no fallback)
+        row("b_spy_c", "SPY", "catboost", 0.54, 0.95),
+        row("a_qqq", "QQQ", "xgb", 0.53, 0.9, stage="A"),
+        row("b_qqq_r", "QQQ", "rf_ldp_fast", 0.55, 0.8),  # QQQ: rf_ldp_fast
+        row("b_qqq_x", "QQQ", "rf_ldp_fast", 0.60, 0.8, feature_groups="other"),  # a B2-style row: not a candidate
+        row("b_qqq_e", "QQQ", "extra_trees", 0.70, 0.9),  # not a B1 model
+        row("a_tlt", "TLT", "xgb", 0.51, 0.9, stage="A"),  # not a Stage A survivor
+    ]
+    t = stage_b1_selection(rows, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
+    assert set(t.index) == {"SPY", "QQQ"}
+    assert t.loc["SPY", "model"] == "logit_l2" and not t.loc["SPY", "passed"]
+    assert t.loc["QQQ", "model"] == "rf_ldp_fast" and t.loc["QQQ", "cell_hash"] == "b_qqq_r" and t.loc["QQQ", "passed"]
+    assert t.loc["SPY", "n_models"] == 3 and t.loc["QQQ", "n_models"] == 2
+    assert t.loc["QQQ", "auc_xgb"] == 0.53 and np.isnan(t.loc["QQQ", "auc_catboost"])

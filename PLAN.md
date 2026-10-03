@@ -855,6 +855,21 @@ too small to be meaningful, inner CV leaking across window boundaries.
   sizing, risk none, `TEST = 10`). xgb is not refit: merging the Stage B models changes the code hash, so a refit
   would be 54 extra trials of a model already tried; the Stage A xgb rows are B1's xgb arm. Selection from B1 into
   B2 is pre-registered below before any B1 ledger row exists.
+- **B1 → B2 rule (pre-registered 2026-10-03 15:43, B1 running, 0 stage-B ledger rows; chosen by the user):** per
+  survivor, the candidates are its Stage A xgb row and its three B1 rows (`ok` only; the spec equal to the
+  survivor's but for `model.meta`). **Model = the highest OOS meta AUC** (ties → PSR, then label) — AUC is the
+  meta-model's own task and, over thousands of OOS events, far less noisy than Sharpe differences between four models
+  on the same primary trades (max-PSR would mostly pick the luckiest). The survivor goes to B2 with that model iff
+  the chosen row has **PSR > 0.5, alpha Sharpe > 0 and best-5-days share < 100 %** — no fallback to another model,
+  **no top-K** (all that pass; consistent with the Stage A amendment). Alpha Sharpe = annualized Sharpe of
+  r − β·b (r the cell's daily returns, b the symbol's buy-and-hold daily simple returns from its last close per NY
+  session, β by OLS on the common days); best-5-days share = Σ of the 5 largest daily returns / Σ r (∞ if Σ r ≤ 0).
+  `python -m experiments.report b1` (`stage_b1_selection`, tested) → `results/experiments/report/stage_b1_selection.
+  {csv,md}`; final only when every survivor has all 4 model rows (an `error` row is re-run first; a `no_fit` model
+  drops out of that survivor's candidates). Note: `stage_a_survivors_diagnostics.csv` (ad hoc, last session) has the
+  same betas but larger alpha Sharpes for high-beta cells (NVDA 1Day 0.46 vs 0.26 here), consistent with it having
+  hedged log buy-and-hold returns; the rule uses simple returns (what a β hedge earns). DSR is not used to select
+  between sub-stages; the final test stays DSR at the holdout with the total ledger N.
 
 ---
 
