@@ -12,8 +12,9 @@ Run experiment specs one after another, detached, on Windows (U11).
 - A spec whose run exits non-zero stops the chain. Stop everything: taskkill /T /F /PID <pid in run_specs.log>;
   finished per-symbol fits are kept and skipped on the next run.
 #>
+[CmdletBinding(PositionalBinding = $false)]  # only the spec list is positional
 param(
-    [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)][string[]]$Specs,
+    [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)][string[]]$Specs,
     [int]$Jobs = 30,
     [string]$Ledger = "",  # default: results\ledger.jsonl
     [string]$Root = "",  # default: results\experiments
