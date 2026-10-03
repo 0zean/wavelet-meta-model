@@ -870,6 +870,12 @@ too small to be meaningful, inner CV leaking across window boundaries.
   same betas but larger alpha Sharpes for high-beta cells (NVDA 1Day 0.46 vs 0.26 here), consistent with it having
   hedged log buy-and-hold returns; the rule uses simple returns (what a β hedge earns). DSR is not used to select
   between sub-stages; the final test stays DSR at the holdout with the total ledger N.
+- B1 run note: launched 2026-10-03 15:35 (`scripts/run_specs.ps1 experiments/specs/u11_b1.yaml`), stopped by the
+  user at 16:17 with 32 of 162 per-symbol fits cached and 0 ledger rows; resume with the same command (cached fits
+  are skipped; the 30 in-flight fits restart from fold 1). Cost is dominated by catboost: ~30 s per fold even on
+  early, small folds (it does not get cheaper with a short train window as the other models do), so a 15Min/5Min
+  catboost fit takes ~2–2.7 h; rf_ldp_fast 13–20 min and logit_l2 2–20 min per fit at 30Min–5Min. Estimated
+  remaining wall-clock ~3–4 h at 30 jobs (1Hour / 1Day catboost costs not yet measured).
 
 ---
 
