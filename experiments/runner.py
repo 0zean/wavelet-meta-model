@@ -52,7 +52,7 @@ DEFAULT_ROOT = ROOT / "results" / "experiments"
 CODE_DIRS = ("data", "fastfracdiff", "features", "primaries", "models", "sizing", "risk", "validation", "wfo", "utils",
              "experiments")  # fmt: skip
 CODE_EXCLUDE = {"experiments/report.py"}  # cannot change a result
-LIBS = ("numpy", "pandas", "scipy", "scikit-learn", "xgboost", "lightgbm", "pywddff")
+LIBS = ("numpy", "pandas", "scipy", "scikit-learn", "xgboost", "lightgbm", "catboost", "pywddff")
 # RunConfig fields run_wfo never reads (only the backtest / PWFO do): left out of the per-symbol signals-cache key
 BACKTEST_ONLY = frozenset(
     {"RISK_PROFILE", "POSITION_MODE", "SIZE_STEP", "INIT_CASH", "SIZE", "PWFO_IS_GRID", "PWFO_OOS_GRID",
