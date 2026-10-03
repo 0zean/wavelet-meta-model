@@ -1,0 +1,97 @@
+# U11 Stage A: the rf_ldp cells already fitted (per-symbol WFO signals cached) when Stage A dropped rf_ldp
+# (PLAN U11 amendment 2026-10-03). Recorded so every fitted cell counts as a trial (the 15 5Min pilot cells
+# among them, as the pre-registration requires); no new rf_ldp fits. Generated from the signals cache.
+name: u11_a_rf_cached
+stage: A
+defaults:
+  start: 2016-01-01
+  end: 2025-10-01
+  feature_groups: default
+  meta_train: oof
+  sizer: fixed
+  risk_profile: none
+  overrides: {TEST: 10}
+cells:
+  - {symbols: SPY, timeframe: 5Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 5Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 5Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 5Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 5Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: SPY, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: IWM, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: IWM, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: IWM, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: IWM, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: IWM, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: DIA, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: DIA, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: DIA, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: DIA, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: DIA, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: XLF, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: XLF, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: XLF, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: XLF, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: XLF, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: XLK, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: XLK, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: XLK, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: XLK, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: XLK, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: XLE, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: XLE, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: XLE, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: XLE, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: XLE, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: XLV, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: XLV, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: XLV, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: XLV, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: XLV, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 5Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 5Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 5Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 5Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 5Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: TLT, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: GLD, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: GLD, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: GLD, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: GLD, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: GLD, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 5Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 5Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 5Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 5Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 5Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: AAPL, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: MSFT, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: MSFT, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: MSFT, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: MSFT, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: MSFT, timeframe: 15Min, primary.name: ml_xgb, model.meta: rf_ldp}
+  - {symbols: NVDA, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: NVDA, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: NVDA, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: NVDA, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}
+  - {symbols: AMZN, timeframe: 15Min, primary.name: wavelet_trend, model.meta: rf_ldp}
+  - {symbols: AMZN, timeframe: 15Min, primary.name: sma_cross, model.meta: rf_ldp}
+  - {symbols: AMZN, timeframe: 15Min, primary.name: bollinger_mr, model.meta: rf_ldp}
+  - {symbols: AMZN, timeframe: 15Min, primary.name: donchian_breakout, model.meta: rf_ldp}

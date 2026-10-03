@@ -802,6 +802,16 @@ too small to be meaningful, inner CV leaking across window boundaries.
   Stopped by the user at 18:05 (cooling break; 179 of 790 per-symbol fits cached, ledger untouched). Restart with
   `scripts/run_specs.ps1` (detached, opts every run process out of EcoQoS, runs specs in sequence):
   `u11_a1.yaml` then `u11_a_screen.yaml` (the remaining 160 5Min cells).
+- **Amendment (2026-10-03, before the resume; no ≥15Min result has been looked at): Stage A's meta-model axis is
+  xgb only.** Reason: cost — rf_ldp cells were ~72 % of the remaining ~675 CPU-hours (9 single-threaded 500-tree
+  forests per fold vs 9 boosted fits); xgb-only leaves ~6 h on the PC instead of ~22 h. The screen judges each
+  (symbol, timeframe, primary) with an xgb meta-model as proxy; Stage B brings back the model zoo, rf_ldp included,
+  on the survivors. Known bias of the proxy: in the 5Min pilot rf_ldp's OOS AUC beat xgb's in all 15 pairs (by
+  ~0.005), as on SPY 1Day in U6 — the survivor rule must allow for it. Every cell already fitted is recorded:
+  `u11_a_rf_cached.yaml` (83 rf_ldp cells whose fits are cached: the 15 5Min pilot cells and 68 15Min cells) runs
+  first (no new fits), then `u11_a2.yaml` (the 475 xgb cells; 15 5Min + 81 15Min already cached). The other 392
+  rf_ldp cells of `u11_a_screen.yaml` are not run. Resume:
+  `scripts/run_specs.ps1 experiments/specs/u11_a_rf_cached.yaml experiments/specs/u11_a2.yaml`.
 
 ---
 
