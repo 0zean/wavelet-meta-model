@@ -747,7 +747,7 @@ too small to be meaningful, inner CV leaking across window boundaries.
 
 **Reviewer focus.** Any post-holdout tuning, cherry-picked reporting, trial undercount, survivorship bias in the universe.
 
-**Status.** In progress — Stage A spec written; runner made Windows-portable for the Stage A run on the user's PC.
+**Status.** In progress — Stage A done (2026-10-03, 558 trials, 54 cells pass the survivor gates); Stage B1 next.
 - Stage A spec `experiments/specs/u11_a_screen.yaml`: 950 cells = 19 symbols × {5Min, 15Min, 30Min, 1Hour, 1Day} ×
   {wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb} × meta {xgb, rf_ldp}; default features, oof,
   fixed sizing, risk none, bi-weekly cadence (`TEST = 10` sessions on every timeframe). 1Min excluded (not cached).
@@ -833,6 +833,28 @@ too small to be meaningful, inner CV leaking across window boundaries.
   Open: the Stage B worktree's full test suite died twice (native crash, faulthandler frames) in 5 runs right after
   catboost was added and could not be reproduced in 3 more full runs + 8 runs of `test_pwfo.py`; watch for
   `WorkerDied` rows in Stage B.
+- **Stage A result (finished 2026-10-03 13:27):** 558 Stage A rows (83 rf_ldp, 475 xgb), all `ok`; ledger 739 rows,
+  N = 737 counted trials through Stage A. Survivor gates (AUC > 0.515, PSR > 0.5): 54 of 475 xgb cells pass
+  (`results/experiments/report/stage_a_survivors.{csv,md}`, column `passed`).
+- **Amendment (2026-10-03, after the survivor table was seen — a deviation from the pre-registered rule): the Stage A
+  survivor set is all 54 gate-passers, not the DSR top 20.** Reason: the DSR ranking is degenerate at this N. The
+  expected maximum Sharpe of 737 trials is 1.81 annualized and every cell's Sharpe is below it, so every DSR is ≈ 0
+  (max 0.041) and their order is set mostly by sample length: the 1Day OOS windows (~930 days, from 2022-01) rank
+  above intraday windows of 2,200+ days, 16 of the top 20 were 1Day, and many of those are market exposure or a
+  handful of days' P&L (beta, alpha Sharpe, exposure in `stage_a_survivors_diagnostics.csv`). Taking every passer
+  drops the ranking step rather than swapping in a ranking chosen after seeing results; the gates are unchanged,
+  and the 2-per-(symbol, timeframe) cap goes with the top-K it served. Cost: Stage B runs on 54 cells, not 20. The
+  `survivor` column of the CSV is the superseded top 20; `passed` is the survivor set.
+- **Amendment (2026-10-03): Stage B1's model axis uses `rf_ldp_fast` in place of `rf_ldp`** (cost: 8.9 s vs 43.5 s
+  on a late SPY 5Min fold). Fidelity caveat: the r = 0.993 / 99.7 % equal-trade-decisions figure compares 200 vs
+  500 trees, both at `max_features=1`; it is not a comparison with `rf_ldp`, which picks `max_features` from
+  {1, sqrt} by purged CV per fold (1 in 81 % of its 21,948 Stage A fold fits). In the other ~19 % of folds
+  `rf_ldp_fast` is a different model, so B1 says nothing direct about `rf_ldp`.
+- **Stage B1 spec** (`experiments/specs/u11_b1.yaml`, generated from the 54 `passed` rows): each survivor ×
+  {logit_l2, rf_ldp_fast, catboost} = 162 cells, stage B, Stage A's other settings (default features, oof, fixed
+  sizing, risk none, `TEST = 10`). xgb is not refit: merging the Stage B models changes the code hash, so a refit
+  would be 54 extra trials of a model already tried; the Stage A xgb rows are B1's xgb arm. Selection from B1 into
+  B2 is pre-registered below before any B1 ledger row exists.
 
 ---
 
