@@ -814,6 +814,15 @@ too small to be meaningful, inner CV leaking across window boundaries.
   `scripts/run_specs.ps1 experiments/specs/u11_a_rf_cached.yaml experiments/specs/u11_a2.yaml`.
   Proxy check on the pilot: rf_ldp − xgb AUC = 0.0049 ± 0.0016 over the 15 pairs (min 0.0008), Pearson 0.98,
   Spearman 0.89 — a near-constant offset, so xgb ranks cells as rf_ldp does.
+- **Stage A survivor rule (pre-registered 2026-10-03, before any Stage A ledger row exists):** one candidate per
+  (symbol, timeframe, primary), judged on its **xgb** row only (the 83 recorded rf_ldp rows count as trials but
+  select nothing — the better of two models per cell would be an extra, uncounted selection). Passes if OOS meta
+  AUC > 0.515 (the 0.52 gate less xgb's measured offset to rf_ldp) **and** PSR > 0.5 (Sharpe after costs > 0) and
+  it has a DSR. Survivors: the passing cells ranked by DSR (N = every counted trial through Stage A; ties → Sharpe,
+  then label), at most 2 per (symbol, timeframe) — its primaries share events and features — the first **K = 20**
+  (Stage B runs ~5 meta-models × a few feature sets per survivor, so K = 20 is a run about Stage A's size; Stage D
+  needs diverse finalists). Fewer than 20 pass → all that pass. `python -m experiments.report survivors`
+  (`experiments/report.py: stage_a_survivors`, tested) → `results/experiments/report/stage_a_survivors.{csv,md}`.
 - **Stage B meta-model axis (decided 2026-10-03):** xgb (the screen's model), rf_ldp, plus `logit_l2` (in the zoo
   since U6), `rf_ldp_fast` and `catboost` — the last two on branch `unit/11-stage-b-models` (worktree
   `../wavelet-meta-model-stage-b`), merged only after Stage A finishes (a zoo change alters the code hash). Cost of

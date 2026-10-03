@@ -9,6 +9,7 @@ cells (`<root>/cells/<hash>/daily_returns.csv`) on the days all of them cover, i
 """
 
 import html
+import json
 from pathlib import Path
 
 import numpy as np
@@ -260,20 +261,75 @@ def pilot_rule(spec_path, root, timeframe: str = "5Min", source=None, n_boot: in
     return table, verdict
 
 
+# ── U11 Stage A survivors (PLAN U11, pre-registered 2026-10-03) ──────────────
+
+SURVIVOR_AUC = 0.515  # Stage A's 0.52 gate less the xgb proxy's offset to rf_ldp (pilot: 0.0049 ± 0.0016)
+SURVIVOR_PSR = 0.5  # i.e. a positive Sharpe after costs
+SURVIVOR_K = 20
+SURVIVOR_PER_PAIR = 2  # per (symbol, timeframe): its primaries share events and features
+
+
+def stage_a_survivors(rows: list[dict], stage: str = "A", meta: str = "xgb", k: int = SURVIVOR_K,
+                      per_pair: int = SURVIVOR_PER_PAIR) -> pd.DataFrame:  # fmt: skip
+    """
+    Every `ok` row of `stage` with the screen's meta-model, one per (symbol, timeframe, primary): `passed` = meta AUC
+    > SURVIVOR_AUC and PSR > SURVIVOR_PSR (and a DSR); `survivor` = the passed rows ranked by DSR (then Sharpe, then
+    label), at most `per_pair` per (symbol, timeframe), the first `k`. Rows of other meta-models (rf_ldp fits
+    recorded before the amendment) count as trials but select nothing: the better of two models per cell would be
+    an extra, uncounted selection.
+    """
+    recs = []
+    for (h, st), r in L.done(rows).items():
+        if st != stage or r.get("status") != "ok" or r.get("kind") == "legacy":
+            continue
+        spec = json.loads(r["spec_json"])
+        if spec["model"]["meta"] != meta or len(spec["symbols"]) != 1:
+            continue
+        d, n, _ = row_dsr(r, rows)
+        recs.append({"symbol": spec["symbols"][0], "timeframe": spec["timeframe"], "primary": spec["primary"]["name"],
+                     "meta_auc": r.get("meta_auc"), "psr": r.get("psr"), "sharpe": r.get("sharpe"), "dsr": d,
+                     "n_trials": n, "n_trades": r.get("n_trades"), "label": r.get("label", ""), "cell_hash": h})  # fmt: skip
+    df = pd.DataFrame(recs)
+    if df.empty:
+        return df
+    num = df[["meta_auc", "psr", "dsr"]].apply(pd.to_numeric, errors="coerce")
+    df["passed"] = num["meta_auc"].gt(SURVIVOR_AUC) & num["psr"].gt(SURVIVOR_PSR) & num["dsr"].notna()
+    df = df.sort_values(["dsr", "sharpe", "label"], ascending=[False, False, True], na_position="last")
+    picked = df[df["passed"]].groupby(["symbol", "timeframe"], sort=False).head(per_pair).head(k)
+    df["survivor"] = df["cell_hash"].isin(picked["cell_hash"])
+    return df.reset_index(drop=True)
+
+
 if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root <root>]
     import argparse
 
     from experiments.runner import DEFAULT_ROOT
 
     ap = argparse.ArgumentParser(prog="experiments.report")
-    ap.add_argument("cmd", choices=["pilot"])
-    ap.add_argument("spec")
+    ap.add_argument("cmd", choices=["pilot", "survivors"])
+    ap.add_argument("spec", nargs="?", help="pilot: the spec holding the pilot cells")
+    ap.add_argument("--ledger", default=str(L.DEFAULT_PATH))
     ap.add_argument("--root", default=str(DEFAULT_ROOT))
     ap.add_argument("--timeframe", default="5Min")
     a = ap.parse_args()
-    table, verdict = pilot_rule(a.spec, a.root, a.timeframe)
     out = Path(a.root) / "report"
     out.mkdir(parents=True, exist_ok=True)
+    if a.cmd == "survivors":
+        table = stage_a_survivors(L.Ledger(a.ledger).rows())
+        table.to_csv(out / "stage_a_survivors.csv", index=False)
+        n_pass = int(table["passed"].sum()) if len(table) else 0
+        rule = (
+            f"meta AUC > {SURVIVOR_AUC}, PSR > {SURVIVOR_PSR}; top {SURVIVOR_K} by DSR, at most "
+            f"{SURVIVOR_PER_PAIR} per (symbol, timeframe); xgb rows only"
+        )
+        md = ["# Stage A survivors", "", f"Rule: {rule}. {len(table)} cells, {n_pass} passed the gates.", "",
+              _markdown(_fmt(table[table["survivor"]])) if n_pass else "_none_"]  # fmt: skip
+        (out / "stage_a_survivors.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+        print("\n".join(md))
+        raise SystemExit(0)
+    if not a.spec:
+        ap.error("pilot needs a spec")
+    table, verdict = pilot_rule(a.spec, a.root, a.timeframe)
     stem = f"pilot_{Path(a.spec).stem}_{a.timeframe}"
     table.to_csv(out / f"{stem}.csv", index=False)
     gate = f"every one-sided 95 % session-bootstrap upper bound on OOS meta AUC < {PILOT_AUC_GATE}"

@@ -18,7 +18,14 @@ import wfo.wfo_engine as eng
 from data.bars import HoldoutError
 from experiments import ledger as L
 from experiments.legacy import import_legacy
-from experiments.report import leaderboard, row_dsr, session_bootstrap_auc, weighted_auc, write_report
+from experiments.report import (
+    leaderboard,
+    row_dsr,
+    session_bootstrap_auc,
+    stage_a_survivors,
+    weighted_auc,
+    write_report,
+)
 from experiments.spec import Cell, expand, normalize
 from tests.test_runconfig import synthetic_daily
 from utils.config import RunConfig
@@ -580,3 +587,27 @@ def test_session_bootstrap_bound_widens_with_within_session_dependence():
     assert session_bootstrap_auc(y, p, sessions, n_boot=500) == (auc, ub)  # seeded
     _, ub_iid = session_bootstrap_auc(y, p, np.arange(n_s * k), n_boot=500)  # events treated as independent
     assert ub - auc > ub_iid - auc  # clustering is not understated
+
+
+def _a_row(h, sym, tf, primary, meta, auc, psr, sharpe):
+    spec = {"symbols": [sym], "timeframe": tf, "primary": {"name": primary}, "model": {"meta": meta}}
+    return {"cell_hash": h, "stage": "A", "status": "ok", "kind": "wfo", "label": h, "spec_json": json.dumps(spec),
+            "meta_auc": auc, "psr": psr, "sharpe": sharpe, "n_obs": 2400, "sr_skew": 0.0, "sr_kurt": 3.0}  # fmt: skip
+
+
+def test_stage_a_survivors_gates_ranks_caps_and_ignores_other_meta_models():
+    rows = [
+        _a_row("a1", "SPY", "5Min", "p1", "xgb", 0.53, 0.9, 1.5),  # best
+        _a_row("a2", "SPY", "5Min", "p2", "xgb", 0.53, 0.9, 1.4),
+        _a_row("a3", "SPY", "5Min", "p3", "xgb", 0.53, 0.9, 1.3),  # 3rd of its (symbol, timeframe): capped
+        _a_row("b1", "QQQ", "1Day", "p1", "xgb", 0.515, 0.9, 1.2),  # AUC not > 0.515
+        _a_row("b2", "QQQ", "1Day", "p2", "xgb", 0.52, 0.5, 1.2),  # PSR not > 0.5
+        _a_row("c1", "TLT", "1Hour", "p1", "xgb", 0.52, 0.6, 0.2),
+        _a_row("r1", "TLT", "1Hour", "p1", "rf_ldp", 0.60, 0.99, 3.0),  # recorded, never selects
+        {**_a_row("e1", "IWM", "1Day", "p1", "xgb", 0.6, 0.9, 2.0), "status": "error"},
+    ]
+    t = stage_a_survivors(rows, k=3, per_pair=2).set_index("cell_hash")
+    assert set(t.index) == {"a1", "a2", "a3", "b1", "b2", "c1"}
+    assert t.loc[["a1", "a2", "a3", "c1"], "passed"].all() and not t.loc[["b1", "b2"], "passed"].any()
+    assert list(t.index[t["survivor"]]) == ["a1", "a2", "c1"]  # DSR order, a3 capped, k = 3
+    assert t["n_trials"].eq(7).all()  # the rf_ldp row still counts as a trial
