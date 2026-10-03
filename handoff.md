@@ -1,81 +1,88 @@
-# Session Handoff — U11 started: Stage A spec, cost probe, Windows portability (uncommitted)
+# Session Handoff — U11 Stage A on the Windows PC: fastfracdiff, the E-core fix, Stage A run and survivor analysis; Stage B decided
 
 ## Where it started
-The user asked me to review the previous `handoff.md` (U10 merged; `main` = `upstream/main` = 98a921a) and begin U11. I branched `unit/11-zoo-study`, wrote the Stage A spec and timed it. The estimate came to about 860 CPU-hours. The user then said they will run Stage A on their more powerful Windows PC, so the rest of the session made the runner Windows-portable.
+The user moved U11 Stage A from the MacBook (estimated 3–4 days) to this Windows PC (i9-14900KF, 24 cores / 32 threads, 64 GB RAM) and asked me to review the previous handoff and run Stage A. Constraints that emerged:
+- Every fitted cell must be recorded in the ledger as a trial.
+- No code in the hashed packages may change while a run is in progress.
+- Decision rules are pre-registered in PLAN before results are seen.
+- Turnaround time matters: the user rejected a 22-hour run.
 
 ## Decisions locked + what shipped
-- **Stage A spec** — `/Users/nick/Documents/Python Projects/wavelet/experiments/specs/u11_a_screen.yaml`.
-  - 950 cells: 19 symbols × {5Min, 15Min, 30Min, 1Hour, 1Day} × {wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb} × meta {xgb, rf_ldp}.
-  - Default features, `oof`, `fixed` sizing, risk `none`, overrides `{TEST: 10}` (bi-weekly cadence on every timeframe).
-  - 1Min is excluded (not cached). The spec loads and validates to 950 cells.
-- **Scope** — full 950 cells, as PLAN says. The user will run them on the Windows PC rather than cutting the scope.
-- **Cost probe** — SPY × 5 timeframes × {xgb, rf_ldp}, 10 jobs, scratch ledger, nothing counted in the real ledger.
-  - Per fold: about 3 s for xgb and 9 s for rf_ldp early on, rising as the expanding train window grows.
-  - Folds per cell: 92 for 1Day, about 207 for 1Hour, about 240 for 5Min.
-  - CPU time per cell: 1Day xgb 197 s, 1Day rf 806 s, 1Hour xgb about 1045 s; 5Min rf extrapolated to about 2.5 h.
-  - Total for Stage A: about 860 CPU-hours. The probe was killed once it had given the estimate.
-- **Windows portability:**
-  - `/Users/nick/Documents/Python Projects/wavelet/experiments/ledger.py`: `_lock`/`_unlock` use `msvcrt.locking` byte-range locks on `os.name == "nt"` and `fcntl.flock` elsewhere. The ledger is read as UTF-8. The Windows path is untested, because it cannot run on macOS.
-  - Explicit `encoding="utf-8"` on all text I/O in:
-    - experiments: `runner.py`, `legacy.py`, `report.py`, `spec.py`, `__main__.py`
-    - data: `store.py`, `bars.py`
-    - wfo: `pwfo.py`, `pwfo_run.py`
-    - other: `models/compare.py`, `risk/run.py`, `sizing/compare.py`
+- **Environment fix.** The locked environment could not import: `fracdiff` 0.9.0 pins statsmodels below 0.14, and 0.13.5 breaks under pandas 3. Fixed first with a uv override, then superseded: both `fracdiff` and `statsmodels` are now removed from `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\pyproject.toml`.
+- **`fastfracdiff/`** at `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\fastfracdiff\`: numpy + scipy only, BSD-3 `NOTICE` for fracdiff and statsmodels.
+  - The ADF lag search reads every nested candidate off one Cholesky of the centred, scaled Gram matrix.
+  - A full d search on 190k 5Min bars went from 452 s to 2.7 s.
+  - Equivalence against the old code: 158 training windows, 1,387 ADF evaluations, 0 d mismatches, 0 lag mismatches, t within 1.6e-11.
+  - Tests: `tests\test_fastfracdiff.py` with the fixture `tests\fracdiff_reference.json`.
+  - Added to `CODE_DIRS` in `experiments\runner.py`; `fracdiff` and `statsmodels` dropped from `LIBS` and from the feature-cache library list.
+- **Windows file-replace race fixed.** `os.replace` fails with PermissionError when another process has the file open. Fixed via `publish()` and a retrying `load()` in `features\cache.py`; the runner's signals pickle write uses it too. Test: `test_cache_tolerates_concurrent_writers_and_readers_of_a_key`.
+- **E-core confinement found and fixed.** Hidden detached runs get Windows EcoQoS throttling and run only on the 16 E-cores (each worker got about 0.53 of a core). The fix is a per-process `SetProcessInformation(ProcessPowerThrottling, StateMask=0)`, which made folds take 0.57× as long. It's built into the launcher `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\scripts\run_specs.ps1`, which detaches, runs specs in sequence with 30 jobs and `LOKY_MAX_CPU_COUNT=1`, and logs to `results\experiments\run_specs.log`. Its positional-binding bug is fixed.
+- **5Min pilot rule.** Pre-registered, then evaluated: verdict **run** (21 of 30 upper bounds at or above 0.52). The tool is `python -m experiments.report pilot <spec>` in `experiments\report.py`, which is excluded from the code hash. Output: `results\experiments\report\pilot_u11_a1_5Min.md`.
+- **Stage A amended to an xgb-only meta model, for cost.** `rf_ldp` cells were about 72% of the remaining run time.
+  - `experiments\specs\u11_a_rf_cached.yaml` records the 83 already-fitted `rf_ldp` cells.
+  - `experiments\specs\u11_a2.yaml` holds the 475 xgb cells.
+  - Proxy check: rf − xgb AUC offset 0.0049 ± 0.0016, Pearson 0.98.
+- **Stage A completed** 2026-10-03 at 13:27. The ledger has 739 rows: 83 `rf_ldp` and 475 xgb, all `ok`.
+- **Pre-registered survivor rule:** AUC > 0.515, PSR > 0.5, top 20 by DSR, at most 2 per (symbol, timeframe), xgb rows only. Implemented as `stage_a_survivors` in `experiments\report.py`; CLI `python -m experiments.report survivors`. **54 cells passed both gates.**
+- **The rule's DSR ranking turned out degenerate.**
+  - The luck threshold is 1.81 annualized with N = 737, and every Sharpe is below it.
+  - Below that threshold, DSR ranks the short 1Day out-of-sample windows (about 930 days from January 2022) above intraday windows of 2,200+ days, so 16 of the top 20 were 1Day.
+  - Many of those are market exposure or a handful of lucky days.
+  - Diagnostics are in `results\experiments\report\stage_a_survivors_diagnostics.csv` and `stage_a_survivors.{csv,md}`.
+- **The user's decisions this turn (not yet written into PLAN):**
+  1. The Stage A survivor set is **all 54 gate-passers**, which avoids the DSR-ranking artifact. This is a documented deviation from the pre-registered top 20.
+  2. Stage B1's model axis uses **`rf_ldp_fast`** in place of full `rf_ldp`.
 
-    The WFO logs contain characters (═ σ ≥) that cp1252 cannot encode.
-  - `experiments/__main__.py`: stdout and stderr are reconfigured to UTF-8 (`errors="replace"`).
-  - `experiments/runner.py` `code_hash()`:
-    - It normalizes CRLF to LF.
-    - It now includes `platform.system()` and `platform.machine()`, so results are reused only on the platform that produced them.
-    - This changes every code hash, which was fine because Stage A had not run.
-  - New `/Users/nick/Documents/Python Projects/wavelet/.gitattributes`: `eol=lf` for py, yaml, md, toml and lock files.
-- **Tests** — `/Users/nick/Documents/Python Projects/wavelet/tests/test_experiments.py` has 2 new tests:
-  - `test_code_hash_ignores_line_endings_but_not_the_platform`
-  - `test_ledger_lock_round_trip_and_utf8`
-- **PLAN** — `/Users/nick/Documents/Python Projects/wavelet/PLAN.md`: the U11 Status changed from "Not started" to "In progress", with notes on the spec, the probe, portability and ledger continuity.
-- **Ledger continuity rule:**
-  - The PC must start from the Mac's `results/ledger.jsonl` (181 rows), `results/experiments/` (about 14 MB) and `data/cache/` (243 MB).
-  - All three are copied, not re-fetched: `adjustment=all` history re-adjusts when new dividends are paid.
-  - The PC ledger is canonical from Stage A onward.
-  - No pipeline code may change during the run: the code hash would change, and cells would be refit and counted again.
+  Caveat for the PLAN write-up: the 99.7% equal-trade-decisions figure compares 200 against 500 trees at `max_features=1`. It does not compare against `rf_ldp`, which tunes `max_features` over {1, sqrt} (1 was picked in 81% of 21,948 fold fits).
+- **Stage B models built** on branch `unit/11-stage-b-models`, in a worktree, **not merged**: `rf_ldp_fast` and `catboost`, in that worktree's `models\zoo.py`.
+  - `rf_ldp_fast`: `max_features=1`, 200 trees.
+  - `catboost`: Plain boosting, depth {4, 6}, 300 iterations, single-threaded.
+  - Timings on a late SPY 5Min fold: logit_l2 4.5 s, rf_ldp_fast 8.9 s, xgb 15.6 s, catboost 33 s, rf_ldp 43.5 s. CatBoost's ordered boosting took 185 s and was rejected.
+- **Stage B plan,** as told to the user:
+  - Merge the branch first. That changes the code hash, so Stage A's xgb rows are the comparison and are not refit.
+  - B1: the 54 cells × {logit_l2, rf_ldp_fast, catboost}, about 2–2.5 hours. The ~70 CPU-hour estimate I gave included full `rf_ldp`, which is now dropped.
+  - B2: feature groups and cMDA selection on the best model per cell.
+  - B3: the U7 sizers.
+  - Selection between sub-stages is pre-registered and ranks by PSR, not DSR, adding alpha Sharpe > 0 and best-5-days share < 100% of P&L. DSR with the total ledger N stays the final test at the holdout.
 
 ## Key files for next session
-- Plan file: `/Users/nick/Documents/Python Projects/wavelet/PLAN.md` — the U11 section and its Status note.
-- `/Users/nick/Documents/Python Projects/wavelet/SPEC.md` — §9 (ledger, trial count, holdout, cell hash). It does not yet mention the platform in the code hash or CRLF normalization; it needs that update.
-- `/Users/nick/Documents/Python Projects/wavelet/experiments/specs/u11_a_screen.yaml`
-- `/Users/nick/Documents/Python Projects/wavelet/experiments/ledger.py` — portable locks.
-- `/Users/nick/Documents/Python Projects/wavelet/experiments/runner.py` — `code_hash`.
-- `/Users/nick/Documents/Python Projects/wavelet/experiments/report.py` — will need the U11 additions: heat-maps, ablations, verdicts.
-- Memory files touched: none. `/Users/nick/.claude/projects/-Users-nick-Documents-Python-Projects-wavelet/memory/blas-single-thread.md` still applies.
+- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\PLAN.md` — the U11 Status section: Stage A amendment, pilot rule and outcome, survivor rule, Stage B meta-model axis, run notes. Read this first.
+- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\SPEC.md` — §9: the code hash now covers OS/architecture, CRLF normalization and `fastfracdiff`; also the fracdiff feature row.
+- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\experiments\report.py` — pilot rule and survivor selection (excluded from the code hash).
+- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\results\experiments\report\stage_a_survivors.csv` — all 475 xgb cells with `passed` (54) and `survivor`.
+- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\results\experiments\report\stage_a_survivors_diagnostics.csv` — beta, alpha Sharpe, exposure and moments for the DSR top 20.
+- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model-stage-b\models\zoo.py` — the Stage B models.
+- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\scripts\run_specs.ps1` — the launcher for every long run.
+- Plan file: none, besides PLAN.md.
+- Memory files touched: `C:\Users\Nick\.claude\projects\C--Users-Nick-Desktop-Code-Python-Projects-wavelet-meta-model\memory\windows-pc-run-setup.md` and `...\memory\MEMORY.md`.
 
 ## Running state
-- Background processes: none. Shell `bsveoicid` (the probe) was killed and exited with 143. Monitor `bcg84toyj` failed on a zsh glob. Monitor `bfu3t2zbx` expired.
+- Background processes: none. Stage A's launcher (PID 21816) exited with "all specs done", and the earlier watcher (PID 14240) exited.
 - Dev servers / ports: none.
 - Open worktrees / branches:
-  - `unit/11-zoo-study` is checked out in `/Users/nick/Documents/Python Projects/wavelet`. Everything is uncommitted.
-  - Modified: `PLAN.md`, the ledger/runner/encoding files listed above, `tests/test_experiments.py`.
-  - Untracked: `.gitattributes`, `experiments/specs/u11_a_screen.yaml`.
-  - The user's own changes are untouched: `results/strategy_results.png`, `results/wfo_signals.csv`, and the untracked `handoff.md` (the U10 handoff).
-- Scratch: `/private/tmp/claude-501/-Users-nick-Documents-Python-Projects-wavelet/eb6ac08c-a6a4-4323-a941-e675afd78bfa/scratchpad/probe/` holds the probe spec, ledger, logs and partial signals.
+  - `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model` on `unit/11-windows-setup` (pushed; no PR opened). Uncommitted:
+    - `results\ledger.jsonl` (558 new Stage A rows);
+    - untracked `results\experiments\signals\*`, `results\experiments\cells\*` and `results\experiments\report\*`;
+    - new files under `data\cache\features\`;
+    - run logs `results\experiments\u11_a1.*.log`, `u11_a_rf_cached.*.log`, `u11_a2.*.log` and `run_specs.log`;
+    - `results\ledger.jsonl.lock`.
+  - `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model-stage-b` on `unit/11-stage-b-models`: pushed, commit 814acfb, with its own `.venv` that includes catboost 1.2.10.
 
 ## Verification — how to confirm things still work
-- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 uv run pytest -q` — 384 passed, about 4 min 16 s.
-- `uvx ruff check . && uvx ruff format --check .` — clean.
-- `uv run python -c "from experiments.spec import load_spec; print(len(load_spec('experiments/specs/u11_a_screen.yaml')[1]))"` — prints 950.
-- `wc -l results/ledger.jsonl` — 181 (the real ledger, unchanged this session).
-- `ls "/Users/nick/Documents/Python Projects/wavelet/data/cache/holdout_access.jsonl"` — must not exist.
-- On the PC, after setup: `uv sync`, `uv run pytest -q`, then `uv run python -m experiments run experiments/specs/u11_a_screen.yaml --jobs <physical cores>`.
+- `uv run pytest -q` (main checkout, with `OMP_NUM_THREADS=1`) — 399 passed: 397 plus the 2 survivor and AUC tests added later.
+- `uv run pytest -q` in the stage-b worktree — 401 passed. It crashed natively twice in 5 full runs; see Open below.
+- `uvx ruff check . && uvx ruff format --check .` — clean in both checkouts.
+- `wc -l results/ledger.jsonl` — 739.
+- `uv run python -m experiments.report survivors` — "475 cells, 54 passed the gates".
+- `ls data/cache/holdout_access.jsonl` — must not exist; the holdout has never been accessed.
 
 ## Deferred + open questions
-- Deferred:
-  - 1Min timeframe — not cached; SPEC limits it to ≤ 3 symbols.
-  - GPU xgb — recommended against: the fits are small and GPU results are not bit-reproducible.
-  - SPEC §9 update for the code-hash changes.
-  - Survivor selection — rule still to define: "meta AUC > 0.52 and positive PSR, top-K". Planned reading: PSR > 0.5, i.e. Sharpe > 0, with K to be chosen. The selection tool should land before Stage A starts if it lives in hashed code.
-  - Report extensions for the U11 Artifact: heat-maps, ablations, holdout DSR, verdicts.
-- Open:
-  - Commit and push `unit/11-zoo-study` so the PC can pull it (no merge yet). The question was asked and not answered.
-  - Memory per process for 5Min cells was not measured. `--jobs` on the PC should respect RAM.
+- Deferred: the 392 `rf_ldp` cells in `u11_a_screen.yaml` — not run, by the Stage A amendment.
+- Deferred: model-fit speedups that keep results identical (sharing ml_xgb fits, reusing xgboost's training matrices) — a code change, so best done when the branch merges.
+- Deferred: committing the Stage A results and ledger, and opening PRs for `unit/11-windows-setup` and `unit/11-stage-b-models` — not requested yet.
+- Open: intermittent native crash (faulthandler frames, exit 127) in the stage-b worktree's full test suite after catboost was added; not reproduced in 3 full runs plus 8 runs of `tests\test_pwfo.py`. Watch for `WorkerDied` rows in Stage B.
+- Open: one load-dependent failure of `test_parallel_equals_serial_and_fits_each_symbol_once` early in the session; not reproduced.
+- Open: exactly which feature-group sets B2 uses, and K / selection thresholds for each B sub-stage — to be pre-registered before each sub-stage runs.
 
 ## Pick up here
-Get the user's answer on committing and pushing `unit/11-zoo-study`. Then update SPEC §9 for the code-hash change and help them set up the Stage A run on the Windows PC with the copied ledger, artifacts and data cache.
+Write this turn's two decisions into PLAN as a dated amendment, with the deviation rationale and the `rf_ldp_fast` fidelity caveat. Then merge `unit/11-stage-b-models`, generate the B1 spec (54 cells × {logit_l2, rf_ldp_fast, catboost}) from `stage_a_survivors.csv`, and launch it with `scripts\run_specs.ps1`.
