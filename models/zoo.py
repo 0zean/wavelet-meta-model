@@ -24,6 +24,7 @@ no calibration — the baseline and the legacy regression path.
 from collections.abc import Callable
 from typing import ClassVar, Literal, Protocol
 
+import catboost as cb
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
@@ -291,10 +292,11 @@ class RfLdp(_Tuned):
     are average uniqueness in the pipeline), min_weight_fraction_leaf 0.05; max_features 1 vs sqrt."""
 
     grid: ClassVar[dict[str, list]] = {"max_features": [1, "sqrt"]}
+    n_estimators: ClassVar[int] = 500
 
     def estimator(self, params, w):
         return SerialPredictRF(
-            n_estimators=500,
+            n_estimators=self.n_estimators,
             class_weight="balanced_subsample",
             max_samples=float(np.clip(w.mean(), 1e-3, 1.0)),
             min_weight_fraction_leaf=0.05,
@@ -302,6 +304,16 @@ class RfLdp(_Tuned):
             random_state=self.cfg.SEED,
             **params,
         )
+
+
+@zoo_model("rf_ldp_fast")
+class RfLdpFast(RfLdp):
+    """rf_ldp at ~1/5 of the cost (U11; late SPY 5Min fold 8.9 s vs 43.5 s): max_features fixed at 1 — what
+    rf_ldp's purged CV chose in 81 % of its 21,948 Stage A fold fits — so 4 CV fits + 1 refit instead of 9, and 200
+    trees instead of 500 (OOS meta_prob vs 500 trees on 636 SPY 5Min events: r = 0.993, trade decisions 99.7 % equal)."""
+
+    grid: ClassVar[dict[str, list]] = {"max_features": [1]}
+    n_estimators: ClassVar[int] = 200
 
 
 @zoo_model("extra_trees")
@@ -347,6 +359,28 @@ class LightGbm(_Tuned):
             n_jobs=4,
             verbose=-1,
             random_state=self.cfg.SEED,
+            **params,
+        )
+
+
+@zoo_model("catboost")
+class CatBoost(_Tuned):
+    """CatBoost: symmetric (oblivious) trees — every node of a level splits on the same feature, a strong structural
+    regularizer — with its default L2 leaf regularization; depth searched. Plain boosting: ordered boosting (each
+    row's gradient from a model that never saw it) cost 12x xgb on a late SPY 5Min fold (185 s vs 16 s), plain 2x
+    (33 s). Single-threaded and seeded (deterministic on CPU); writes no training files."""
+
+    grid: ClassVar[dict[str, list]] = {"depth": [4, 6]}
+
+    def estimator(self, params, w):
+        return cb.CatBoostClassifier(
+            iterations=300,
+            learning_rate=0.05,
+            boosting_type="Plain",
+            random_seed=self.cfg.SEED,
+            thread_count=1,
+            verbose=False,
+            allow_writing_files=False,
             **params,
         )
 

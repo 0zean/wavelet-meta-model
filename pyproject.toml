@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "lightgbm>=4.7.0",
     "joblib>=1.4",
+    "catboost>=1.2",
 ]
 
 [dependency-groups]

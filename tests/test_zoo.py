@@ -45,7 +45,17 @@ def cv_for(t0, t1, k: int = 4, embargo: int = 3):
 
 
 def test_registry_and_config_switches():
-    assert set(REGISTRY) == {"legacy", "logit_l1", "logit_l2", "rf_ldp", "extra_trees", "xgb", "lightgbm"}
+    assert set(REGISTRY) == {
+        "legacy",
+        "logit_l1",
+        "logit_l2",
+        "rf_ldp",
+        "rf_ldp_fast",
+        "extra_trees",
+        "xgb",
+        "lightgbm",
+        "catboost",
+    }
     with pytest.raises(ValueError, match="unknown zoo model"):
         make_model("nope", CFG)
     with pytest.raises(ValueError, match="role"):
