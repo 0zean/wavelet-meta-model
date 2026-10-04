@@ -893,6 +893,18 @@ too small to be meaningful, inner CV leaking across window boundaries.
   the survivor set. rf_ldp_fast has the highest median AUC (0.534 vs 0.523–0.526) but the lowest Sharpe, and AUC
   ranks the four models' Sharpes only weakly within a cell (mean Spearman 0.23), so the max-AUC pick (as
   registered, no fallback) often carried a weaker trading model forward; the 5 xgb passers' PSR is not a fresh test.
+- **Stage B2 design and B2 → B3 rule (pre-registered 2026-10-04 18:24, before any B2 cell has run; chosen by the user):**
+  `experiments/specs/u11_b2.yaml` = each of the 23 B1 passers, with its B1-chosen meta-model, × 3 feature arms
+  = 69 cells: **cmda** (default groups + per-fold clustered MDA, `FEATURE_SELECTION = cmda`), **full** (default +
+  `wavelet_ext`, `structural`, `calendar`, no selection) and **full_cmda**. The default arm is the B1 row, not refit.
+  `cross_asset` is left out: the runner passes no market bars to feature groups (a runner change, deferred).
+  B2 → B3: per B1 passer, candidates = its B1 row + its `ok` B2 rows (spec equal but for the feature arm); **arm =
+  the highest OOS meta AUC** (ties → PSR, then label); goes to B3 iff the chosen row has **PSR > 0.5, alpha Sharpe > 0
+  and best-5-days share < 100 %** (B1's gates and definitions); no fallback, no top-K. Final only when every passer
+  has all 4 arm rows. `python -m experiments.report b2` (`stage_b2_selection`, tested) →
+  `results/experiments/report/stage_b2_selection.{csv,md}`. Caveat (from B1): AUC ranks Sharpe only weakly within a
+  cell, so the max-AUC arm is not necessarily the best-trading one; the three arms of a cell share one ledger label
+  (distinct hashes).
 
 ---
 

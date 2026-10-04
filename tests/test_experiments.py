@@ -25,6 +25,7 @@ from experiments.report import (
     session_bootstrap_auc,
     stage_a_survivors,
     stage_b1_selection,
+    stage_b2_selection,
     weighted_auc,
     write_report,
 )
@@ -661,3 +662,41 @@ def test_stage_b1_selection_picks_max_auc_model_and_gates_it(tmp_path):
     assert t.loc["QQQ", "model"] == "rf_ldp_fast" and t.loc["QQQ", "cell_hash"] == "b_qqq_r" and t.loc["QQQ", "passed"]
     assert t.loc["SPY", "n_models"] == 3 and t.loc["QQQ", "n_models"] == 2
     assert t.loc["QQQ", "auc_xgb"] == 0.53 and np.isnan(t.loc["QQQ", "auc_catboost"])
+
+
+def test_stage_b2_selection_picks_max_auc_arm_of_each_b1_passer(tmp_path):
+    from experiments.report import B2_FULL
+    from utils.config import DEFAULT_FEATURE_GROUPS
+
+    idx = pd.date_range("2022-01-03", periods=300, freq="B", tz="America/New_York")
+    rng = np.random.default_rng(2)
+    bh = pd.Series(rng.normal(0.0, 0.01, len(idx)), idx)
+    good = pd.Series(rng.normal(0.001, 0.005, len(idx)), idx)
+    full, dflt = list(B2_FULL), list(DEFAULT_FEATURE_GROUPS)
+
+    def row(h, sym, meta, auc, psr, stage="B", groups=dflt, sel=None, test=10):
+        r = _a_row(h, sym, "1Day", "p1", meta, auc, psr, 1.0)
+        ov = {"TEST": test} | ({"FEATURE_SELECTION": sel} if sel else {})
+        spec = {**json.loads(r["spec_json"]), "feature_groups": groups, "overrides": ov}
+        (tmp_path / "cells" / h).mkdir(parents=True)
+        (good if psr > 0.5 else -good).rename("ret").to_csv(tmp_path / "cells" / h / "daily_returns.csv")
+        return {**r, "stage": stage, "spec_json": json.dumps(spec)}
+
+    rows = [
+        row("a_qqq", "QQQ", "xgb", 0.53, 0.9, stage="A"),
+        row("b_qqq", "QQQ", "rf_ldp_fast", 0.55, 0.8),  # B1 pick
+        row("q_cmda", "QQQ", "rf_ldp_fast", 0.56, 0.9, sel="cmda"),
+        row("q_full", "QQQ", "rf_ldp_fast", 0.54, 0.9, groups=full),
+        row("q_fc", "QQQ", "rf_ldp_fast", 0.57, 0.4, groups=full, sel="cmda"),  # max AUC, fails PSR: no fallback
+        row("q_xgb_full", "QQQ", "xgb", 0.70, 0.9, groups=full),  # another model: not a candidate
+        row("q_t20", "QQQ", "rf_ldp_fast", 0.70, 0.9, sel="cmda", test=20),  # another override: not a candidate
+        row("a_spy", "SPY", "xgb", 0.53, 0.9, stage="A"),  # B1 pick (only model)
+        row("s_cmda", "SPY", "xgb", 0.52, 0.9, sel="cmda"),
+        row("a_tlt", "TLT", "xgb", 0.51, 0.9, stage="A"),  # not a survivor
+    ]
+    t = stage_b2_selection(rows, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
+    assert set(t.index) == {"QQQ", "SPY"}
+    assert t.loc["QQQ", "arm"] == "full_cmda" and t.loc["QQQ", "cell_hash"] == "q_fc" and not t.loc["QQQ", "passed"]
+    assert t.loc["QQQ", "n_arms"] == 4 and t.loc["QQQ", "auc_default"] == 0.55 and t.loc["QQQ", "auc_cmda"] == 0.56
+    assert t.loc["SPY", "arm"] == "default" and t.loc["SPY", "cell_hash"] == "a_spy" and t.loc["SPY", "passed"]
+    assert t.loc["SPY", "n_arms"] == 2 and np.isnan(t.loc["SPY", "auc_full"])

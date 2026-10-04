@@ -17,7 +17,7 @@ import pandas as pd
 
 from experiments import ledger as L
 from experiments.spec import STAGES, stage_rank
-from utils.config import RunConfig
+from utils.config import DEFAULT_FEATURE_GROUPS, RunConfig
 from validation.pbo import pbo
 from validation.stats import dsr
 
@@ -368,15 +368,70 @@ def stage_b1_selection(rows: list[dict], root, bh_returns=_cached_bh) -> pd.Data
     for s in surv.itertuples():
         c = cands[s.cell_hash]
         aucs = {json.loads(r["spec_json"])["model"]["meta"]: r.get("meta_auc") for r in c}
-        best = min(c, key=lambda r: (-(r.get("meta_auc") or -np.inf), -(r.get("psr") or -np.inf),
-                                     r.get("label", "")))  # fmt: skip
-        spec = json.loads(best["spec_json"])
-        st = alpha_stats(_daily_returns(root, best["cell_hash"]), bh_returns(spec))
-        rec = {"symbol": s.symbol, "timeframe": s.timeframe, "primary": s.primary, "model": spec["model"]["meta"],
-               "n_models": len(c), "meta_auc": best.get("meta_auc"), "psr": best.get("psr"),
-               "sharpe": best.get("sharpe"), **st, "label": best.get("label", ""), "cell_hash": best["cell_hash"],
+        best, picked = _pick_and_gate(c, root, bh_returns)
+        rec = {"symbol": s.symbol, "timeframe": s.timeframe, "primary": s.primary,
+               "model": json.loads(best["spec_json"])["model"]["meta"], "n_models": len(c), **picked,
                "a_cell_hash": s.cell_hash, **{f"auc_{m}": aucs.get(m, np.nan) for m in B1_MODELS}}  # fmt: skip
-        rec["passed"] = bool((rec["psr"] or 0) > B1_PSR and rec["alpha_sr"] > 0 and rec["top_days_share"] < 1)
+        recs.append(rec)
+    return pd.DataFrame(recs).sort_values(["passed", "psr"], ascending=[False, False]).reset_index(drop=True)
+
+
+def _pick_and_gate(cands: list[dict], root, bh_returns) -> tuple[dict, dict]:
+    """The candidate row with the highest OOS meta AUC (ties → PSR, then label) and its gates (B1 / B2 rules)."""
+    best = min(cands, key=lambda r: (-(r.get("meta_auc") or -np.inf), -(r.get("psr") or -np.inf),
+                                     r.get("label", "")))  # fmt: skip
+    st = alpha_stats(_daily_returns(root, best["cell_hash"]), bh_returns(json.loads(best["spec_json"])))
+    rec = {"meta_auc": best.get("meta_auc"), "psr": best.get("psr"), "sharpe": best.get("sharpe"), **st,
+           "label": best.get("label", ""), "cell_hash": best["cell_hash"]}  # fmt: skip
+    rec["passed"] = bool((rec["psr"] or 0) > B1_PSR and rec["alpha_sr"] > 0 and rec["top_days_share"] < 1)
+    return best, rec
+
+
+# ── U11 Stage B2 → B3 selection (PLAN U11, pre-registered 2026-10-04, before any B2 ledger row) ────────────────
+
+B2_FULL = (*DEFAULT_FEATURE_GROUPS, "wavelet_ext", "structural", "calendar")  # cross_asset: no market bars in runner
+B2_ARMS = {"default": (DEFAULT_FEATURE_GROUPS, "none"), "cmda": (DEFAULT_FEATURE_GROUPS, "cmda"),
+           "full": (B2_FULL, "none"), "full_cmda": (B2_FULL, "cmda")}  # fmt: skip  # "default" = the B1 row
+
+
+def feature_arm(spec: dict) -> str | None:
+    """The B2 arm a cell's (feature_groups, FEATURE_SELECTION) is, or None."""
+    fs = (tuple(spec["feature_groups"]), spec["overrides"].get("FEATURE_SELECTION", "none"))
+    return next((a for a, (g, sel) in B2_ARMS.items() if fs == (tuple(g), sel)), None)
+
+
+def stage_b2_selection(rows: list[dict], root, bh_returns=_cached_bh) -> pd.DataFrame:
+    """
+    One row per B1 passer (`stage_b1_selection(...)["passed"]`). Candidates: its B1 row (arm "default") plus the `ok`
+    stage-B rows whose spec is that row's with only the feature arm changed (B2_ARMS). `arm` = the candidate with the
+    highest OOS meta AUC; `passed` by the B1 gates. `n_arms` < len(B2_ARMS) means an arm's row is missing.
+    """
+    b1 = stage_b1_selection(rows, root, bh_returns)
+    if b1.empty:
+        return b1
+    b1 = b1[b1["passed"]]
+    by_hash = {h: r for (h, _st), r in L.done(rows).items()}
+
+    def key(spec: dict) -> str:
+        o = {k: v for k, v in spec["overrides"].items() if k != "FEATURE_SELECTION"}
+        return json.dumps({**spec, "feature_groups": None, "overrides": o}, sort_keys=True)
+
+    base = {key(json.loads(by_hash[h]["spec_json"])): h for h in b1["cell_hash"]}
+    cands = {h: {h: by_hash[h]} for h in b1["cell_hash"]}
+    for (h, st), r in L.done(rows).items():
+        if st != "B" or r.get("status") != "ok":
+            continue
+        spec = json.loads(r["spec_json"])
+        if feature_arm(spec) not in (None, "default") and key(spec) in base:
+            cands[base[key(spec)]][h] = r
+    recs = []
+    for s in b1.itertuples():
+        c = list(cands[s.cell_hash].values())
+        aucs = {feature_arm(json.loads(r["spec_json"])) or "default": r.get("meta_auc") for r in c}
+        best, picked = _pick_and_gate(c, root, bh_returns)
+        rec = {"symbol": s.symbol, "timeframe": s.timeframe, "primary": s.primary, "model": s.model,
+               "arm": feature_arm(json.loads(best["spec_json"])) or "default", "n_arms": len(c), **picked,
+               "b1_cell_hash": s.cell_hash, **{f"auc_{a}": aucs.get(a, np.nan) for a in B2_ARMS}}  # fmt: skip
         recs.append(rec)
     return pd.DataFrame(recs).sort_values(["passed", "psr"], ascending=[False, False]).reset_index(drop=True)
 
@@ -387,7 +442,7 @@ if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root 
     from experiments.runner import DEFAULT_ROOT
 
     ap = argparse.ArgumentParser(prog="experiments.report")
-    ap.add_argument("cmd", choices=["pilot", "survivors", "b1"])
+    ap.add_argument("cmd", choices=["pilot", "survivors", "b1", "b2"])
     ap.add_argument("spec", nargs="?", help="pilot: the spec holding the pilot cells")
     ap.add_argument("--ledger", default=str(L.DEFAULT_PATH))
     ap.add_argument("--root", default=str(DEFAULT_ROOT))
@@ -419,6 +474,19 @@ if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root 
         )
         md = ["# Stage B1 selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
         (out / "stage_b1_selection.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+        print("\n".join(md))
+        raise SystemExit(0)
+    if a.cmd == "b2":
+        table = stage_b2_selection(L.Ledger(a.ledger).rows(), a.root)
+        table.to_csv(out / "stage_b2_selection.csv", index=False)
+        n_pass, short = int(table["passed"].sum()), int(table["n_arms"].lt(len(B2_ARMS)).sum())
+        rule = (f"per B1 passer the feature arm ({', '.join(B2_ARMS)}) with the highest OOS meta AUC; passes if "
+                f"PSR > {B1_PSR}, alpha Sharpe > 0 and best-{B1_TOP_DAYS}-days share of P&L < 100 %")  # fmt: skip
+        status = f"{len(table)} B1 passers, {n_pass} passed" + (
+            f"; NOT FINAL: {short} lack an arm row" if short else ""
+        )
+        md = ["# Stage B2 selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
+        (out / "stage_b2_selection.md").write_text("\n".join(md) + "\n", encoding="utf-8")
         print("\n".join(md))
         raise SystemExit(0)
     if not a.spec:
