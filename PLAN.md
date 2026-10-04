@@ -876,6 +876,23 @@ too small to be meaningful, inner CV leaking across window boundaries.
   early, small folds (it does not get cheaper with a short train window as the other models do), so a 15Min/5Min
   catboost fit takes ~2–2.7 h; rf_ldp_fast 13–20 min and logit_l2 2–20 min per fit at 30Min–5Min. Estimated
   remaining wall-clock ~3–4 h at 30 jobs (1Hour / 1Day catboost costs not yet measured).
+  Resumed 2026-10-04 04:13 (OS build 26200 → 26300 overnight; the code hash uses the OS name only, so the 32 cached
+  fits were reused), finished 07:37, exit 0: 162 stage-B rows, all `ok` (54 per model), no dead workers; ledger
+  901 rows; holdout never accessed.
+- **B1 outcome (2026-10-04, `python -m experiments.report b1`; final — all 54 survivors have 4 model rows): 23 of 54
+  go to B2** (`results/experiments/report/stage_b1_selection.{csv,md}`). Chosen model (max AUC): rf_ldp_fast 32,
+  xgb 10, logit_l2 6, catboost 6; among the 23 passers rf_ldp_fast 11, xgb 5, catboost 4, logit_l2 3. Failures: 31
+  cells: 14 with a negative Sharpe for the chosen model; the other 17 have Sharpe ≥ 0 but their best 5 days hold
+  ≥ 100 % of the P&L (7 of them also alpha Sharpe ≤ 0). By timeframe the passers are 30Min 8, 1Day 7, 1Hour 7,
+  15Min 1, 5Min 0.
+  Reading for the report: **the Stage A xgb rows are selected, the B1 rows are not.** Every survivor's xgb row passed
+  PSR > 0.5 by construction (54/54); the fresh models pass it in catboost 44, rf_ldp_fast 32, logit_l2 30 of 54
+  cells, and their median Sharpe over the 54 is lower (xgb 0.23 — inflated by the Stage A selection —, catboost
+  0.18, logit_l2 0.14, rf_ldp_fast 0.11): the expected regression to the mean, and a measure of how much of Stage A's
+  Sharpe was selection. catboost's 44/54 (vs ~27 if there were no edge) is the strongest evidence of real signal in
+  the survivor set. rf_ldp_fast has the highest median AUC (0.534 vs 0.523–0.526) but the lowest Sharpe, and AUC
+  ranks the four models' Sharpes only weakly within a cell (mean Spearman 0.23), so the max-AUC pick (as
+  registered, no fallback) often carried a weaker trading model forward; the 5 xgb passers' PSR is not a fresh test.
 
 ---
 

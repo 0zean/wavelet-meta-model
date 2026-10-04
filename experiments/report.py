@@ -313,7 +313,7 @@ def alpha_stats(ret: pd.Series, bh: pd.Series, top_days: int = B1_TOP_DAYS) -> d
     cover, the annualized Sharpe of ret − beta·bh (alpha Sharpe), and the share of Σ ret earned on the `top_days`
     best days (inf when Σ ret ≤ 0).
     """
-    j = pd.concat([ret, bh], axis=1, keys=["r", "b"]).dropna()
+    j = pd.concat([ret, bh], axis=1, keys=["r", "b"], sort=True).dropna()
     var = j["b"].var()
     beta = float(j["r"].cov(j["b"]) / var) if len(j) > 2 and var > 0 else 0.0
     a = j["r"] - beta * j["b"]
