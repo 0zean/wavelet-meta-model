@@ -905,6 +905,20 @@ too small to be meaningful, inner CV leaking across window boundaries.
   `results/experiments/report/stage_b2_selection.{csv,md}`. Caveat (from B1): AUC ranks Sharpe only weakly within a
   cell, so the max-AUC arm is not necessarily the best-trading one; the three arms of a cell share one ledger label
   (distinct hashes).
+- B2 run note: launched 2026-10-04 18:27, stopped by the user ~19:08 (26 of 69 fits cached), resumed 2026-10-05
+  03:11, finished 07:34, exit 0: 69 rows, all `ok` (23 per arm), no dead workers; ledger 970 rows; holdout never
+  accessed. Cost was set by catboost (AMZN 15Min ml_xgb: ~4.4 h per arm with cMDA / full features vs 2.8 h default).
+- **B2 outcome (2026-10-05, `python -m experiments.report b2`; final — all 23 passers have 4 arm rows): 22 of 23 go to
+  B3** (`results/experiments/report/stage_b2_selection.{csv,md}`). Chosen arm (max AUC): default 15, cmda 5,
+  full_cmda 2, full 1. The one failure is AAPL 1Day sma_cross, whose cmda arm won on AUC (0.616 vs 0.602) but has
+  best-5-days share 148 % and alpha Sharpe 0.03 (no fallback, as registered).
+  Reading for the report: **neither more features nor cMDA helped.** Against the default arm, the median change in
+  OOS AUC is −0.0065 (cmda), −0.0078 (full), −0.0121 (full_cmda), and an arm beats the default's AUC in only 8, 3, 3
+  of 23 cells; median Sharpe 0.31 / 0.31 / 0.29 vs the default's 0.43 (the default row is itself twice-selected, so
+  part of that gap is regression to the mean, as in B1). The fresh arms still have PSR > 0.5 in 18, 20, 18 of 23
+  cells — the B1 passers' edge mostly survives a change of feature set. The 8 switched cells moved on AUC margins of
+  0.001–0.018 and their Sharpe moved both ways (NVDA 1Day 0.65 → 1.29, SPY 1Day wavelet_trend 1.13 → 0.44): AUC
+  differences that small do not rank Sharpe.
 
 ---
 
