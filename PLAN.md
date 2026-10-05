@@ -907,7 +907,7 @@ too small to be meaningful, inner CV leaking across window boundaries.
   (distinct hashes).
 - B2 run note: launched 2026-10-04 18:27, stopped by the user ~19:08 (26 of 69 fits cached), resumed 2026-10-05
   03:11, finished 07:34, exit 0: 69 rows, all `ok` (23 per arm), no dead workers; ledger 970 rows; holdout never
-  accessed. Cost was set by catboost (AMZN 15Min ml_xgb: ~4.4 h per arm with cMDA / full features vs 2.8 h default).
+  accessed. Cost was set by catboost (AMZN 15Min ml_xgb: its slowest arm ~4.4 h vs 2.8 h with default features).
 - **B2 outcome (2026-10-05, `python -m experiments.report b2`; final — all 23 passers have 4 arm rows): 22 of 23 go to
   B3** (`results/experiments/report/stage_b2_selection.{csv,md}`). Chosen arm (max AUC): default 15, cmda 5,
   full_cmda 2, full 1. The one failure is AAPL 1Day sma_cross, whose cmda arm won on AUC (0.616 vs 0.602) but has
