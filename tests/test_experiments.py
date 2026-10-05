@@ -26,6 +26,7 @@ from experiments.report import (
     stage_a_survivors,
     stage_b1_selection,
     stage_b2_selection,
+    stage_b3_selection,
     weighted_auc,
     write_report,
 )
@@ -700,3 +701,37 @@ def test_stage_b2_selection_picks_max_auc_arm_of_each_b1_passer(tmp_path):
     assert t.loc["QQQ", "n_arms"] == 4 and t.loc["QQQ", "auc_default"] == 0.55 and t.loc["QQQ", "auc_cmda"] == 0.56
     assert t.loc["SPY", "arm"] == "default" and t.loc["SPY", "cell_hash"] == "a_spy" and t.loc["SPY", "passed"]
     assert t.loc["SPY", "n_arms"] == 2 and np.isnan(t.loc["SPY", "auc_full"])
+
+
+def test_stage_b3_selection_keeps_fixed_unless_a_passing_sizer_has_higher_psr(tmp_path):
+    from utils.config import DEFAULT_FEATURE_GROUPS
+
+    idx = pd.date_range("2022-01-03", periods=300, freq="B", tz="America/New_York")
+    rng = np.random.default_rng(3)
+    bh = pd.Series(rng.normal(0.0, 0.01, len(idx)), idx)
+    good = pd.Series(rng.normal(0.001, 0.005, len(idx)), idx)
+    lucky = pd.Series(-0.0001, idx)
+    lucky.iloc[:5] = 0.05  # positive total, all of it from 5 days: fails the top-days gate
+
+    def row(h, sym, meta, auc, psr, stage="B", sizer="fixed", ret=None):
+        r = _a_row(h, sym, "1Day", "p1", meta, auc, psr, 1.0)
+        spec = {**json.loads(r["spec_json"]), "feature_groups": list(DEFAULT_FEATURE_GROUPS),
+                "overrides": {"TEST": 10}, "sizer": sizer}  # fmt: skip
+        (tmp_path / "cells" / h).mkdir(parents=True)
+        (good if ret is None else ret).rename("ret").to_csv(tmp_path / "cells" / h / "daily_returns.csv")
+        return {**r, "stage": stage, "spec_json": json.dumps(spec)}
+
+    rows = [
+        row("a_qqq", "QQQ", "xgb", 0.53, 0.8, stage="A"),  # A, B1 and B2 pick (only row): fixed
+        row("q_lin", "QQQ", "xgb", 0.53, 0.85, sizer="linear"),
+        row("q_ldp", "QQQ", "xgb", 0.53, 0.95, sizer="ldp_sigmoid", ret=lucky),  # best PSR, fails a gate
+        row("q_kelly", "QQQ", "xgb", 0.53, 0.99, sizer="kelly_capped"),  # not a B3 sizer
+        row("a_spy", "SPY", "xgb", 0.53, 0.9, stage="A"),
+        row("s_ecdf", "SPY", "xgb", 0.53, 0.7, sizer="ecdf"),  # passes but lower PSR: fixed stays
+    ]
+    t = stage_b3_selection(rows, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
+    assert t.loc["QQQ", "sizer"] == "linear" and t.loc["QQQ", "cell_hash"] == "q_lin" and t.loc["QQQ", "passed"]
+    assert t.loc["QQQ", "n_sizers"] == 3 and t.loc["QQQ", "psr_ldp_sigmoid"] == 0.95
+    assert np.isnan(t.loc["QQQ", "psr_ecdf"])
+    assert t.loc["SPY", "sizer"] == "fixed" and t.loc["SPY", "cell_hash"] == "a_spy" and t.loc["SPY", "passed"]
+    assert t.loc["SPY", "n_sizers"] == 2 and t.loc["SPY", "psr_fixed"] == 0.9

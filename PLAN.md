@@ -919,6 +919,22 @@ too small to be meaningful, inner CV leaking across window boundaries.
   cells — the B1 passers' edge mostly survives a change of feature set. The 8 switched cells moved on AUC margins of
   0.001–0.018 and their Sharpe moved both ways (NVDA 1Day 0.65 → 1.29, SPY 1Day wavelet_trend 1.13 → 0.44): AUC
   differences that small do not rank Sharpe.
+- **Stage B3 design and B3 → C rule (pre-registered 2026-10-05 11:21, before any B3 cell has run; chosen by the user):**
+  `experiments/specs/u11_b3.yaml` = each of the 22 B2 passers, with its B1 meta-model and B2 feature arm, × sizers
+  {linear, ldp_sigmoid, ecdf} = 66 cells, single position mode (`average` not tested); each cell's spec equals its
+  B2 row's but for `sizer` (checked when generated). `fixed` is the B2 row, not refit; `kelly_capped` left out (U7:
+  sizes ≤ 0.1, often no trades). B3 → C: per B2 passer, keep **`fixed` unless a sizer row passes the gates (PSR > 0.5,
+  alpha Sharpe > 0, best-5-days share < 100 %) with a higher PSR than `fixed`** — then the highest-PSR such sizer
+  (ties → label); the cell goes to C iff the chosen row passes the gates. Every B2 passer's `fixed` row passed them,
+  so B3 picks a sizer per cell and drops none. `python -m experiments.report b3` (`stage_b3_selection`, tested) →
+  `results/experiments/report/stage_b3_selection.{csv,md}`; final only when every passer has all 3 sizer rows. The
+  number of finalists for Stage C is pre-registered separately, after Stage C's grid cost is measured and before
+  any B3 result is seen. Caveat: `fixed`'s PSR has been through Stages A, B1 and B2 selection, so the bar a fresh
+  sizer must clear is biased upward.
+  Cost (timing probe, not a trial: the last 3 folds of AMZN 15Min ml_xgb / catboost, ~62k-bar trains, one process):
+  `fixed` 28 s/fold, `ecdf` 99 s/fold (3.5×: ecdf's train OOF probabilities refit the meta-model, with its HP
+  search, on each of ZOO_CV_SPLITS = 4 purged splits); linear / ldp_sigmoid cost as `fixed`. Estimated B3 wall
+  clock ~7–10 h, set by that cell's ecdf fit.
 
 ---
 

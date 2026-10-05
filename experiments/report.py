@@ -380,11 +380,16 @@ def _pick_and_gate(cands: list[dict], root, bh_returns) -> tuple[dict, dict]:
     """The candidate row with the highest OOS meta AUC (ties → PSR, then label) and its gates (B1 / B2 rules)."""
     best = min(cands, key=lambda r: (-(r.get("meta_auc") or -np.inf), -(r.get("psr") or -np.inf),
                                      r.get("label", "")))  # fmt: skip
-    st = alpha_stats(_daily_returns(root, best["cell_hash"]), bh_returns(json.loads(best["spec_json"])))
-    rec = {"meta_auc": best.get("meta_auc"), "psr": best.get("psr"), "sharpe": best.get("sharpe"), **st,
-           "label": best.get("label", ""), "cell_hash": best["cell_hash"]}  # fmt: skip
+    return best, _gated(best, root, bh_returns)
+
+
+def _gated(row: dict, root, bh_returns) -> dict:
+    """A row's selection stats and the B1 gates: PSR > B1_PSR, alpha Sharpe > 0, top-days share < 1."""
+    st = alpha_stats(_daily_returns(root, row["cell_hash"]), bh_returns(json.loads(row["spec_json"])))
+    rec = {"meta_auc": row.get("meta_auc"), "psr": row.get("psr"), "sharpe": row.get("sharpe"), **st,
+           "label": row.get("label", ""), "cell_hash": row["cell_hash"]}  # fmt: skip
     rec["passed"] = bool((rec["psr"] or 0) > B1_PSR and rec["alpha_sr"] > 0 and rec["top_days_share"] < 1)
-    return best, rec
+    return rec
 
 
 # ── U11 Stage B2 → B3 selection (PLAN U11, pre-registered 2026-10-04, before any B2 ledger row) ────────────────
@@ -436,13 +441,56 @@ def stage_b2_selection(rows: list[dict], root, bh_returns=_cached_bh) -> pd.Data
     return pd.DataFrame(recs).sort_values(["passed", "psr"], ascending=[False, False]).reset_index(drop=True)
 
 
+# ── U11 Stage B3 → C selection (PLAN U11, pre-registered 2026-10-05, before any B3 ledger row) ─────────────────
+
+B3_SIZERS = ("linear", "ldp_sigmoid", "ecdf")  # vs the B2 row's `fixed` (not refit); single position mode
+
+
+def stage_b3_selection(rows: list[dict], root, bh_returns=_cached_bh) -> pd.DataFrame:
+    """
+    One row per B2 passer (`stage_b2_selection(...)["passed"]`). Candidates: its B2 row (sizer `fixed`) plus the `ok`
+    stage-B rows whose spec is that row's with only `sizer` changed to one of B3_SIZERS. `sizer` = `fixed` unless a
+    sizer row passes the gates with a higher PSR than `fixed` — then the highest-PSR such row (ties → label);
+    `passed` = the chosen row's gates. `n_sizers` < 1 + len(B3_SIZERS) means a sizer's row is missing.
+    """
+    b2 = stage_b2_selection(rows, root, bh_returns)
+    if b2.empty:
+        return b2
+    b2 = b2[b2["passed"]]
+    by_hash = {h: r for (h, _st), r in L.done(rows).items()}
+
+    def key(spec: dict) -> str:
+        return json.dumps({**spec, "sizer": None}, sort_keys=True)
+
+    base = {key(json.loads(by_hash[h]["spec_json"])): h for h in b2["cell_hash"]}
+    cands = {h: [] for h in b2["cell_hash"]}
+    for (h, st), r in L.done(rows).items():
+        if st != "B" or r.get("status") != "ok":
+            continue
+        spec = json.loads(r["spec_json"])
+        if spec.get("sizer") in B3_SIZERS and key(spec) in base:
+            cands[base[key(spec)]].append(r)
+    recs = []
+    for s in b2.itertuples():
+        fixed = _gated(by_hash[s.cell_hash], root, bh_returns)
+        sized = {json.loads(r["spec_json"])["sizer"]: _gated(r, root, bh_returns) for r in cands[s.cell_hash]}
+        better = [(z, g) for z, g in sized.items() if g["passed"] and (g["psr"] or 0) > (fixed["psr"] or 0)]
+        sizer, picked = min(better, key=lambda zg: (-zg[1]["psr"], zg[1]["label"])) if better else ("fixed", fixed)
+        rec = {"symbol": s.symbol, "timeframe": s.timeframe, "primary": s.primary, "model": s.model, "arm": s.arm,
+               "sizer": sizer, "n_sizers": 1 + len(sized), **picked, "b2_cell_hash": s.cell_hash,
+               **{f"psr_{z}": (fixed if z == "fixed" else sized.get(z, {})).get("psr", np.nan)
+                  for z in ("fixed", *B3_SIZERS)}}  # fmt: skip
+        recs.append(rec)
+    return pd.DataFrame(recs).sort_values(["passed", "psr"], ascending=[False, False]).reset_index(drop=True)
+
+
 if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root <root>]
     import argparse
 
     from experiments.runner import DEFAULT_ROOT
 
     ap = argparse.ArgumentParser(prog="experiments.report")
-    ap.add_argument("cmd", choices=["pilot", "survivors", "b1", "b2"])
+    ap.add_argument("cmd", choices=["pilot", "survivors", "b1", "b2", "b3"])
     ap.add_argument("spec", nargs="?", help="pilot: the spec holding the pilot cells")
     ap.add_argument("--ledger", default=str(L.DEFAULT_PATH))
     ap.add_argument("--root", default=str(DEFAULT_ROOT))
@@ -474,6 +522,20 @@ if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root 
         )
         md = ["# Stage B1 selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
         (out / "stage_b1_selection.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+        print("\n".join(md))
+        raise SystemExit(0)
+    if a.cmd == "b3":
+        table = stage_b3_selection(L.Ledger(a.ledger).rows(), a.root)
+        table.to_csv(out / "stage_b3_selection.csv", index=False)
+        n_pass, short = int(table["passed"].sum()), int(table["n_sizers"].lt(1 + len(B3_SIZERS)).sum())
+        rule = (f"per B2 passer `fixed` unless a sizer ({', '.join(B3_SIZERS)}) passes the gates (PSR > {B1_PSR}, "
+                f"alpha Sharpe > 0, best-{B1_TOP_DAYS}-days share < 100 %) with a higher PSR — then the "
+                "highest-PSR such sizer")  # fmt: skip
+        status = f"{len(table)} B2 passers, {n_pass} passed" + (
+            f"; NOT FINAL: {short} lack a sizer row" if short else ""
+        )
+        md = ["# Stage B3 selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
+        (out / "stage_b3_selection.md").write_text("\n".join(md) + "\n", encoding="utf-8")
         print("\n".join(md))
         raise SystemExit(0)
     if a.cmd == "b2":
