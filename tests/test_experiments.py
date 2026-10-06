@@ -27,7 +27,9 @@ from experiments.report import (
     stage_b1_selection,
     stage_b2_selection,
     stage_b3_selection,
+    stage_c_cell,
     stage_c_finalists,
+    stage_c_selection,
     weighted_auc,
     write_report,
 )
@@ -749,3 +751,56 @@ def test_stage_c_finalists_takes_top_psr_passers_per_symbol():
     t = stage_c_finalists(b3).set_index("cell_hash")
     assert set(t.index[t["finalist"]]) == {"h1", "h2", "h4", "h5", "h6"}  # h3 fails its gates despite the best PSR
     assert set(stage_c_finalists(b3, per_symbol=1).query("finalist")["label"]) == {"a2", "q1", "s1"}  # tie → label
+
+
+def test_stage_c_cell_is_the_b3_spec_with_its_timeframe_grid():
+    b3 = normalize({"symbols": "SPY", "timeframe": "1Hour", "start": "2016-01-01", "end": "2025-10-01",
+                    "overrides": {"TEST": 10}, "sizer": "linear"})  # fmt: skip
+    c = Cell(normalize(stage_c_cell(b3)), "C")
+    cfg = c.config()
+    assert (cfg.PWFO_IS_GRID, cfg.PWFO_OOS_GRID, cfg.PWFO_DEFAULT) == ((252, 378, 504, 756), (5, 10, 21, 63), (252, 10))
+    assert not cfg.PWFO_EXPANDING and cfg.TEST == 10 and cfg.SIZER == "linear"
+    assert {**c.spec, "pwfo": None, "overrides": {"TEST": 10}} == b3  # nothing else changes
+    d = Cell(normalize(stage_c_cell({**b3, "timeframe": "1Day"})), "C").config()
+    assert (d.PWFO_IS_GRID, d.PWFO_DEFAULT) == ((1260, 1512), (1512, 10))
+
+
+def test_stage_c_selection_gates_the_nested_stream_and_pbo(tmp_path):
+    idx = pd.date_range("2022-01-03", periods=300, freq="B", tz="America/New_York")
+    rng = np.random.default_rng(4)
+    bh = pd.Series(rng.normal(0.0, 0.01, len(idx)), idx)
+    good = pd.Series(rng.normal(0.001, 0.005, len(idx)), idx)
+    by_sym = {}
+
+    def b3_row(h, sym):
+        spec = normalize({"symbols": sym, "timeframe": "1Hour", "start": "2016-01-01", "end": "2025-10-01",
+                          "overrides": {"TEST": 10}})  # fmt: skip
+        by_sym[sym] = spec
+        return {"cell_hash": h, "stage": "B", "status": "ok", "label": h, "spec_json": json.dumps(spec)}
+
+    def c_row(h, sym, psr, pbo, status="ok", spec=None, ret=good):
+        spec = spec or normalize(stage_c_cell(by_sym[sym]))
+        (tmp_path / "cells" / h).mkdir(parents=True)
+        ret.rename("ret").to_csv(tmp_path / "cells" / h / "daily_returns.csv")
+        return {"cell_hash": h, "stage": "C", "status": status, "label": h, "spec_json": json.dumps(spec),
+                "psr": psr, "sharpe": 1.0, "pbo": pbo, "n_trials": 16, "picks": {"IS504_OOS10": 3, "IS252_OOS5": 1}}  # fmt: skip
+
+    rows = [b3_row(f"b_{s}", s) for s in ("SPY", "QQQ", "IWM", "TLT", "GLD")]
+    rows += [
+        c_row("c_spy", "SPY", 0.9, 0.3),  # passes
+        c_row("c_qqq", "QQQ", 0.9, 0.6),  # PBO fails
+        c_row("c_iwm", "IWM", 0.4, 0.1, ret=-good),  # PSR fails
+        c_row("c_tlt_old", "TLT", 0.99, 0.1, spec=normalize({**by_sym["TLT"], "pwfo": {}})),  # U9 grid: not its row
+        c_row("c_gld", "GLD", None, None, status="no_fit"),
+    ]
+    fin = pd.DataFrame({
+        "symbol": ["SPY", "QQQ", "IWM", "TLT", "GLD", "XLE"], "timeframe": "1Hour", "primary": "p", "model": "m",
+        "arm": "default", "sizer": "fixed", "psr": [0.9, 0.95, 0.8, 0.7, 0.6, 0.99],
+        "cell_hash": ["b_SPY", "b_QQQ", "b_IWM", "b_TLT", "b_GLD", "b_XLE"],
+        "finalist": [True, True, True, True, True, False],
+    })  # fmt: skip
+    t = stage_c_selection(rows, fin, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
+    assert set(t.index) == {"SPY", "QQQ", "IWM", "TLT", "GLD"}  # XLE not a finalist
+    assert list(t.index[t["passed"]]) == ["SPY"] and t.loc["SPY", "top_pick"] == "IS504_OOS10"
+    assert t.loc["QQQ", "pbo"] == 0.6 and t.loc["IWM", "alpha_sr"] < 0
+    assert not t.loc["TLT", "has_row"] and t.loc["GLD", "has_row"] and t.loc["GLD", "status"] == "no_fit"

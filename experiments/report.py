@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from experiments import ledger as L
-from experiments.spec import STAGES, stage_rank
+from experiments.spec import STAGES, normalize, stage_rank
 from utils.config import DEFAULT_FEATURE_GROUPS, RunConfig
 from validation.pbo import pbo
 from validation.stats import dsr
@@ -498,13 +498,76 @@ def stage_c_finalists(b3: pd.DataFrame, per_symbol: int = C_PER_SYMBOL) -> pd.Da
     return b3.assign(finalist=b3["cell_hash"].isin(picked["cell_hash"]))
 
 
+# ── U11 Stage C grid and C → D selection (PLAN U11, pre-registered 2026-10-06, before any Stage C cell ran) ──────
+
+# (IS grid, OOS grid, PWFO_DEFAULT) per timeframe. U9's default IS {63, 126, 252, 504} cannot fit a 1Day window
+# (~0.25 events / session: train >= 200 events needs ~800+ sessions) and its 63 / 126 rows are unfittable intraday.
+C_GRIDS = {"1Day": ((1260, 1512), (5, 10, 21, 63), (1512, 10))}
+C_GRID_INTRADAY = ((252, 378, 504, 756), (5, 10, 21, 63), (252, 10))
+C_PBO_MAX = 0.5  # PBO across the cell's combos must be < this (NaN fails)
+
+
+def c_grid(timeframe: str) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, int]]:
+    return C_GRIDS.get(timeframe, C_GRID_INTRADAY)
+
+
+def stage_c_cell(spec: dict) -> dict:
+    """A B3 row's spec as its Stage C PWFO cell: the same spec with `pwfo` = its timeframe's grid (rolling) and
+    PWFO_DEFAULT set explicitly."""
+    is_grid, oos_grid, default = c_grid(spec["timeframe"])
+    return {**spec, "pwfo": {"is_grid": list(is_grid), "oos_grid": list(oos_grid), "expanding": False},
+            "overrides": {**spec["overrides"], "PWFO_DEFAULT": list(default)}}  # fmt: skip
+
+
+def stage_c_selection(rows: list[dict], finalists: pd.DataFrame, root, bh_returns=_cached_bh) -> pd.DataFrame:
+    """
+    One row per Stage C finalist (`finalists`: stage_b3_selection rows with `finalist`; only those are used). Its
+    Stage C row = the stage-C ledger row whose spec is `stage_c_cell(finalist spec)` (ok or no_fit). `passed` iff that
+    row is `ok` and its nested-PWFO live stream (daily_returns.csv) has PSR > B1_PSR, alpha Sharpe > 0, top-days share
+    < 1 (the B gates) and the cell's PBO across combos < C_PBO_MAX. `has_row` False = not run yet (or error): final
+    only when every finalist has its row.
+    """
+    fin = finalists[finalists["finalist"]]
+    by_hash = {h: r for (h, _st), r in L.done(rows).items()}
+    want = {}
+    for h in fin["cell_hash"]:
+        want[json.dumps(normalize(stage_c_cell(json.loads(by_hash[h]["spec_json"]))), sort_keys=True)] = h
+    got = {}
+    for (_h, st), r in L.done(rows).items():
+        if st == "C" and r.get("status") in ("ok", "no_fit"):
+            key = json.dumps(json.loads(r["spec_json"]), sort_keys=True)
+            if key in want:
+                got[want[key]] = r
+    recs = []
+    for s in fin.itertuples():
+        base = {"symbol": s.symbol, "timeframe": s.timeframe, "primary": s.primary, "model": s.model, "arm": s.arm,
+                "sizer": s.sizer, "b3_psr": s.psr, "b3_cell_hash": s.cell_hash}  # fmt: skip
+        r = got.get(s.cell_hash)
+        if r is None or r["status"] != "ok":
+            recs.append({**base, "has_row": r is not None, "status": None if r is None else r["status"],
+                         "passed": False})  # fmt: skip
+            continue
+        g = _gated(r, root, bh_returns)
+        pbo_ = r.get("pbo")
+        pbo_ = np.nan if pbo_ is None else float(pbo_)
+        picks = r.get("picks") or {}
+        recs.append({**base, "has_row": True, "status": "ok", **{k: v for k, v in g.items() if k != "meta_auc"},
+                     "pbo": pbo_, "pwfo_dsr": r.get("pwfo_dsr"), "n_trials": r.get("n_trials"),
+                     "top_pick": max(picks, key=picks.get) if picks else None,
+                     "passed": bool(g["passed"] and pbo_ < C_PBO_MAX)})  # fmt: skip
+    out = pd.DataFrame(recs)
+    if out.empty:
+        return out
+    return out.sort_values(["passed", "b3_psr"], ascending=[False, False]).reset_index(drop=True)
+
+
 if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root <root>]
     import argparse
 
     from experiments.runner import DEFAULT_ROOT
 
     ap = argparse.ArgumentParser(prog="experiments.report")
-    ap.add_argument("cmd", choices=["pilot", "survivors", "b1", "b2", "b3"])
+    ap.add_argument("cmd", choices=["pilot", "survivors", "b1", "b2", "b3", "c-spec", "c"])
     ap.add_argument("spec", nargs="?", help="pilot: the spec holding the pilot cells")
     ap.add_argument("--ledger", default=str(L.DEFAULT_PATH))
     ap.add_argument("--root", default=str(DEFAULT_ROOT))
@@ -550,6 +613,35 @@ if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root 
         )
         md = ["# Stage B3 selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
         (out / "stage_b3_selection.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+        print("\n".join(md))
+        raise SystemExit(0)
+    if a.cmd in ("c-spec", "c"):
+        rows = L.Ledger(a.ledger).rows()
+        fin = stage_c_finalists(stage_b3_selection(rows, a.root))
+        if a.cmd == "c-spec":  # experiments/specs/u11_c.yaml (or the given path); slowest cells first
+            by_hash = {h: r for (h, _st), r in L.done(rows).items()}
+            cells = [stage_c_cell(json.loads(by_hash[h]["spec_json"])) for h in fin.loc[fin["finalist"], "cell_hash"]]
+            cells.sort(key=lambda c: (c["model"]["meta"] != "catboost", c["sizer"] != "ecdf", c["timeframe"] == "1Day"))
+            path = Path(a.spec or "experiments/specs/u11_c.yaml")
+            head = [
+                "# U11 Stage C (PLAN U11, pre-registered 2026-10-06): the 14 Stage C finalists (stage_b3_selection.csv,",
+                "# finalist = True), each the B3 row's spec with a rolling PWFO grid: intraday IS {252, 378, 504, 756},",
+                "# 1Day IS {1260, 1512}, x OOS {5, 10, 21, 63}; every combo a trial. Slowest (catboost, ecdf) first.",
+                "# Generated by `python -m experiments.report c-spec`.",
+                "name: u11_c", "stage: C", "cells:",
+            ]  # fmt: skip
+            path.write_text("\n".join(head + [f"  - {json.dumps(c, sort_keys=True)}" for c in cells]) + "\n",
+                            encoding="utf-8")  # fmt: skip
+            print(f"{len(cells)} cells → {path}")
+            raise SystemExit(0)
+        table = stage_c_selection(rows, fin, a.root)
+        table.to_csv(out / "stage_c_selection.csv", index=False)
+        n_pass, short = int(table["passed"].sum()), int((~table["has_row"]).sum())
+        rule = (f"per finalist, its nested-PWFO live stream passes the B gates (PSR > {B1_PSR}, alpha Sharpe > 0, "
+                f"best-{B1_TOP_DAYS}-days share < 100 %) and its PBO across combos < {C_PBO_MAX}")  # fmt: skip
+        status = f"{len(table)} finalists, {n_pass} passed" + (f"; NOT FINAL: {short} lack a row" if short else "")
+        md = ["# Stage C selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
+        (out / "stage_c_selection.md").write_text("\n".join(md) + "\n", encoding="utf-8")
         print("\n".join(md))
         raise SystemExit(0)
     if a.cmd == "b2":
