@@ -18,7 +18,19 @@ import wfo.wfo_engine as eng
 from data.bars import HoldoutError
 from experiments import ledger as L
 from experiments.legacy import import_legacy
-from experiments.report import leaderboard, row_dsr, write_report
+from experiments.report import (
+    alpha_stats,
+    leaderboard,
+    row_dsr,
+    session_bootstrap_auc,
+    stage_a_survivors,
+    stage_b1_selection,
+    stage_b2_selection,
+    stage_b3_selection,
+    stage_c_finalists,
+    weighted_auc,
+    write_report,
+)
 from experiments.spec import Cell, expand, normalize
 from tests.test_runconfig import synthetic_daily
 from utils.config import RunConfig
@@ -209,8 +221,8 @@ def test_code_hash_ignores_line_endings_but_not_the_platform(monkeypatch, tmp_pa
         (tmp_path / "wfo" / "x.py").write_bytes(b"a = 1\r\nb = 2\r\n")  # a Windows (autocrlf) checkout
         R.code_hash.cache_clear()
         assert R.code_hash() == h1
-        monkeypatch.setattr(R.platform, "system", lambda: "Windows")
-        monkeypatch.setattr(R.platform, "machine", lambda: "AMD64")
+        monkeypatch.setattr(R.platform, "system", lambda: "Plan9")  # not the host, whichever it is
+        monkeypatch.setattr(R.platform, "machine", lambda: "mips")
         R.code_hash.cache_clear()
         assert R.code_hash() != h1
     finally:
@@ -551,3 +563,189 @@ def test_stage_pbo_counts_identical_streams_once(env):
         rows.append(_row(h, "A"))
     res = stage_pbo(rows, env["root"]).iloc[0]
     assert res["n_cells"] == 3 and res["n_distinct"] == 2
+
+
+# ── 5Min pilot rule (U11) ────────────────────────────────────────────────────
+
+
+def test_weighted_auc_matches_sklearn_with_ties_and_integer_weights():
+    from sklearn.metrics import roc_auc_score
+
+    rng = np.random.default_rng(3)
+    p = rng.integers(0, 20, 500) / 20  # many ties
+    y = (rng.random(500) < 0.3 + 0.4 * p).astype(int)
+    inv = np.unique(p, return_inverse=True)[1]
+    assert weighted_auc(inv, y, np.ones(500)) == pytest.approx(roc_auc_score(y, p), abs=1e-12)
+    w = rng.integers(0, 4, 500)
+    rep = np.repeat(np.arange(500), w)  # weights = replicated events
+    assert weighted_auc(inv, y, w.astype(float)) == pytest.approx(roc_auc_score(y[rep], p[rep]), abs=1e-12)
+
+
+def test_session_bootstrap_bound_widens_with_within_session_dependence():
+    rng = np.random.default_rng(4)
+    n_s, k = 200, 30  # 200 sessions of 30 events; the outcome is a session-level coin flip
+    sessions = np.repeat(np.arange(n_s), k)
+    y = np.repeat(rng.integers(0, 2, n_s), k)
+    p = rng.random(n_s * k)  # uninformative
+    auc, ub = session_bootstrap_auc(y, p, sessions, n_boot=500)
+    assert abs(auc - 0.5) < 0.03 and ub > auc
+    assert session_bootstrap_auc(y, p, sessions, n_boot=500) == (auc, ub)  # seeded
+    _, ub_iid = session_bootstrap_auc(y, p, np.arange(n_s * k), n_boot=500)  # events treated as independent
+    assert ub - auc > ub_iid - auc  # clustering is not understated
+
+
+def _a_row(h, sym, tf, primary, meta, auc, psr, sharpe):
+    spec = {"symbols": [sym], "timeframe": tf, "primary": {"name": primary}, "model": {"meta": meta}}
+    return {"cell_hash": h, "stage": "A", "status": "ok", "kind": "wfo", "label": h, "spec_json": json.dumps(spec),
+            "meta_auc": auc, "psr": psr, "sharpe": sharpe, "n_obs": 2400, "sr_skew": 0.0, "sr_kurt": 3.0}  # fmt: skip
+
+
+def test_stage_a_survivors_gates_ranks_caps_and_ignores_other_meta_models():
+    rows = [
+        _a_row("a1", "SPY", "5Min", "p1", "xgb", 0.53, 0.9, 1.5),  # best
+        _a_row("a2", "SPY", "5Min", "p2", "xgb", 0.53, 0.9, 1.4),
+        _a_row("a3", "SPY", "5Min", "p3", "xgb", 0.53, 0.9, 1.3),  # 3rd of its (symbol, timeframe): capped
+        _a_row("b1", "QQQ", "1Day", "p1", "xgb", 0.515, 0.9, 1.2),  # AUC not > 0.515
+        _a_row("b2", "QQQ", "1Day", "p2", "xgb", 0.52, 0.5, 1.2),  # PSR not > 0.5
+        _a_row("c1", "TLT", "1Hour", "p1", "xgb", 0.52, 0.6, 0.2),
+        _a_row("r1", "TLT", "1Hour", "p1", "rf_ldp", 0.60, 0.99, 3.0),  # recorded, never selects
+        {**_a_row("e1", "IWM", "1Day", "p1", "xgb", 0.6, 0.9, 2.0), "status": "error"},
+    ]
+    t = stage_a_survivors(rows, k=3, per_pair=2).set_index("cell_hash")
+    assert set(t.index) == {"a1", "a2", "a3", "b1", "b2", "c1"}
+    assert t.loc[["a1", "a2", "a3", "c1"], "passed"].all() and not t.loc[["b1", "b2"], "passed"].any()
+    assert list(t.index[t["survivor"]]) == ["a1", "a2", "c1"]  # DSR order, a3 capped, k = 3
+    assert t["n_trials"].eq(7).all()  # the rf_ldp row still counts as a trial
+
+
+def test_alpha_stats_hedges_beta_and_measures_top_day_share():
+    rng = np.random.default_rng(0)
+    idx = pd.date_range("2022-01-03", periods=500, freq="B", tz="America/New_York")
+    bh = pd.Series(rng.normal(0.0005, 0.01, len(idx)), idx)
+    alpha = pd.Series(rng.normal(0.0004, 0.005, len(idx)), idx)
+    st = alpha_stats(0.5 * bh + alpha, bh)
+    assert abs(st["beta"] - 0.5) < 0.05
+    assert abs(st["alpha_sr"] - alpha.mean() / alpha.std() * np.sqrt(252)) < 0.15
+    pure_beta = alpha_stats(0.5 * bh, bh)
+    assert abs(pure_beta["alpha_sr"]) < 1e-6 or np.isnan(pure_beta["alpha_sr"])
+    lucky = pd.Series(0.0, idx)
+    lucky.iloc[:5] = 0.02
+    lucky.iloc[5:] = -0.0001  # all of the P&L from 5 days
+    assert alpha_stats(lucky, bh)["top_days_share"] > 1
+    assert alpha_stats(-lucky.abs(), bh)["top_days_share"] == np.inf
+
+
+def test_stage_b1_selection_picks_max_auc_model_and_gates_it(tmp_path):
+    idx = pd.date_range("2022-01-03", periods=300, freq="B", tz="America/New_York")
+    rng = np.random.default_rng(1)
+    bh = pd.Series(rng.normal(0.0, 0.01, len(idx)), idx)
+    good = pd.Series(rng.normal(0.001, 0.005, len(idx)), idx)
+
+    def row(h, sym, meta, auc, psr, stage="B", **spec_extra):
+        r = _a_row(h, sym, "1Day", "p1", meta, auc, psr, 1.0)
+        spec = {**json.loads(r["spec_json"]), **spec_extra}
+        (tmp_path / "cells" / h).mkdir(parents=True)
+        (good if psr > 0.5 else -good).rename("ret").to_csv(tmp_path / "cells" / h / "daily_returns.csv")
+        return {**r, "stage": stage, "spec_json": json.dumps(spec)}
+
+    rows = [
+        row("a_spy", "SPY", "xgb", 0.53, 0.9, stage="A"),
+        row("b_spy_l", "SPY", "logit_l2", 0.56, 0.4),  # best AUC but PSR fails: SPY fails (no fallback)
+        row("b_spy_c", "SPY", "catboost", 0.54, 0.95),
+        row("a_qqq", "QQQ", "xgb", 0.53, 0.9, stage="A"),
+        row("b_qqq_r", "QQQ", "rf_ldp_fast", 0.55, 0.8),  # QQQ: rf_ldp_fast
+        row("b_qqq_x", "QQQ", "rf_ldp_fast", 0.60, 0.8, feature_groups="other"),  # a B2-style row: not a candidate
+        row("b_qqq_e", "QQQ", "extra_trees", 0.70, 0.9),  # not a B1 model
+        row("a_tlt", "TLT", "xgb", 0.51, 0.9, stage="A"),  # not a Stage A survivor
+    ]
+    t = stage_b1_selection(rows, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
+    assert set(t.index) == {"SPY", "QQQ"}
+    assert t.loc["SPY", "model"] == "logit_l2" and not t.loc["SPY", "passed"]
+    assert t.loc["QQQ", "model"] == "rf_ldp_fast" and t.loc["QQQ", "cell_hash"] == "b_qqq_r" and t.loc["QQQ", "passed"]
+    assert t.loc["SPY", "n_models"] == 3 and t.loc["QQQ", "n_models"] == 2
+    assert t.loc["QQQ", "auc_xgb"] == 0.53 and np.isnan(t.loc["QQQ", "auc_catboost"])
+
+
+def test_stage_b2_selection_picks_max_auc_arm_of_each_b1_passer(tmp_path):
+    from experiments.report import B2_FULL
+    from utils.config import DEFAULT_FEATURE_GROUPS
+
+    idx = pd.date_range("2022-01-03", periods=300, freq="B", tz="America/New_York")
+    rng = np.random.default_rng(2)
+    bh = pd.Series(rng.normal(0.0, 0.01, len(idx)), idx)
+    good = pd.Series(rng.normal(0.001, 0.005, len(idx)), idx)
+    full, dflt = list(B2_FULL), list(DEFAULT_FEATURE_GROUPS)
+
+    def row(h, sym, meta, auc, psr, stage="B", groups=dflt, sel=None, test=10):
+        r = _a_row(h, sym, "1Day", "p1", meta, auc, psr, 1.0)
+        ov = {"TEST": test} | ({"FEATURE_SELECTION": sel} if sel else {})
+        spec = {**json.loads(r["spec_json"]), "feature_groups": groups, "overrides": ov}
+        (tmp_path / "cells" / h).mkdir(parents=True)
+        (good if psr > 0.5 else -good).rename("ret").to_csv(tmp_path / "cells" / h / "daily_returns.csv")
+        return {**r, "stage": stage, "spec_json": json.dumps(spec)}
+
+    rows = [
+        row("a_qqq", "QQQ", "xgb", 0.53, 0.9, stage="A"),
+        row("b_qqq", "QQQ", "rf_ldp_fast", 0.55, 0.8),  # B1 pick
+        row("q_cmda", "QQQ", "rf_ldp_fast", 0.56, 0.9, sel="cmda"),
+        row("q_full", "QQQ", "rf_ldp_fast", 0.54, 0.9, groups=full),
+        row("q_fc", "QQQ", "rf_ldp_fast", 0.57, 0.4, groups=full, sel="cmda"),  # max AUC, fails PSR: no fallback
+        row("q_xgb_full", "QQQ", "xgb", 0.70, 0.9, groups=full),  # another model: not a candidate
+        row("q_t20", "QQQ", "rf_ldp_fast", 0.70, 0.9, sel="cmda", test=20),  # another override: not a candidate
+        row("a_spy", "SPY", "xgb", 0.53, 0.9, stage="A"),  # B1 pick (only model)
+        row("s_cmda", "SPY", "xgb", 0.52, 0.9, sel="cmda"),
+        row("a_tlt", "TLT", "xgb", 0.51, 0.9, stage="A"),  # not a survivor
+    ]
+    t = stage_b2_selection(rows, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
+    assert set(t.index) == {"QQQ", "SPY"}
+    assert t.loc["QQQ", "arm"] == "full_cmda" and t.loc["QQQ", "cell_hash"] == "q_fc" and not t.loc["QQQ", "passed"]
+    assert t.loc["QQQ", "n_arms"] == 4 and t.loc["QQQ", "auc_default"] == 0.55 and t.loc["QQQ", "auc_cmda"] == 0.56
+    assert t.loc["SPY", "arm"] == "default" and t.loc["SPY", "cell_hash"] == "a_spy" and t.loc["SPY", "passed"]
+    assert t.loc["SPY", "n_arms"] == 2 and np.isnan(t.loc["SPY", "auc_full"])
+
+
+def test_stage_b3_selection_keeps_fixed_unless_a_passing_sizer_has_higher_psr(tmp_path):
+    from utils.config import DEFAULT_FEATURE_GROUPS
+
+    idx = pd.date_range("2022-01-03", periods=300, freq="B", tz="America/New_York")
+    rng = np.random.default_rng(3)
+    bh = pd.Series(rng.normal(0.0, 0.01, len(idx)), idx)
+    good = pd.Series(rng.normal(0.001, 0.005, len(idx)), idx)
+    lucky = pd.Series(-0.0001, idx)
+    lucky.iloc[:5] = 0.05  # positive total, all of it from 5 days: fails the top-days gate
+
+    def row(h, sym, meta, auc, psr, stage="B", sizer="fixed", ret=None):
+        r = _a_row(h, sym, "1Day", "p1", meta, auc, psr, 1.0)
+        spec = {**json.loads(r["spec_json"]), "feature_groups": list(DEFAULT_FEATURE_GROUPS),
+                "overrides": {"TEST": 10}, "sizer": sizer}  # fmt: skip
+        (tmp_path / "cells" / h).mkdir(parents=True)
+        (good if ret is None else ret).rename("ret").to_csv(tmp_path / "cells" / h / "daily_returns.csv")
+        return {**r, "stage": stage, "spec_json": json.dumps(spec)}
+
+    rows = [
+        row("a_qqq", "QQQ", "xgb", 0.53, 0.8, stage="A"),  # A, B1 and B2 pick (only row): fixed
+        row("q_lin", "QQQ", "xgb", 0.53, 0.85, sizer="linear"),
+        row("q_ldp", "QQQ", "xgb", 0.53, 0.95, sizer="ldp_sigmoid", ret=lucky),  # best PSR, fails a gate
+        row("q_kelly", "QQQ", "xgb", 0.53, 0.99, sizer="kelly_capped"),  # not a B3 sizer
+        row("a_spy", "SPY", "xgb", 0.53, 0.9, stage="A"),
+        row("s_ecdf", "SPY", "xgb", 0.53, 0.7, sizer="ecdf"),  # passes but lower PSR: fixed stays
+    ]
+    t = stage_b3_selection(rows, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
+    assert t.loc["QQQ", "sizer"] == "linear" and t.loc["QQQ", "cell_hash"] == "q_lin" and t.loc["QQQ", "passed"]
+    assert t.loc["QQQ", "n_sizers"] == 3 and t.loc["QQQ", "psr_ldp_sigmoid"] == 0.95
+    assert np.isnan(t.loc["QQQ", "psr_ecdf"])
+    assert t.loc["SPY", "sizer"] == "fixed" and t.loc["SPY", "cell_hash"] == "a_spy" and t.loc["SPY", "passed"]
+    assert t.loc["SPY", "n_sizers"] == 2 and t.loc["SPY", "psr_fixed"] == 0.9
+
+
+def test_stage_c_finalists_takes_top_psr_passers_per_symbol():
+    b3 = pd.DataFrame({
+        "symbol": ["AMZN", "AMZN", "AMZN", "QQQ", "QQQ", "SPY"],
+        "psr": [0.90, 0.95, 0.99, 0.80, 0.80, 0.70],
+        "passed": [True, True, False, True, True, True],
+        "label": ["a1", "a2", "a3", "q2", "q1", "s1"],
+        "cell_hash": ["h1", "h2", "h3", "h4", "h5", "h6"],
+    })  # fmt: skip
+    t = stage_c_finalists(b3).set_index("cell_hash")
+    assert set(t.index[t["finalist"]]) == {"h1", "h2", "h4", "h5", "h6"}  # h3 fails its gates despite the best PSR
+    assert set(stage_c_finalists(b3, per_symbol=1).query("finalist")["label"]) == {"a2", "q1", "s1"}  # tie → label

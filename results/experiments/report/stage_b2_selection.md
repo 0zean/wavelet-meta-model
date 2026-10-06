@@ -1,0 +1,29 @@
+# Stage B2 selection
+
+Rule: per B1 passer the feature arm (default, cmda, full, full_cmda) with the highest OOS meta AUC; passes if PSR > 0.5, alpha Sharpe > 0 and best-5-days share of P&L < 100 %. 23 B1 passers, 22 passed.
+
+| symbol | timeframe | primary | model | arm | n_arms | meta_auc | psr | sharpe | beta | alpha_sr | top_days_share | label | cell_hash | passed | b1_cell_hash | auc_default | auc_cmda | auc_full | auc_full_cmda |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| NVDA | 1Day | ml_xgb | logit_l2 | cmda | 4 | 0.647 | 0.993 | 1.290 | 0.528 | 0.643 | 0.281 | NVDA_1Day_ml_xgb_logit_l2_oof_fixed_none | 75a113e9dc05a292 | True | d8368ea5f25bbd41 | 0.632 | 0.647 | 0.600 | 0.570 |
+| XLK | 1Hour | donchian_breakout | catboost | default | 4 | 0.543 | 0.975 | 0.681 | 0.030 | 0.592 | 0.346 | XLK_1Hour_donchian_breakout_catboost_oof_fixed_none | 6d3edb2578494b1f | True | 6d3edb2578494b1f | 0.543 | 0.511 | 0.538 | 0.516 |
+| XLE | 1Hour | donchian_breakout | catboost | default | 4 | 0.542 | 0.968 | 0.627 | 0.013 | 0.611 | 0.479 | XLE_1Hour_donchian_breakout_catboost_oof_fixed_none | 7b1849be1fb95f94 | True | 7b1849be1fb95f94 | 0.542 | 0.541 | 0.514 | 0.521 |
+| GOOGL | 1Day | bollinger_mr | rf_ldp_fast | cmda | 4 | 0.624 | 0.962 | 0.914 | 0.151 | 0.809 | 0.514 | GOOGL_1Day_bollinger_mr_rf_ldp_fast_oof_fixed_none | 9a4fba4dc5284901 | True | aed64625688c6dc7 | 0.623 | 0.624 | 0.595 | 0.595 |
+| MSFT | 1Hour | donchian_breakout | rf_ldp_fast | cmda | 4 | 0.538 | 0.936 | 0.532 | 0.063 | 0.343 | 0.438 | MSFT_1Hour_donchian_breakout_rf_ldp_fast_oof_fixed_none | 7e107dcc726d9195 | True | 2fc4fe891b9ebfd1 | 0.535 | 0.538 | 0.532 | 0.534 |
+| XLK | 30Min | wavelet_trend | rf_ldp_fast | full_cmda | 4 | 0.532 | 0.933 | 0.506 | 0.050 | 0.397 | 0.453 | XLK_30Min_wavelet_trend_rf_ldp_fast_oof_fixed_none | 7e46dc815076be0a | True | 69a5d48bb3dd3a73 | 0.530 | 0.532 | 0.530 | 0.532 |
+| AMZN | 30Min | wavelet_trend | xgb | default | 4 | 0.527 | 0.919 | 0.476 | 0.005 | 0.467 | 0.305 | AMZN_30Min_wavelet_trend_xgb_oof_fixed_none | 128f3362fcb5d694 | True | 128f3362fcb5d694 | 0.527 | 0.507 | 0.520 | 0.502 |
+| AMZN | 1Hour | bollinger_mr | rf_ldp_fast | default | 4 | 0.529 | 0.916 | 0.476 | 0.050 | 0.346 | 0.595 | AMZN_1Hour_bollinger_mr_rf_ldp_fast_oof_fixed_none | a35af444a9522f9c | True | a35af444a9522f9c | 0.529 | 0.516 | 0.520 | 0.521 |
+| QQQ | 1Hour | donchian_breakout | xgb | default | 4 | 0.533 | 0.913 | 0.475 | 0.005 | 0.462 | 0.444 | QQQ_1Hour_donchian_breakout_xgb_oof_fixed_none | a7e19d1408b3b1e2 | True | a7e19d1408b3b1e2 | 0.533 | 0.528 | 0.525 | 0.530 |
+| QQQ | 30Min | donchian_breakout | rf_ldp_fast | default | 4 | 0.540 | 0.908 | 0.455 | 0.029 | 0.397 | 0.414 | QQQ_30Min_donchian_breakout_rf_ldp_fast_oof_fixed_none | bd45a524788e01f4 | True | bd45a524788e01f4 | 0.540 | 0.533 | 0.536 | 0.537 |
+| AMZN | 30Min | bollinger_mr | xgb | default | 4 | 0.529 | 0.899 | 0.415 | 0.003 | 0.402 | 0.924 | AMZN_30Min_bollinger_mr_xgb_oof_fixed_none | 6923a135e309d77d | True | 6923a135e309d77d | 0.529 | 0.513 | 0.519 | 0.514 |
+| AMZN | 30Min | donchian_breakout | xgb | default | 4 | 0.519 | 0.893 | 0.425 | 0.025 | 0.381 | 0.349 | AMZN_30Min_donchian_breakout_xgb_oof_fixed_none | f7297af2be350d8f | True | f7297af2be350d8f | 0.519 | 0.510 | 0.514 | 0.511 |
+| AMZN | 15Min | ml_xgb | catboost | default | 4 | 0.518 | 0.866 | 0.367 | -0.041 | 0.429 | 0.560 | AMZN_15Min_ml_xgb_catboost_oof_fixed_none | 404202bee349dfd5 | True | 404202bee349dfd5 | 0.518 | 0.501 | 0.506 | 0.505 |
+| XLK | 30Min | donchian_breakout | rf_ldp_fast | full_cmda | 4 | 0.534 | 0.845 | 0.342 | 0.046 | 0.240 | 0.691 | XLK_30Min_donchian_breakout_rf_ldp_fast_oof_fixed_none | 5cc4c2d0b906bd2f | True | 62f053697c456d38 | 0.524 | 0.531 | 0.530 | 0.534 |
+| SPY | 30Min | donchian_breakout | rf_ldp_fast | default | 4 | 0.541 | 0.825 | 0.318 | 0.034 | 0.254 | 0.714 | SPY_30Min_donchian_breakout_rf_ldp_fast_oof_fixed_none | 12cbaab369086c28 | True | 12cbaab369086c28 | 0.541 | 0.533 | 0.535 | 0.527 |
+| XLE | 1Day | ml_xgb | catboost | cmda | 4 | 0.555 | 0.812 | 0.461 | 0.175 | 0.295 | 0.698 | XLE_1Day_ml_xgb_catboost_oof_fixed_none | fa66e37877ecdf0c | True | af84ca0d709dddf9 | 0.550 | 0.555 | 0.468 | 0.403 |
+| QQQ | 30Min | wavelet_trend | rf_ldp_fast | default | 4 | 0.539 | 0.807 | 0.296 | 0.023 | 0.249 | 0.632 | QQQ_30Min_wavelet_trend_rf_ldp_fast_oof_fixed_none | 117b6f0f6cc568a2 | True | 117b6f0f6cc568a2 | 0.539 | 0.533 | 0.535 | 0.536 |
+| SPY | 1Day | wavelet_trend | logit_l2 | full | 4 | 0.595 | 0.804 | 0.441 | 0.044 | 0.399 | 0.853 | SPY_1Day_wavelet_trend_logit_l2_oof_fixed_none | bd697d1e2180d3cb | True | 28459d696d58d8dd | 0.577 | 0.590 | 0.595 | 0.584 |
+| AMZN | 1Hour | donchian_breakout | rf_ldp_fast | default | 4 | 0.541 | 0.791 | 0.283 | 0.064 | 0.154 | 0.645 | AMZN_1Hour_donchian_breakout_rf_ldp_fast_oof_fixed_none | edb401c9209edbf9 | True | edb401c9209edbf9 | 0.541 | 0.534 | 0.531 | 0.536 |
+| GLD | 1Day | bollinger_mr | rf_ldp_fast | default | 4 | 0.617 | 0.791 | 0.421 | 0.050 | 0.322 | 0.862 | GLD_1Day_bollinger_mr_rf_ldp_fast_oof_fixed_none | 593a973e2c98f5b3 | True | 593a973e2c98f5b3 | 0.617 | 0.587 | 0.566 | 0.591 |
+| AMZN | 1Hour | wavelet_trend | rf_ldp_fast | default | 4 | 0.542 | 0.780 | 0.270 | 0.052 | 0.164 | 0.731 | AMZN_1Hour_wavelet_trend_rf_ldp_fast_oof_fixed_none | f1ccaddfed907c7f | True | f1ccaddfed907c7f | 0.542 | 0.538 | 0.538 | 0.539 |
+| QQQ | 1Day | ml_xgb | xgb | default | 4 | 0.557 | 0.772 | 0.387 | 0.191 | 0.237 | 0.987 | QQQ_1Day_ml_xgb_xgb_oof_fixed_none | 26dd16ef4275f74f | True | 26dd16ef4275f74f | 0.557 | 0.489 | 0.529 | 0.499 |
+| AAPL | 1Day | sma_cross | logit_l2 | cmda | 4 | 0.616 | 0.711 | 0.292 | 0.280 | 0.027 | 1.483 | AAPL_1Day_sma_cross_logit_l2_oof_fixed_none | 7c9dbe2037b87549 | False | e2b884ed224d13ab | 0.602 | 0.616 | 0.558 | 0.574 |

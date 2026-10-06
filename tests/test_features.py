@@ -286,6 +286,31 @@ def test_cache_key_covers_code_and_context(df):
     assert other != feature_cache.code_hash()  # a library upgrade invalidates the cache
 
 
+def _cache_hammer(root, write: bool) -> pd.DataFrame | None:
+    idx = pd.date_range("2020-01-01", periods=20_000, freq="min", tz="UTC")
+    feats = pd.DataFrame({"a": np.arange(len(idx), dtype=float)}, index=idx)
+    out = None
+    for _ in range(150):
+        if write:
+            feature_cache.save(root, "X", "5Min", "g", "k", feats)
+        else:
+            out = feature_cache.load(root, "X", "5Min", "g", "k", idx)
+    return out
+
+
+def test_cache_tolerates_concurrent_writers_and_readers_of_a_key(tmp_path):
+    """Cells sharing a symbol and timeframe save / load the same groups at once; on Windows os.replace onto a file
+    another process has open raises PermissionError (Stage A cells died of it)."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    _cache_hammer(tmp_path, write=True)
+    with ProcessPoolExecutor(4) as ex:
+        futs = [ex.submit(_cache_hammer, tmp_path, w) for w in (True, True, False, False)]
+        res = [f.result() for f in futs]  # re-raises a worker's error
+    assert all(r is None or r["a"].iloc[-1] == 19_999 for r in res)
+    assert not list(tmp_path.rglob("*.npz"))[1:]  # one file, no temp leftovers
+
+
 # ── Purged k-fold ────────────────────────────────────────────────────────────
 
 

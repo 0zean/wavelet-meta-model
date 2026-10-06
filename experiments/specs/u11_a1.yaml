@@ -1,0 +1,97 @@
+# U11 Stage A, part 1: the Stage A screen (u11_a_screen.yaml) on 15Min-1Day for all 19 symbols, plus the
+# pre-registered 5Min pilot (PLAN U11): 5Min x {SPY, AAPL, TLT}. Same cells, hence same hashes, as their
+# u11_a_screen.yaml counterparts, so running that spec afterwards (if the pilot rule says so) skips them.
+# Cells are listed longest first (5Min, 15Min, ... 1Day) so the long fits do not form the run's tail.
+stage: A
+name: u11_a1
+defaults:
+  start: 2016-01-01
+  end: 2025-10-01
+  feature_groups: default
+  meta_train: oof
+  sizer: fixed
+  risk_profile: none
+  overrides: {TEST: 10}
+grid:
+  primary.name: [wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb]
+  model.meta: [xgb, rf_ldp]
+cells:
+  - {symbols: SPY, timeframe: 5Min}
+  - {symbols: AAPL, timeframe: 5Min}
+  - {symbols: TLT, timeframe: 5Min}
+  - {symbols: SPY, timeframe: 15Min}
+  - {symbols: QQQ, timeframe: 15Min}
+  - {symbols: IWM, timeframe: 15Min}
+  - {symbols: DIA, timeframe: 15Min}
+  - {symbols: XLF, timeframe: 15Min}
+  - {symbols: XLK, timeframe: 15Min}
+  - {symbols: XLE, timeframe: 15Min}
+  - {symbols: XLV, timeframe: 15Min}
+  - {symbols: TLT, timeframe: 15Min}
+  - {symbols: GLD, timeframe: 15Min}
+  - {symbols: AAPL, timeframe: 15Min}
+  - {symbols: MSFT, timeframe: 15Min}
+  - {symbols: NVDA, timeframe: 15Min}
+  - {symbols: AMZN, timeframe: 15Min}
+  - {symbols: GOOGL, timeframe: 15Min}
+  - {symbols: META, timeframe: 15Min}
+  - {symbols: JPM, timeframe: 15Min}
+  - {symbols: XOM, timeframe: 15Min}
+  - {symbols: UNH, timeframe: 15Min}
+  - {symbols: SPY, timeframe: 30Min}
+  - {symbols: QQQ, timeframe: 30Min}
+  - {symbols: IWM, timeframe: 30Min}
+  - {symbols: DIA, timeframe: 30Min}
+  - {symbols: XLF, timeframe: 30Min}
+  - {symbols: XLK, timeframe: 30Min}
+  - {symbols: XLE, timeframe: 30Min}
+  - {symbols: XLV, timeframe: 30Min}
+  - {symbols: TLT, timeframe: 30Min}
+  - {symbols: GLD, timeframe: 30Min}
+  - {symbols: AAPL, timeframe: 30Min}
+  - {symbols: MSFT, timeframe: 30Min}
+  - {symbols: NVDA, timeframe: 30Min}
+  - {symbols: AMZN, timeframe: 30Min}
+  - {symbols: GOOGL, timeframe: 30Min}
+  - {symbols: META, timeframe: 30Min}
+  - {symbols: JPM, timeframe: 30Min}
+  - {symbols: XOM, timeframe: 30Min}
+  - {symbols: UNH, timeframe: 30Min}
+  - {symbols: SPY, timeframe: 1Hour}
+  - {symbols: QQQ, timeframe: 1Hour}
+  - {symbols: IWM, timeframe: 1Hour}
+  - {symbols: DIA, timeframe: 1Hour}
+  - {symbols: XLF, timeframe: 1Hour}
+  - {symbols: XLK, timeframe: 1Hour}
+  - {symbols: XLE, timeframe: 1Hour}
+  - {symbols: XLV, timeframe: 1Hour}
+  - {symbols: TLT, timeframe: 1Hour}
+  - {symbols: GLD, timeframe: 1Hour}
+  - {symbols: AAPL, timeframe: 1Hour}
+  - {symbols: MSFT, timeframe: 1Hour}
+  - {symbols: NVDA, timeframe: 1Hour}
+  - {symbols: AMZN, timeframe: 1Hour}
+  - {symbols: GOOGL, timeframe: 1Hour}
+  - {symbols: META, timeframe: 1Hour}
+  - {symbols: JPM, timeframe: 1Hour}
+  - {symbols: XOM, timeframe: 1Hour}
+  - {symbols: UNH, timeframe: 1Hour}
+  - {symbols: SPY, timeframe: 1Day}
+  - {symbols: QQQ, timeframe: 1Day}
+  - {symbols: IWM, timeframe: 1Day}
+  - {symbols: DIA, timeframe: 1Day}
+  - {symbols: XLF, timeframe: 1Day}
+  - {symbols: XLK, timeframe: 1Day}
+  - {symbols: XLE, timeframe: 1Day}
+  - {symbols: XLV, timeframe: 1Day}
+  - {symbols: TLT, timeframe: 1Day}
+  - {symbols: GLD, timeframe: 1Day}
+  - {symbols: AAPL, timeframe: 1Day}
+  - {symbols: MSFT, timeframe: 1Day}
+  - {symbols: NVDA, timeframe: 1Day}
+  - {symbols: AMZN, timeframe: 1Day}
+  - {symbols: GOOGL, timeframe: 1Day}
+  - {symbols: META, timeframe: 1Day}
+  - {symbols: JPM, timeframe: 1Day}
+  - {symbols: XOM, timeframe: 1Day}
+  - {symbols: UNH, timeframe: 1Day}

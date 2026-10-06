@@ -1,0 +1,70 @@
+# U11 Stage B1 (PLAN U11, 2026-10-03): the 54 Stage A survivors (stage_a_survivors.csv, passed = True) x the Stage B
+# meta-models. xgb is not refit (its Stage A rows are B1's xgb arm); rf_ldp_fast replaces rf_ldp (cost). Stage A's
+# other settings; costliest timeframe first. Generated from stage_a_survivors.csv.
+name: u11_b1
+stage: B
+defaults:
+  start: 2016-01-01
+  end: 2025-10-01
+  feature_groups: default
+  meta_train: oof
+  sizer: fixed
+  risk_profile: none
+  overrides: {TEST: 10}
+grid:
+  model.meta: [logit_l2, rf_ldp_fast, catboost]
+cells:
+  - {symbols: AAPL, timeframe: 5Min, primary.name: donchian_breakout}
+  - {symbols: XLF, timeframe: 5Min, primary.name: donchian_breakout}
+  - {symbols: XLK, timeframe: 5Min, primary.name: bollinger_mr}
+  - {symbols: AAPL, timeframe: 15Min, primary.name: donchian_breakout}
+  - {symbols: AAPL, timeframe: 15Min, primary.name: wavelet_trend}
+  - {symbols: AMZN, timeframe: 15Min, primary.name: ml_xgb}
+  - {symbols: DIA, timeframe: 15Min, primary.name: wavelet_trend}
+  - {symbols: GLD, timeframe: 15Min, primary.name: wavelet_trend}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: bollinger_mr}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: ml_xgb}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: sma_cross}
+  - {symbols: QQQ, timeframe: 15Min, primary.name: wavelet_trend}
+  - {symbols: XLK, timeframe: 15Min, primary.name: bollinger_mr}
+  - {symbols: XLK, timeframe: 15Min, primary.name: donchian_breakout}
+  - {symbols: XLK, timeframe: 15Min, primary.name: wavelet_trend}
+  - {symbols: AMZN, timeframe: 30Min, primary.name: bollinger_mr}
+  - {symbols: AMZN, timeframe: 30Min, primary.name: donchian_breakout}
+  - {symbols: AMZN, timeframe: 30Min, primary.name: wavelet_trend}
+  - {symbols: QQQ, timeframe: 30Min, primary.name: donchian_breakout}
+  - {symbols: QQQ, timeframe: 30Min, primary.name: wavelet_trend}
+  - {symbols: SPY, timeframe: 30Min, primary.name: donchian_breakout}
+  - {symbols: XLK, timeframe: 30Min, primary.name: donchian_breakout}
+  - {symbols: XLK, timeframe: 30Min, primary.name: ml_xgb}
+  - {symbols: XLK, timeframe: 30Min, primary.name: wavelet_trend}
+  - {symbols: XOM, timeframe: 30Min, primary.name: donchian_breakout}
+  - {symbols: AMZN, timeframe: 1Hour, primary.name: bollinger_mr}
+  - {symbols: AMZN, timeframe: 1Hour, primary.name: donchian_breakout}
+  - {symbols: AMZN, timeframe: 1Hour, primary.name: wavelet_trend}
+  - {symbols: MSFT, timeframe: 1Hour, primary.name: donchian_breakout}
+  - {symbols: NVDA, timeframe: 1Hour, primary.name: sma_cross}
+  - {symbols: QQQ, timeframe: 1Hour, primary.name: bollinger_mr}
+  - {symbols: QQQ, timeframe: 1Hour, primary.name: donchian_breakout}
+  - {symbols: QQQ, timeframe: 1Hour, primary.name: wavelet_trend}
+  - {symbols: UNH, timeframe: 1Hour, primary.name: bollinger_mr}
+  - {symbols: XLE, timeframe: 1Hour, primary.name: bollinger_mr}
+  - {symbols: XLE, timeframe: 1Hour, primary.name: donchian_breakout}
+  - {symbols: XLK, timeframe: 1Hour, primary.name: bollinger_mr}
+  - {symbols: XLK, timeframe: 1Hour, primary.name: donchian_breakout}
+  - {symbols: AAPL, timeframe: 1Day, primary.name: bollinger_mr}
+  - {symbols: AAPL, timeframe: 1Day, primary.name: sma_cross}
+  - {symbols: AMZN, timeframe: 1Day, primary.name: ml_xgb}
+  - {symbols: GLD, timeframe: 1Day, primary.name: bollinger_mr}
+  - {symbols: GOOGL, timeframe: 1Day, primary.name: bollinger_mr}
+  - {symbols: GOOGL, timeframe: 1Day, primary.name: wavelet_trend}
+  - {symbols: JPM, timeframe: 1Day, primary.name: ml_xgb}
+  - {symbols: MSFT, timeframe: 1Day, primary.name: bollinger_mr}
+  - {symbols: NVDA, timeframe: 1Day, primary.name: ml_xgb}
+  - {symbols: QQQ, timeframe: 1Day, primary.name: bollinger_mr}
+  - {symbols: QQQ, timeframe: 1Day, primary.name: ml_xgb}
+  - {symbols: SPY, timeframe: 1Day, primary.name: ml_xgb}
+  - {symbols: SPY, timeframe: 1Day, primary.name: wavelet_trend}
+  - {symbols: XLE, timeframe: 1Day, primary.name: ml_xgb}
+  - {symbols: XLK, timeframe: 1Day, primary.name: bollinger_mr}
+  - {symbols: XLV, timeframe: 1Day, primary.name: wavelet_trend}

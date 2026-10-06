@@ -235,7 +235,7 @@ def fit_window(
     # (fitting on the embargo bars would make every train feature depend on them)
     try:
         states = fset.fit(df.iloc[fit_start : train_end - emb_tr])
-    except RuntimeWarning as e:  # FracdiffStat raises this when no d <= 1 is stationary
+    except RuntimeWarning as e:  # fit_fracdiff_d raises this when no d <= 1 is stationary
         print(f"[WFO]  Fold {fold}: fracdiff failed ({e}) — skipping")
         return WindowFit("fracdiff_failed", None, None, False, (), 0)
     X_all = base_feats.iloc[:test_end].join(fset.transform(df.iloc[:test_end], states))

@@ -747,7 +747,7 @@ too small to be meaningful, inner CV leaking across window boundaries.
 
 **Reviewer focus.** Any post-holdout tuning, cherry-picked reporting, trial undercount, survivorship bias in the universe.
 
-**Status.** In progress — Stage A spec written; runner made Windows-portable for the Stage A run on the user's PC.
+**Status.** In progress — Stage A done (2026-10-03, 558 trials, 54 cells pass the survivor gates); Stage B1 next.
 - Stage A spec `experiments/specs/u11_a_screen.yaml`: 950 cells = 19 symbols × {5Min, 15Min, 30Min, 1Hour, 1Day} ×
   {wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb} × meta {xgb, rf_ldp}; default features, oof,
   fixed sizing, risk none, bi-weekly cadence (`TEST = 10` sessions on every timeframe). 1Min excluded (not cached).
@@ -762,6 +762,209 @@ too small to be meaningful, inner CV leaking across window boundaries.
 - Ledger continuity: the PC run must start from the Mac's `results/ledger.jsonl` (181 rows) and `data/cache/`
   (copied, not re-fetched: `adjustment=all` history re-adjusts on new dividends), and the PC ledger is canonical
   from Stage A on, or N is undercounted.
+- Windows PC setup (i9-14900KF, 24 cores / 32 threads, 64 GB): ledger (181 rows), `results/experiments/` and
+  `data/cache/` copied over via git. The locked env did not import: fracdiff 0.9.0 pins statsmodels < 0.14 and
+  statsmodels 0.13.5 breaks under pandas 3 (`deprecate_kwarg`); a `[tool.uv] override-dependencies` lifts it to
+  0.15.0 (what the Mac evidently ran — the pytest filter targets a 0.15-only adfuller warning). 384 tests pass on
+  Windows, including the `msvcrt` lock path. `rf_ldp` fits with `n_jobs=-1`, i.e. 32 threads inside every cell
+  process; the run sets `LOKY_MAX_CPU_COUNT=1` so each cell process fits single-threaded (forest results do not
+  depend on n_jobs: per-tree seeds are drawn up front, prediction is already serial).
+- Freeze: no `*.py` under the hashed packages may change, be added or removed while Stage A runs (workers recompute
+  the code hash for the signals key). Survivor selection therefore goes in `experiments/report.py` (unhashed).
+- `fastfracdiff/` (in-repo, numpy + scipy) replaces the archived fracdiff 0.9.0 and statsmodels' `adfuller`
+  (both dependencies removed): same fixed-window `fdiff`, same binary search for the minimum ADF-stationary d, and an
+  ADF whose AIC lag search reads every nested candidate off one Cholesky of the centred, scaled design's Gram matrix
+  instead of ~80 SVD-based OLS fits — a full d search on a 190k-bar 5Min train went from 452 s to 2.7 s (~170x).
+  Equivalence vs the replaced code on 158 expanding-prefix trains (6 symbols 1Day, 4 1Hour, 2 15Min, 2 5Min up to
+  190k bars; 1,387 ADF evaluations): 0 d mismatches, 0 lag mismatches, t-values within 1.6e-11 relative.
+  `tests/test_fastfracdiff.py` checks every search point of a smaller recorded set (data/data.csv prefixes).
+  Profiling a late 5Min fold (SPY fold 234, 37.6k fitting events): the old d fit was 1,113 s of ~1,125 s; model fits
+  are ~12 s (wavelet_trend/xgb), ~42 s (rf_ldp), ~34 s (ml_xgb/xgb, of which 21 s the ml_xgb primary).
+- **Pre-registered 5Min rule** (written 2026-10-01, before any 5Min Stage A result exists). Stage A runs as
+  `u11_a1.yaml` = the 760 15Min–1Day cells + a 5Min pilot of 30 cells: 5Min × {SPY, AAPL, TLT} (index ETF, single
+  stock, bonds) × the 5 primaries × {xgb, rf_ldp} — ordinary Stage A cells, counted in the ledger whatever the
+  outcome. For each pilot cell, the one-sided 95 % upper confidence bound on its OOS meta AUC is computed by a
+  bootstrap over NY sessions (the OOS events of a resampled session move together; 2,000 resamples, percentile).
+  If **every** pilot cell's bound is < 0.52 (Stage A's survivor AUC gate) the other 160 5Min cells are not run and
+  5Min is reported as screened out on the pilot; otherwise they are run (`u11_a_screen.yaml`, which skips the pilot).
+  An intersection–union test: each cell's bound is a level-5 % test of AUC ≥ 0.52, and the drop needs all 30, so
+  no multiplicity correction is needed. A pilot cell in `error` is re-run first; a `no_fit` cell has no OOS and
+  fails the gate. Caveat for the report: the drop extrapolates from 3 of 19 symbols.
+  **Outcome (2026-10-01, `python -m experiments.report pilot experiments/specs/u11_a1.yaml`, seed 0, from the
+  pilot's cached signals before its ledger rows exist): run.** 21 of 30 bounds ≥ 0.52; SPY AUC 0.518–0.536
+  (bounds 0.524–0.542), AAPL 0.504–0.524, TLT 0.510–0.518; ~37k scored OOS events over 2,380 sessions per symbol
+  (TLT 32k), bound − AUC ≈ 0.006. The other 160 5Min cells run after u11_a1 (`u11_a_screen.yaml`). An AUC above
+  0.52 is the survivor gate's first half only; PSR after costs decides the rest.
+- Run note: launched hidden, the run was confined to the 16 E-cores by Windows 11 EcoQoS (each of 30 workers
+  ~0.53 core, P-cores idle) for its first ~13.7 h; opting its processes out of power throttling (per process,
+  `SetProcessInformation`) cut fold times to 0.57x. Measured per-cell CPU (under that throttling): 5Min 3.3 h,
+  15Min 1.9 h — fixed per-fold model costs (~238 folds × 9–19 fits) dominate below 5Min.
+  Stopped by the user at 18:05 (cooling break; 179 of 790 per-symbol fits cached, ledger untouched). Restart with
+  `scripts/run_specs.ps1` (detached, opts every run process out of EcoQoS, runs specs in sequence):
+  `u11_a1.yaml` then `u11_a_screen.yaml` (the remaining 160 5Min cells).
+- **Amendment (2026-10-03, before the resume; no ≥15Min result has been looked at): Stage A's meta-model axis is
+  xgb only.** Reason: cost — rf_ldp cells were ~72 % of the remaining ~675 CPU-hours (9 single-threaded 500-tree
+  forests per fold vs 9 boosted fits); xgb-only leaves ~6 h on the PC instead of ~22 h. The screen judges each
+  (symbol, timeframe, primary) with an xgb meta-model as proxy; Stage B brings back the model zoo, rf_ldp included,
+  on the survivors. Known bias of the proxy: in the 5Min pilot rf_ldp's OOS AUC beat xgb's in all 15 pairs (by
+  ~0.005), as on SPY 1Day in U6 — the survivor rule must allow for it. Every cell already fitted is recorded:
+  `u11_a_rf_cached.yaml` (83 rf_ldp cells whose fits are cached: the 15 5Min pilot cells and 68 15Min cells) runs
+  first (no new fits), then `u11_a2.yaml` (the 475 xgb cells; 15 5Min + 81 15Min already cached). The other 392
+  rf_ldp cells of `u11_a_screen.yaml` are not run. Resume:
+  `scripts/run_specs.ps1 experiments/specs/u11_a_rf_cached.yaml experiments/specs/u11_a2.yaml`.
+  Proxy check on the pilot: rf_ldp − xgb AUC = 0.0049 ± 0.0016 over the 15 pairs (min 0.0008), Pearson 0.98,
+  Spearman 0.89 — a near-constant offset, so xgb ranks cells as rf_ldp does.
+- **Stage A survivor rule (pre-registered 2026-10-03, before any Stage A ledger row exists):** one candidate per
+  (symbol, timeframe, primary), judged on its **xgb** row only (the 83 recorded rf_ldp rows count as trials but
+  select nothing — the better of two models per cell would be an extra, uncounted selection). Passes if OOS meta
+  AUC > 0.515 (the 0.52 gate less xgb's measured offset to rf_ldp) **and** PSR > 0.5 (Sharpe after costs > 0) and
+  it has a DSR. Survivors: the passing cells ranked by DSR (N = every counted trial through Stage A; ties → Sharpe,
+  then label), at most 2 per (symbol, timeframe) — its primaries share events and features — the first **K = 20**
+  (Stage B runs ~5 meta-models × a few feature sets per survivor, so K = 20 is a run about Stage A's size; Stage D
+  needs diverse finalists). Fewer than 20 pass → all that pass. `python -m experiments.report survivors`
+  (`experiments/report.py: stage_a_survivors`, tested) → `results/experiments/report/stage_a_survivors.{csv,md}`.
+- **Stage B meta-model axis (decided 2026-10-03):** xgb (the screen's model), rf_ldp, plus `logit_l2` (in the zoo
+  since U6), `rf_ldp_fast` and `catboost` — the last two on branch `unit/11-stage-b-models` (worktree
+  `../wavelet-meta-model-stage-b`), merged only after Stage A finishes (a zoo change alters the code hash). Cost of
+  one late SPY 5Min fold (wavelet_trend, 37.6k fitting events): logit_l2 4.5 s, rf_ldp_fast 8.9 s, xgb 15.6 s,
+  catboost (plain) 33 s, rf_ldp 43.5 s; catboost's ordered boosting 185 s, so plain is used. U6 (SPY 1Day, 234 events,
+  oof): rf_ldp best on log-loss / Brier / AUC (0.579) and CPCV SR 0.82 ± 0.17, logit_l2 AUC 0.576 and best WFO Sharpe
+  1.07, extra_trees best CPCV mean 0.88, xgb / lightgbm last — small samples, a lean not a ranking.
+  Open: the Stage B worktree's full test suite died twice (native crash, faulthandler frames) in 5 runs right after
+  catboost was added and could not be reproduced in 3 more full runs + 8 runs of `test_pwfo.py`; watch for
+  `WorkerDied` rows in Stage B.
+- **Stage A result (finished 2026-10-03 13:27):** 558 Stage A rows (83 rf_ldp, 475 xgb), all `ok`; ledger 739 rows,
+  N = 737 counted trials through Stage A. Survivor gates (AUC > 0.515, PSR > 0.5): 54 of 475 xgb cells pass
+  (`results/experiments/report/stage_a_survivors.{csv,md}`, column `passed`).
+- **Amendment (2026-10-03, after the survivor table was seen — a deviation from the pre-registered rule): the Stage A
+  survivor set is all 54 gate-passers, not the DSR top 20.** Reason: the DSR ranking is degenerate at this N. The
+  expected maximum Sharpe of 737 trials is 1.81 annualized and every cell's Sharpe is below it, so every DSR is ≈ 0
+  (max 0.041) and their order is set mostly by sample length: the 1Day OOS windows (~930 days, from 2022-01) rank
+  above intraday windows of 2,200+ days, 16 of the top 20 were 1Day, and many of those are market exposure or a
+  handful of days' P&L (beta, alpha Sharpe, exposure in `stage_a_survivors_diagnostics.csv`). Taking every passer
+  drops the ranking step rather than swapping in a ranking chosen after seeing results; the gates are unchanged,
+  and the 2-per-(symbol, timeframe) cap goes with the top-K it served. Cost: Stage B runs on 54 cells, not 20. The
+  `survivor` column of the CSV is the superseded top 20; `passed` is the survivor set.
+- **Amendment (2026-10-03): Stage B1's model axis uses `rf_ldp_fast` in place of `rf_ldp`** (cost: 8.9 s vs 43.5 s
+  on a late SPY 5Min fold). Fidelity caveat: the r = 0.993 / 99.7 % equal-trade-decisions figure compares 200 vs
+  500 trees, both at `max_features=1`; it is not a comparison with `rf_ldp`, which picks `max_features` from
+  {1, sqrt} by purged CV per fold (1 in 81 % of its 21,948 Stage A fold fits). In the other ~19 % of folds
+  `rf_ldp_fast` is a different model, so B1 says nothing direct about `rf_ldp`.
+- **Stage B1 spec** (`experiments/specs/u11_b1.yaml`, generated from the 54 `passed` rows): each survivor ×
+  {logit_l2, rf_ldp_fast, catboost} = 162 cells, stage B, Stage A's other settings (default features, oof, fixed
+  sizing, risk none, `TEST = 10`). xgb is not refit: merging the Stage B models changes the code hash, so a refit
+  would be 54 extra trials of a model already tried; the Stage A xgb rows are B1's xgb arm. Selection from B1 into
+  B2 is pre-registered below before any B1 ledger row exists.
+- **B1 → B2 rule (pre-registered 2026-10-03 15:43, B1 running, 0 stage-B ledger rows; chosen by the user):** per
+  survivor, the candidates are its Stage A xgb row and its three B1 rows (`ok` only; the spec equal to the
+  survivor's but for `model.meta`). **Model = the highest OOS meta AUC** (ties → PSR, then label) — AUC is the
+  meta-model's own task and, over thousands of OOS events, far less noisy than Sharpe differences between four models
+  on the same primary trades (max-PSR would mostly pick the luckiest). The survivor goes to B2 with that model iff
+  the chosen row has **PSR > 0.5, alpha Sharpe > 0 and best-5-days share < 100 %** — no fallback to another model,
+  **no top-K** (all that pass; consistent with the Stage A amendment). Alpha Sharpe = annualized Sharpe of
+  r − β·b (r the cell's daily returns, b the symbol's buy-and-hold daily simple returns from its last close per NY
+  session, β by OLS on the common days); best-5-days share = Σ of the 5 largest daily returns / Σ r (∞ if Σ r ≤ 0).
+  `python -m experiments.report b1` (`stage_b1_selection`, tested) → `results/experiments/report/stage_b1_selection.
+  {csv,md}`; final only when every survivor has all 4 model rows (an `error` row is re-run first; a `no_fit` model
+  drops out of that survivor's candidates). Note: `stage_a_survivors_diagnostics.csv` (ad hoc, last session) has the
+  same betas but larger alpha Sharpes for high-beta cells (NVDA 1Day 0.46 vs 0.26 here), consistent with it having
+  hedged log buy-and-hold returns; the rule uses simple returns (what a β hedge earns). DSR is not used to select
+  between sub-stages; the final test stays DSR at the holdout with the total ledger N.
+- B1 run note: launched 2026-10-03 15:35 (`scripts/run_specs.ps1 experiments/specs/u11_b1.yaml`), stopped by the
+  user at 16:17 with 32 of 162 per-symbol fits cached and 0 ledger rows; resume with the same command (cached fits
+  are skipped; the 30 in-flight fits restart from fold 1). Cost is dominated by catboost: ~30 s per fold even on
+  early, small folds (it does not get cheaper with a short train window as the other models do), so a 15Min/5Min
+  catboost fit takes ~2–2.7 h; rf_ldp_fast 13–20 min and logit_l2 2–20 min per fit at 30Min–5Min. Estimated
+  remaining wall-clock ~3–4 h at 30 jobs (1Hour / 1Day catboost costs not yet measured).
+  Resumed 2026-10-04 04:13 (OS build 26200 → 26300 overnight; the code hash uses the OS name only, so the 32 cached
+  fits were reused), finished 07:37, exit 0: 162 stage-B rows, all `ok` (54 per model), no dead workers; ledger
+  901 rows; holdout never accessed.
+- **B1 outcome (2026-10-04, `python -m experiments.report b1`; final — all 54 survivors have 4 model rows): 23 of 54
+  go to B2** (`results/experiments/report/stage_b1_selection.{csv,md}`). Chosen model (max AUC): rf_ldp_fast 32,
+  xgb 10, logit_l2 6, catboost 6; among the 23 passers rf_ldp_fast 11, xgb 5, catboost 4, logit_l2 3. Failures: 31
+  cells: 14 with a negative Sharpe for the chosen model; the other 17 have Sharpe ≥ 0 but their best 5 days hold
+  ≥ 100 % of the P&L (7 of them also alpha Sharpe ≤ 0). By timeframe the passers are 30Min 8, 1Day 7, 1Hour 7,
+  15Min 1, 5Min 0.
+  Reading for the report: **the Stage A xgb rows are selected, the B1 rows are not.** Every survivor's xgb row passed
+  PSR > 0.5 by construction (54/54); the fresh models pass it in catboost 44, rf_ldp_fast 32, logit_l2 30 of 54
+  cells, and their median Sharpe over the 54 is lower (xgb 0.23 — inflated by the Stage A selection —, catboost
+  0.18, logit_l2 0.14, rf_ldp_fast 0.11): the expected regression to the mean, and a measure of how much of Stage A's
+  Sharpe was selection. catboost's 44/54 (vs ~27 if there were no edge) is the strongest evidence of real signal in
+  the survivor set. rf_ldp_fast has the highest median AUC (0.534 vs 0.523–0.526) but the lowest Sharpe, and AUC
+  ranks the four models' Sharpes only weakly within a cell (mean Spearman 0.23), so the max-AUC pick (as
+  registered, no fallback) often carried a weaker trading model forward; the 5 xgb passers' PSR is not a fresh test.
+- **Stage B2 design and B2 → B3 rule (pre-registered 2026-10-04 18:24, before any B2 cell has run; chosen by the user):**
+  `experiments/specs/u11_b2.yaml` = each of the 23 B1 passers, with its B1-chosen meta-model, × 3 feature arms
+  = 69 cells: **cmda** (default groups + per-fold clustered MDA, `FEATURE_SELECTION = cmda`), **full** (default +
+  `wavelet_ext`, `structural`, `calendar`, no selection) and **full_cmda**. The default arm is the B1 row, not refit.
+  `cross_asset` is left out: the runner passes no market bars to feature groups (a runner change, deferred).
+  B2 → B3: per B1 passer, candidates = its B1 row + its `ok` B2 rows (spec equal but for the feature arm); **arm =
+  the highest OOS meta AUC** (ties → PSR, then label); goes to B3 iff the chosen row has **PSR > 0.5, alpha Sharpe > 0
+  and best-5-days share < 100 %** (B1's gates and definitions); no fallback, no top-K. Final only when every passer
+  has all 4 arm rows. `python -m experiments.report b2` (`stage_b2_selection`, tested) →
+  `results/experiments/report/stage_b2_selection.{csv,md}`. Caveat (from B1): AUC ranks Sharpe only weakly within a
+  cell, so the max-AUC arm is not necessarily the best-trading one; the three arms of a cell share one ledger label
+  (distinct hashes).
+- B2 run note: launched 2026-10-04 18:27, stopped by the user ~19:08 (26 of 69 fits cached), resumed 2026-10-05
+  03:11, finished 07:34, exit 0: 69 rows, all `ok` (23 per arm), no dead workers; ledger 970 rows; holdout never
+  accessed. Cost was set by catboost (AMZN 15Min ml_xgb: its slowest arm ~4.4 h vs 2.8 h with default features).
+- **B2 outcome (2026-10-05, `python -m experiments.report b2`; final — all 23 passers have 4 arm rows): 22 of 23 go to
+  B3** (`results/experiments/report/stage_b2_selection.{csv,md}`). Chosen arm (max AUC): default 15, cmda 5,
+  full_cmda 2, full 1. The one failure is AAPL 1Day sma_cross, whose cmda arm won on AUC (0.616 vs 0.602) but has
+  best-5-days share 148 % and alpha Sharpe 0.03 (no fallback, as registered).
+  Reading for the report: **neither more features nor cMDA helped.** Against the default arm, the median change in
+  OOS AUC is −0.0065 (cmda), −0.0078 (full), −0.0121 (full_cmda), and an arm beats the default's AUC in only 8, 3, 3
+  of 23 cells; median Sharpe 0.31 / 0.31 / 0.29 vs the default's 0.43 (the default row is itself twice-selected, so
+  part of that gap is regression to the mean, as in B1). The fresh arms still have PSR > 0.5 in 18, 20, 18 of 23
+  cells — the B1 passers' edge mostly survives a change of feature set. The 8 switched cells moved on AUC margins of
+  0.001–0.018 and their Sharpe moved both ways (NVDA 1Day 0.65 → 1.29, SPY 1Day wavelet_trend 1.13 → 0.44): AUC
+  differences that small do not rank Sharpe.
+- **Stage B3 design and B3 → C rule (pre-registered 2026-10-05 11:21, before any B3 cell has run; chosen by the user):**
+  `experiments/specs/u11_b3.yaml` = each of the 22 B2 passers, with its B1 meta-model and B2 feature arm, × sizers
+  {linear, ldp_sigmoid, ecdf} = 66 cells, single position mode (`average` not tested); each cell's spec equals its
+  B2 row's but for `sizer` (checked when generated). `fixed` is the B2 row, not refit; `kelly_capped` left out (U7:
+  sizes ≤ 0.1, often no trades). B3 → C: per B2 passer, keep **`fixed` unless a sizer row passes the gates (PSR > 0.5,
+  alpha Sharpe > 0, best-5-days share < 100 %) with a higher PSR than `fixed`** — then the highest-PSR such sizer
+  (ties → label); the cell goes to C iff the chosen row passes the gates. Every B2 passer's `fixed` row passed them,
+  so B3 picks a sizer per cell and drops none. `python -m experiments.report b3` (`stage_b3_selection`, tested) →
+  `results/experiments/report/stage_b3_selection.{csv,md}`; final only when every passer has all 3 sizer rows. The
+  number of finalists for Stage C is pre-registered separately, after Stage C's grid cost is measured and before
+  any B3 result is seen. Caveat: `fixed`'s PSR has been through Stages A, B1 and B2 selection, so the bar a fresh
+  sizer must clear is biased upward.
+  Cost (timing probe, not a trial: the last 3 folds of AMZN 15Min ml_xgb / catboost, ~62k-bar trains, one process):
+  `fixed` 28 s/fold, `ecdf` 99 s/fold (3.5×: ecdf's train OOF probabilities refit the meta-model, with its HP
+  search, on each of ZOO_CV_SPLITS = 4 purged splits); linear / ldp_sigmoid cost as `fixed`. Estimated B3 wall
+  clock ~7–10 h, set by that cell's ecdf fit.
+- **Stage C finalists (registered 2026-10-06 14:04; chosen by the user):** of the B3 rows (each B2 passer with its chosen
+  sizer) that pass the gates, ranked by PSR (ties → label), the **top 2 per symbol** — a symbol's cells share its
+  price path (7 of the 22 B2 passers are AMZN variants), and Stage D needs diverse finalists. Each runs U9's default
+  PWFO grid, IS {63, 126, 252, 504} × OOS {5, 10, 21, 63} = 16 combos, every combo a trial. `finalist` column of
+  `python -m experiments.report b3` (`stage_c_finalists`, tested). **Timing, stated plainly:** written after the B3
+  run had finished (08:28, unnoticed until this rule was being written) but before the B3 selection was run or any
+  B3 row's metrics were read — by Claude or, as the user confirmed, by the user. Blind in practice, not by
+  timestamp; the ledger shows B3's rows predate this commit. Cost estimate (from structure, not measured — B3 held
+  the CPU): ~3–15× a Stage B cell per finalist (~3,500 rolling windows of ≤ 2 years vs ~240 expanding ones; catboost,
+  whose per-fold cost is ~fixed, at the high end), ~4–10 h for ~14 finalists.
+- B3 run note: launched 2026-10-06 02:21, finished 08:28 (~6 h, under the 7–10 h estimate), exit 0: 66 rows, all
+  `ok` (22 per sizer), no dead workers, no sizer fit failures logged; ledger 1,036 rows; holdout never accessed.
+- **B3 outcome (2026-10-06, `python -m experiments.report b3`, run after the finalist rule's commit; final — all 22
+  have 4 sizer rows): all 22 pass (by construction), 14 Stage C finalists** (`results/experiments/report/
+  stage_b3_selection.{csv,md}`, column `finalist`). Sizer chosen: fixed 9, linear 5, ecdf 4, ldp_sigmoid 4 (finalists:
+  fixed 6, linear 3, ldp_sigmoid 3, ecdf 2). Finalists (symbol timeframe primary / model / arm / sizer, PSR):
+  AMZN 15Min ml_xgb / catboost / default / linear 0.998; NVDA 1Day ml_xgb / logit_l2 / cmda / ecdf 0.997; QQQ 1Hour
+  donchian_breakout / xgb / default / ldp_sigmoid 0.994; GOOGL 1Day bollinger_mr / rf_ldp_fast / cmda / linear 0.992;
+  AMZN 1Hour wavelet_trend / rf_ldp_fast / default / ldp_sigmoid 0.991; XLE 1Hour donchian_breakout / catboost /
+  default / ecdf 0.988; XLK 1Hour donchian_breakout / catboost / default / fixed 0.975; GLD 1Day bollinger_mr /
+  rf_ldp_fast / default / ldp_sigmoid 0.948; XLK 30Min donchian_breakout / rf_ldp_fast / full_cmda / linear 0.946;
+  MSFT 1Hour donchian_breakout / rf_ldp_fast / cmda / fixed 0.936; QQQ 30Min donchian_breakout / rf_ldp_fast /
+  default / fixed 0.908; SPY 30Min donchian_breakout / rf_ldp_fast / default / fixed 0.825; XLE 1Day ml_xgb /
+  catboost / cmda / fixed 0.812; SPY 1Day wavelet_trend / logit_l2 / full / fixed 0.804. Left out by the per-symbol
+  cap: 5 AMZN cells (PSR 0.92–0.98), 1 XLK, 2 QQQ.
+  Reading for the report: sizing changes little on average — median PSR change vs `fixed`: linear −0.001,
+  ldp_sigmoid −0.025, ecdf +0.017; a sizer beats `fixed` in 10, 10, 13 of 22 cells; PSR > 0.5 in 18, 22, 21 of 22
+  (consistent with U7: sizing mostly rescales risk). The chosen row is the best of up to 4 on PSR, so the finalists'
+  PSRs (0.80–0.998) are inflated by this last selection too; Stage C's rolling PWFO and the holdout DSR (total N) are
+  the honest tests.
 
 ---
 
