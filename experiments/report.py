@@ -631,7 +631,7 @@ if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root 
                 "name: u11_c", "stage: C", "cells:",
             ]  # fmt: skip
             path.write_text("\n".join(head + [f"  - {json.dumps(c, sort_keys=True)}" for c in cells]) + "\n",
-                            encoding="utf-8")  # fmt: skip
+                            encoding="utf-8", newline="\n")  # fmt: skip
             print(f"{len(cells)} cells → {path}")
             raise SystemExit(0)
         table = stage_c_selection(rows, fin, a.root)
