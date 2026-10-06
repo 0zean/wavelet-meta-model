@@ -484,6 +484,20 @@ def stage_b3_selection(rows: list[dict], root, bh_returns=_cached_bh) -> pd.Data
     return pd.DataFrame(recs).sort_values(["passed", "psr"], ascending=[False, False]).reset_index(drop=True)
 
 
+# Stage C finalists (PLAN U11, registered 2026-10-06 after B3 finished, before any B3 result was looked at)
+C_PER_SYMBOL = 2  # a symbol's cells share its price path: Stage D needs diverse finalists
+
+
+def stage_c_finalists(b3: pd.DataFrame, per_symbol: int = C_PER_SYMBOL) -> pd.DataFrame:
+    """`b3` (stage_b3_selection) with `finalist`: its passed rows ranked by PSR (ties → label), the first
+    `per_symbol` of each symbol."""
+    if b3.empty:
+        return b3.assign(finalist=pd.Series(dtype=bool))
+    ranked = b3[b3["passed"]].sort_values(["psr", "label"], ascending=[False, True])
+    picked = ranked.groupby("symbol", sort=False).head(per_symbol)
+    return b3.assign(finalist=b3["cell_hash"].isin(picked["cell_hash"]))
+
+
 if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root <root>]
     import argparse
 
@@ -525,13 +539,13 @@ if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root 
         print("\n".join(md))
         raise SystemExit(0)
     if a.cmd == "b3":
-        table = stage_b3_selection(L.Ledger(a.ledger).rows(), a.root)
+        table = stage_c_finalists(stage_b3_selection(L.Ledger(a.ledger).rows(), a.root))
         table.to_csv(out / "stage_b3_selection.csv", index=False)
         n_pass, short = int(table["passed"].sum()), int(table["n_sizers"].lt(1 + len(B3_SIZERS)).sum())
         rule = (f"per B2 passer `fixed` unless a sizer ({', '.join(B3_SIZERS)}) passes the gates (PSR > {B1_PSR}, "
                 f"alpha Sharpe > 0, best-{B1_TOP_DAYS}-days share < 100 %) with a higher PSR — then the "
-                "highest-PSR such sizer")  # fmt: skip
-        status = f"{len(table)} B2 passers, {n_pass} passed" + (
+                f"highest-PSR such sizer; Stage C finalists = the top {C_PER_SYMBOL} passers per symbol by PSR")  # fmt: skip
+        status = f"{len(table)} B2 passers, {n_pass} passed, {int(table['finalist'].sum())} finalists" + (
             f"; NOT FINAL: {short} lack a sizer row" if short else ""
         )
         md = ["# Stage B3 selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]

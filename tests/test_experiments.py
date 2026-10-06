@@ -27,6 +27,7 @@ from experiments.report import (
     stage_b1_selection,
     stage_b2_selection,
     stage_b3_selection,
+    stage_c_finalists,
     weighted_auc,
     write_report,
 )
@@ -735,3 +736,16 @@ def test_stage_b3_selection_keeps_fixed_unless_a_passing_sizer_has_higher_psr(tm
     assert np.isnan(t.loc["QQQ", "psr_ecdf"])
     assert t.loc["SPY", "sizer"] == "fixed" and t.loc["SPY", "cell_hash"] == "a_spy" and t.loc["SPY", "passed"]
     assert t.loc["SPY", "n_sizers"] == 2 and t.loc["SPY", "psr_fixed"] == 0.9
+
+
+def test_stage_c_finalists_takes_top_psr_passers_per_symbol():
+    b3 = pd.DataFrame({
+        "symbol": ["AMZN", "AMZN", "AMZN", "QQQ", "QQQ", "SPY"],
+        "psr": [0.90, 0.95, 0.99, 0.80, 0.80, 0.70],
+        "passed": [True, True, False, True, True, True],
+        "label": ["a1", "a2", "a3", "q2", "q1", "s1"],
+        "cell_hash": ["h1", "h2", "h3", "h4", "h5", "h6"],
+    })  # fmt: skip
+    t = stage_c_finalists(b3).set_index("cell_hash")
+    assert set(t.index[t["finalist"]]) == {"h1", "h2", "h4", "h5", "h6"}  # h3 fails its gates despite the best PSR
+    assert set(stage_c_finalists(b3, per_symbol=1).query("finalist")["label"]) == {"a2", "q1", "s1"}  # tie → label

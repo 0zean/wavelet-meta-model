@@ -935,6 +935,16 @@ too small to be meaningful, inner CV leaking across window boundaries.
   `fixed` 28 s/fold, `ecdf` 99 s/fold (3.5×: ecdf's train OOF probabilities refit the meta-model, with its HP
   search, on each of ZOO_CV_SPLITS = 4 purged splits); linear / ldp_sigmoid cost as `fixed`. Estimated B3 wall
   clock ~7–10 h, set by that cell's ecdf fit.
+- **Stage C finalists (registered 2026-10-06 14:04; chosen by the user):** of the B3 rows (each B2 passer with its chosen
+  sizer) that pass the gates, ranked by PSR (ties → label), the **top 2 per symbol** — a symbol's cells share its
+  price path (7 of the 22 B2 passers are AMZN variants), and Stage D needs diverse finalists. Each runs U9's default
+  PWFO grid, IS {63, 126, 252, 504} × OOS {5, 10, 21, 63} = 16 combos, every combo a trial. `finalist` column of
+  `python -m experiments.report b3` (`stage_c_finalists`, tested). **Timing, stated plainly:** written after the B3
+  run had finished (08:28, unnoticed until this rule was being written) but before the B3 selection was run or any
+  B3 row's metrics were read — by Claude or, as the user confirmed, by the user. Blind in practice, not by
+  timestamp; the ledger shows B3's rows predate this commit. Cost estimate (from structure, not measured — B3 held
+  the CPU): ~3–15× a Stage B cell per finalist (~3,500 rolling windows of ≤ 2 years vs ~240 expanding ones; catboost,
+  whose per-fold cost is ~fixed, at the high end), ~4–10 h for ~14 finalists.
 
 ---
 
