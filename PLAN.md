@@ -945,6 +945,26 @@ too small to be meaningful, inner CV leaking across window boundaries.
   timestamp; the ledger shows B3's rows predate this commit. Cost estimate (from structure, not measured — B3 held
   the CPU): ~3–15× a Stage B cell per finalist (~3,500 rolling windows of ≤ 2 years vs ~240 expanding ones; catboost,
   whose per-fold cost is ~fixed, at the high end), ~4–10 h for ~14 finalists.
+- B3 run note: launched 2026-10-06 02:21, finished 08:28 (~6 h, under the 7–10 h estimate), exit 0: 66 rows, all
+  `ok` (22 per sizer), no dead workers, no sizer fit failures logged; ledger 1,036 rows; holdout never accessed.
+- **B3 outcome (2026-10-06, `python -m experiments.report b3`, run after the finalist rule's commit; final — all 22
+  have 4 sizer rows): all 22 pass (by construction), 14 Stage C finalists** (`results/experiments/report/
+  stage_b3_selection.{csv,md}`, column `finalist`). Sizer chosen: fixed 9, linear 5, ecdf 4, ldp_sigmoid 4 (finalists:
+  fixed 6, linear 3, ldp_sigmoid 3, ecdf 2). Finalists (symbol timeframe primary / model / arm / sizer, PSR):
+  AMZN 15Min ml_xgb / catboost / default / linear 0.998; NVDA 1Day ml_xgb / logit_l2 / cmda / ecdf 0.997; QQQ 1Hour
+  donchian_breakout / xgb / default / ldp_sigmoid 0.994; GOOGL 1Day bollinger_mr / rf_ldp_fast / cmda / linear 0.992;
+  AMZN 1Hour wavelet_trend / rf_ldp_fast / default / ldp_sigmoid 0.991; XLE 1Hour donchian_breakout / catboost /
+  default / ecdf 0.988; XLK 1Hour donchian_breakout / catboost / default / fixed 0.975; GLD 1Day bollinger_mr /
+  rf_ldp_fast / default / ldp_sigmoid 0.948; XLK 30Min donchian_breakout / rf_ldp_fast / full_cmda / linear 0.946;
+  MSFT 1Hour donchian_breakout / rf_ldp_fast / cmda / fixed 0.936; QQQ 30Min donchian_breakout / rf_ldp_fast /
+  default / fixed 0.908; SPY 30Min donchian_breakout / rf_ldp_fast / default / fixed 0.825; XLE 1Day ml_xgb /
+  catboost / cmda / fixed 0.812; SPY 1Day wavelet_trend / logit_l2 / full / fixed 0.804. Left out by the per-symbol
+  cap: 5 AMZN cells (PSR 0.92–0.98), 1 XLK, 2 QQQ.
+  Reading for the report: sizing changes little on average — median PSR change vs `fixed`: linear −0.001,
+  ldp_sigmoid −0.025, ecdf +0.017; a sizer beats `fixed` in 10, 10, 13 of 22 cells; PSR > 0.5 in 18, 22, 21 of 22
+  (consistent with U7: sizing mostly rescales risk). The chosen row is the best of up to 4 on PSR, so the finalists'
+  PSRs (0.80–0.998) are inflated by this last selection too; Stage C's rolling PWFO and the holdout DSR (total N) are
+  the honest tests.
 
 ---
 
