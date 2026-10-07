@@ -748,7 +748,8 @@ too small to be meaningful, inner CV leaking across window boundaries.
 **Reviewer focus.** Any post-holdout tuning, cherry-picked reporting, trial undercount, survivorship bias in the universe.
 
 **Status.** In progress — Stage A done (2026-10-03, 558 trials, 54 cells pass the survivor gates); Stage B done
-(2026-10-06, 14 Stage C finalists); Stage C grid and C → D rule pre-registered 2026-10-06, Stage C next.
+(2026-10-06, 14 Stage C finalists); Stage C done (2026-10-07, 184 trials, 0 of 14 pass C → D, so D is not run);
+the scope of Stage E is to be decided next.
 - Stage A spec `experiments/specs/u11_a_screen.yaml`: 950 cells = 19 symbols × {5Min, 15Min, 30Min, 1Hour, 1Day} ×
   {wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb} × meta {xgb, rf_ldp}; default features, oof,
   fixed sizing, risk none, bi-weekly cadence (`TEST = 10` sessions on every timeframe). 1Min excluded (not cached).
@@ -995,6 +996,27 @@ too small to be meaningful, inner CV leaking across window boundaries.
   combos in parallel; `scripts/run_specs.ps1` now passes `--inner-jobs`, and the combo processes are loky workers,
   so its EcoQoS opt-out reaches them): ~8–9 h wall-clock. Nested pools inside the runner smoke-tested on a scratch
   ledger (2 PWFO cells, `--jobs 2 --inner-jobs 2`: both `ok`, PBO and picks recorded).
+- Stage C run note: launched 2026-10-06 14:37 (`-Jobs 2 -InnerJobs 16`), finished 2026-10-07 01:04 (~10.5 h; XLE
+  1Hour catboost ecdf alone 10.5 h, the other 13 cells 8.6 h summed), exit 0: 14 rows, all `ok`, 184 trials, no
+  tracebacks, every combo fitted some windows (85–100 % of windows per cell, GOOGL 1Day 74 %); ledger 1,050 rows;
+  holdout never accessed. Live (post burn-in) streams: 1,510–1,512 days intraday, 752 at 1Day.
+- **Stage C outcome (2026-10-07, `python -m experiments.report c`; final — all 14 finalists have their row): 0 of 14
+  go to D** (`results/experiments/report/stage_c_selection.{csv,md}`). Per the registered rule, D is not run.
+  - Fail the B gates on the nested-PWFO stream (9): AMZN 15Min (Sharpe −0.05), AMZN 1Hour (−0.40), MSFT 1Hour
+    (−0.26), GLD 1Day (−0.39), XLE 1Day (−0.38) — negative; XLK 1Hour (0.05, alpha −0.02), XLE 1Hour (0.35, best
+    5 days 165 % of P&L), SPY 30Min (0.07, 555 %), QQQ 30Min (0.00, 7,000 %). Six of these 9 have PBO < 0.5.
+  - Pass the B gates but fail PBO < 0.5 (5): NVDA 1Day (nested Sharpe 1.39, PBO 0.62, PWFO DSR 0.93), SPY 1Day
+    wavelet_trend (1.13, 0.79, 0.96), GOOGL 1Day (0.69, 0.77, 0.61), XLK 30Min (0.44, 0.70, 0.58), QQQ 1Hour (0.42,
+    0.82, 0.66).
+  Reading for the report: **the Stage B edge mostly did not survive rolling retraining.** Of 14 finalists with B3
+  PSR 0.80–0.998, 5 have a negative nested-PWFO Sharpe and 4 more are ≈ 0 or carried by a few days — the B-stage
+  PSRs were largely selection (as the B1–B3 readings warned). The 5 that kept a positive, well-spread stream are
+  positive in nearly every combo (NVDA 8/8, SPY 1Day 8/8, GOOGL 8/8, QQQ 1Hour 16/16, XLK 30Min 15/16; combo-median
+  Sharpe 0.30–0.80) — robust to the cadence choice — yet their PBO is 0.62–0.82: the trailing-Sharpe ranking of
+  near-equivalent combos does not persist, so *choosing* a cadence is overfit even where the strategy is not. The
+  PBO gate as registered tests the cadence selection, not the strategy; it is applied as registered (no post-hoc
+  change). Caveats: 3 of those 5 are 1Day cells with 752 live days and 8 combos; the 1Day PBO uses ≤ 8 combos;
+  NVDA 1Day carries β 0.30 (alpha Sharpe 0.32 of its 1.39). What E evaluates is to be decided before any further run.
 
 ---
 
