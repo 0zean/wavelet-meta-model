@@ -20,6 +20,7 @@ from experiments import ledger as L
 from experiments.legacy import import_legacy
 from experiments.report import (
     alpha_stats,
+    holm,
     leaderboard,
     row_dsr,
     session_bootstrap_auc,
@@ -30,6 +31,8 @@ from experiments.report import (
     stage_c_cell,
     stage_c_finalists,
     stage_c_selection,
+    stage_e_cell,
+    stage_e_selection,
     weighted_auc,
     write_report,
 )
@@ -804,3 +807,97 @@ def test_stage_c_selection_gates_the_nested_stream_and_pbo(tmp_path):
     assert list(t.index[t["passed"]]) == ["SPY"] and t.loc["SPY", "top_pick"] == "IS504_OOS10"
     assert t.loc["QQQ", "pbo"] == 0.6 and t.loc["IWM", "alpha_sr"] < 0
     assert not t.loc["TLT", "has_row"] and t.loc["GLD", "has_row"] and t.loc["GLD", "status"] == "no_fit"
+
+
+class ExtendingSource(FakeSource):
+    """One fixed synthetic history, sliced to [start, end): a later `end` only appends bars."""
+
+    def bars(self, symbol, timeframe, start, end, *, allow_holdout):
+        self.loads.append((symbol, timeframe, start, end, allow_holdout))
+        idx = pd.bdate_range("2019-01-01", "2026-01-01", inclusive="left", tz="America/New_York")
+        df = synthetic_daily(len(idx), seed=sum(map(ord, symbol)))
+        df.index = idx
+        lo, hi = pd.Timestamp(start, tz="America/New_York"), pd.Timestamp(end, tz="America/New_York")
+        return df[(df.index >= lo) & (df.index < hi)]
+
+
+def test_final_pwfo_cell_scores_only_the_holdout_and_extends_the_dev_stream(env, tmp_path):
+    from data.bars import HOLDOUT_START
+
+    pwfo = {"is_grid": [400, 600], "oos_grid": [50, 100]}
+    over = {**SMALL, "PWFO_DEFAULT": [400, 50], "SELECT_LOOKBACK": 60, "SELECT_EVERY": 20}
+    dev_spec = doc(stage="C", start="2019-01-01", end="2025-10-01", pwfo=pwfo, overrides=over)
+    (dev,) = R.run(expand(dev_spec), source=ExtendingSource(), **env)
+    e_spec = doc(stage="E", start="2019-01-01", end="2025-12-01", pwfo=pwfo,
+                 overrides={**over, "PWFO_PARTIAL_LAST": True})  # fmt: skip
+    (e,) = R.run(expand(e_spec), source=ExtendingSource(), final=True, **env)
+    assert dev["status"] == e["status"] == "ok" and e["final"] is True
+
+    def read(h, name):
+        s = pd.read_csv(env["root"] / "cells" / h / name, index_col=0)["ret"]
+        s.index = pd.to_datetime(s.index, utc=True).tz_convert("America/New_York").normalize()
+        return s
+
+    ho, full, c = (
+        read(e["cell_hash"], "daily_returns.csv"),
+        read(e["cell_hash"], "daily_returns_full.csv"),
+        read(dev["cell_hash"], "daily_returns.csv"),
+    )
+    start = HOLDOUT_START.tz_localize("America/New_York")
+    assert ho.index.min() >= start and e["n_obs"] == len(ho) and e["holdout_start"] == "2025-10-01"
+    assert ho.index.max() == pd.Timestamp("2025-11-28", tz="America/New_York")  # partial last window: to the data end
+    assert e["n_pre_holdout_days"] == int((full.index < start).sum()) and len(full) == len(ho) + e["n_pre_holdout_days"]
+    common = c.index[:-5]  # the dev cell's last days close its positions at its data end
+    assert np.allclose(full.loc[common], c.loc[common], atol=1e-12, rtol=0)  # E continues C's stream
+    assert "daily_returns_full.csv" not in {p.name for p in (env["root"] / "cells" / dev["cell_hash"]).iterdir()}
+
+
+def test_holm_is_step_down_and_monotone():
+    assert np.allclose(holm([0.01, 0.04, 0.03, 0.5]), [0.04, 0.09, 0.09, 0.5])
+    assert np.allclose(holm([0.3, 0.6]), [0.6, 0.6])
+
+
+def test_stage_e_selection_verdicts_and_integrity(tmp_path):
+    idx = pd.date_range("2024-01-02", periods=700, freq="B", tz="America/New_York")
+    ho = idx[idx >= pd.Timestamp("2025-10-01", tz="America/New_York")]
+    rng = np.random.default_rng(5)
+    bh = pd.Series(rng.normal(0.0, 0.01, len(idx)), idx)
+
+    def stream(mu, n, seed):
+        return pd.Series(np.random.default_rng(seed).normal(mu, 0.01, n))
+
+    def write(h, name, s):
+        (tmp_path / "cells" / h).mkdir(parents=True, exist_ok=True)
+        s.rename("ret").to_csv(tmp_path / "cells" / h / name)
+
+    rows, c_rows = [], []
+    for j, sr in enumerate(np.linspace(-0.5, 0.5, 40)):  # earlier trials: they set the DSR's V[SR] and part of N
+        rows.append({"cell_hash": f"b{j}", "stage": "B", "status": "ok", "label": f"b{j}", "spec_json": "{}",
+                     "sharpe": sr, "n_obs": 1000, "sr_skew": 0.0, "sr_kurt": 3.0, "n_trials": 1})  # fmt: skip
+    # (holdout stream drift, row Sharpe, row PSR(0), expected verdict)
+    cases = {"SPY": (0.004, 8.0, 0.99999, "edge"), "QQQ": (0.0015, 2.0, 0.999, "positive_not_significant"),
+             "IWM": (-0.001, -1.0, 0.1, "no_edge"), "TLT": (None, None, None, None)}  # fmt: skip
+    for k, (sym, (mu, sr, p0, _)) in enumerate(cases.items()):
+        spec = normalize({"symbols": sym, "timeframe": "1Hour", "start": "2016-01-01", "end": "2025-10-01",
+                          "overrides": {"TEST": 10}, "pwfo": {}})  # fmt: skip
+        dev = pd.Series(stream(0.0005, len(idx) - len(ho), k).to_numpy(), idx[: len(idx) - len(ho)])
+        c = {"cell_hash": f"c_{sym}", "stage": "C", "status": "ok", "label": sym, "spec_json": json.dumps(spec),
+             "sharpe": 0.5, "n_obs": len(dev), "sr_skew": 0.0, "sr_kurt": 3.0, "n_trials": 16}  # fmt: skip
+        write(c["cell_hash"], "daily_returns.csv", dev)
+        rows.append(c)
+        c_rows.append(c)
+        if mu is None:
+            continue  # TLT: E not run
+        h = pd.Series(stream(mu, len(ho), 100 + k).to_numpy(), ho)
+        e = {"cell_hash": f"e_{sym}", "stage": "E", "status": "ok", "label": sym, "n_trials": 16,
+             "spec_json": json.dumps(normalize(stage_e_cell(spec))), "sharpe": sr, "n_obs": len(h), "sr_skew": 0.0,
+             "sr_kurt": 3.0, "psr": p0, "n_pre_holdout_days": len(dev)}  # fmt: skip
+        write(e["cell_hash"], "daily_returns.csv", h)
+        full = pd.concat([dev + (1e-3 if sym == "IWM" else 0.0), h])  # IWM's E does not continue its C stream
+        write(e["cell_hash"], "daily_returns_full.csv", full)
+        rows.append(e)
+    t = stage_e_selection(rows, c_rows, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
+    assert {s: t.loc[s, "verdict"] for s in ("SPY", "QQQ", "IWM")} == {s: c[3] for s, c in cases.items() if c[3]}
+    assert not t.loc["TLT", "has_row"] and t.loc["SPY", "n_trials_total"] == 40 + 4 * 16 + 3 * 16
+    assert t.loc["SPY", "c_max_diff"] == 0 and t.loc["IWM", "c_max_diff"] == pytest.approx(1e-3)
+    assert t.loc["SPY", "dsr"] > 0.95 > t.loc["QQQ", "dsr"] and t.loc["QQQ", "p_holm"] < 0.05

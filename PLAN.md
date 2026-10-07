@@ -749,7 +749,7 @@ too small to be meaningful, inner CV leaking across window boundaries.
 
 **Status.** In progress — Stage A done (2026-10-03, 558 trials, 54 cells pass the survivor gates); Stage B done
 (2026-10-06, 14 Stage C finalists); Stage C done (2026-10-07, 184 trials, 0 of 14 pass C → D, so D is not run);
-the scope of Stage E is to be decided next.
+Stage E (all 14 finalists, holdout once) pre-registered 2026-10-07, next.
 - Stage A spec `experiments/specs/u11_a_screen.yaml`: 950 cells = 19 symbols × {5Min, 15Min, 30Min, 1Hour, 1Day} ×
   {wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb} × meta {xgb, rf_ldp}; default features, oof,
   fixed sizing, risk none, bi-weekly cadence (`TEST = 10` sessions on every timeframe). 1Min excluded (not cached).
@@ -1017,6 +1017,41 @@ the scope of Stage E is to be decided next.
   PBO gate as registered tests the cadence selection, not the strategy; it is applied as registered (no post-hoc
   change). Caveats: 3 of those 5 are 1Day cells with 752 live days and 8 combos; the 1Day PBO uses ≤ 8 combos;
   NVDA 1Day carries β 0.30 (alpha Sharpe 0.32 of its 1.39). What E evaluates is to be decided before any further run.
+- **Stage E design and verdict rule (pre-registered 2026-10-07, before any holdout access; chosen by the user):**
+  - Scope: **all 14 Stage C finalists**, each its Stage C nested-PWFO procedure unchanged. None passed C → D, so D
+    is not run and there is no portfolio; evaluating all 14 avoids selecting on Stage C results (the 5 that failed
+    only on PBO were not singled out).
+  - Cells (`experiments/specs/u11_e.yaml`, `python -m experiments.report e-spec`, `stage_e_cell`): the C cell's spec
+    with `end` = **2026-09-27** (the cached bars' coverage end — a later end would top up from Alpaca, which can
+    re-adjust the whole history) and `PWFO_PARTIAL_LAST = true`, run with `--final`. Holdout = **248 sessions,
+    2025-10-01 → 2026-09-25**. Each cell re-walks 2016 → 2026, so its holdout stream is the continuation of its C
+    stream (rolling windows anchored at the data start; nested selection continues through the holdout).
+  - Code (before launch): `PWFO_PARTIAL_LAST` (RunConfig, default off; `pwfo_windows(partial_last=)`): a last,
+    shorter OOS window runs to the data end — without it the OOS-63 combos' last full window ends 2026-07-14 and the
+    stream would drop 52 of the 248 holdout days. Runner: a `--final` PWFO cell's ledger statistics (Sharpe, PSR,
+    moments, n_obs) are the **holdout days only** (`daily_returns.csv`); the whole live stream is kept in
+    `daily_returns_full.csv`. `run_specs.ps1 -Final`. E rows count their grid as trials (184; conservative).
+  - **Verdict per finalist** (`python -m experiments.report e`, `stage_e_selection`, tested →
+    `results/experiments/report/stage_e_verdicts.{csv,md}`): **edge** iff the holdout DSR (N and V[SR] over every
+    counted trial in the ledger, E included) > 0.95 **and** holdout alpha Sharpe > 0 (β-hedged vs buy-and-hold over
+    the holdout); else **positive, not significant after deflation** iff the Holm-adjusted p = 1 − PSR(0) over the
+    14 holdout streams is < 0.05 (conditional on the finalist set, not a test of the search); else **no edge**. A
+    `no_fit` / missing row has no verdict (an `error` is re-run within the same batch).
+  - The bar, stated before the run: N = 1,218 counted trials through C (1,402 with E); with the ledger's V[SR], a
+    248-day holdout needs an annualized Sharpe ≈ 3.5 for DSR > 0.95 (DSR 0.58 at 2, 0.88 at 3). The best Stage C
+    nested stream was 1.39 (dev). "No edge" for every finalist is the expected outcome unless the holdout is
+    exceptional; that is the price of a 1,400-trial search on one year of holdout.
+  - Integrity check (reported, not a gate): each E cell's pre-holdout stream must equal its C stream except C's last
+    5 days (where C closed positions at its data end) — `c_max_diff`. Unit-tested on synthetic data
+    (`test_final_pwfo_cell_scores_only_the_holdout_and_extends_the_dev_stream`, `tests/test_pwfo.py`
+    partial-window tests) and checked on real data without the holdout: 4 Stage C cells (SPY 1Day logit_l2, AMZN
+    1Hour rf_ldp_fast, QQQ 30Min rf_ldp_fast, XLE 1Day catboost) re-run with end 2025-06-01 and PWFO_PARTIAL_LAST
+    on a scratch ledger (not trials): streams run to 2025-05-30 (the partial window reaches the data end) and equal
+    the C streams **exactly** (max |diff| 0) on all 719 / 1,477 common days but the last 5. A mismatch in E is
+    reported; the holdout is not re-run.
+  - Freeze: the final batch id includes the code hash, so **no hashed code may change from launch until E finishes**
+    — a resume under different code is refused as a second holdout access. Cost ≈ Stage C + ~10 % windows: ~11–12 h
+    with `-Jobs 2 -InnerJobs 16`.
 
 ---
 

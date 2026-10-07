@@ -350,3 +350,19 @@ def test_pwfo_respects_the_holdout():
     idx = pd.bdate_range("2023-01-02", "2025-10-03", tz="America/New_York")
     with pytest.raises(HoldoutError):
         run_pwfo(synthetic_daily(len(idx)).set_axis(idx), PW_CFG)
+
+
+@pytest.mark.parametrize("expanding", [False, True])
+@pytest.mark.parametrize("combo", [Combo(20, 7, 7), Combo(30, 10, 10), Combo(12, 1, 4)])
+def test_partial_last_window_runs_to_the_end_of_the_data(combo, expanding):
+    cal = pd.bdate_range("2024-01-02", periods=90)
+    idx = intraday_index([str(d.date()) for d in cal])
+    full = pwfo_windows(idx, combo, embargo=2, expanding=expanding, sessions=cal)
+    part = pwfo_windows(idx, combo, embargo=2, expanding=expanding, sessions=cal, partial_last=True)
+    rest = (len(cal) - combo.is_len) % combo.oos_len
+    assert part[: len(full)] == full and len(part) == len(full) + (rest > 0)  # the full windows are unchanged
+    assert part[-1].oos_end == len(idx)  # the OOS windows now tile to the last bar
+    if rest:
+        last = part[-1]
+        assert last.val_end == full[-1].oos_end and (last.oos_end - last.val_end) == rest * 7
+        assert last.w == full[-1].w + 1 and last.train_end == full[-1].train_end + combo.oos_len * 7
