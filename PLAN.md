@@ -1031,16 +1031,32 @@ Stage E (all 14 finalists, holdout once) pre-registered 2026-10-07, next.
     stream would drop 52 of the 248 holdout days. Runner: a `--final` PWFO cell's ledger statistics (Sharpe, PSR,
     moments, n_obs) are the **holdout days only** (`daily_returns.csv`); the whole live stream is kept in
     `daily_returns_full.csv`. `run_specs.ps1 -Final`. E rows count their grid as trials (184; conservative).
+  - ~~Verdict as first registered (784eb80): edge iff holdout DSR (N = every counted trial) > 0.95 and alpha
+    Sharpe > 0; else "positive, not significant after deflation" iff Holm-adjusted 1 − PSR(0) < 0.05; else no
+    edge.~~ Superseded by the amendment below.
+  - **Amendment (2026-10-07, before any holdout access — no holdout bar, return or buy-and-hold figure has been
+    read; chosen by the user):** the verdict test is the Holm test, not the full-search DSR. Reason (raised by the
+    user's question about the 3.5 bar): the DSR deflates the best of N trials *on the data they were selected on*;
+    the holdout Sharpes are not selected on the holdout, so its selection bias is not there (it is in the dev
+    Sharpes — hence the B → C collapse). The multiplicity on the holdout is the 14 streams evaluated on it.
+    Full-search DSR is kept as a reported figure (would the search's pick survive deflation of the whole search).
   - **Verdict per finalist** (`python -m experiments.report e`, `stage_e_selection`, tested →
-    `results/experiments/report/stage_e_verdicts.{csv,md}`): **edge** iff the holdout DSR (N and V[SR] over every
-    counted trial in the ledger, E included) > 0.95 **and** holdout alpha Sharpe > 0 (β-hedged vs buy-and-hold over
-    the holdout); else **positive, not significant after deflation** iff the Holm-adjusted p = 1 − PSR(0) over the
-    14 holdout streams is < 0.05 (conditional on the finalist set, not a test of the search); else **no edge**. A
-    `no_fit` / missing row has no verdict (an `error` is re-run within the same batch).
-  - The bar, stated before the run: N = 1,218 counted trials through C (1,402 with E); with the ledger's V[SR], a
-    248-day holdout needs an annualized Sharpe ≈ 3.5 for DSR > 0.95 (DSR 0.58 at 2, 0.88 at 3). The best Stage C
-    nested stream was 1.39 (dev). "No edge" for every finalist is the expected outcome unless the holdout is
-    exceptional; that is the price of a 1,400-trial search on one year of holdout.
+    `results/experiments/report/stage_e_verdicts.{csv,md}`): **edge** iff the Holm-adjusted p = 1 − PSR(0) of its
+    holdout stream, over the 14 holdout streams, is < 0.05 **and** its holdout alpha Sharpe > 0 (β-hedged vs the
+    symbol's buy-and-hold over the holdout); else **negative** iff the two-sided 90 % interval of its holdout Sharpe
+    (the PSR's standard error) lies below 0; else **not demonstrated**. A `no_fit` / missing row has no verdict (an
+    `error` is re-run within the same batch). **Reported, not deciding:** Benjamini–Hochberg q-value (`p_bh`),
+    full-search DSR (N and V[SR] over every counted trial, E included), the 90 % Sharpe interval, the symbol's
+    buy-and-hold Sharpe on the same holdout days, alpha Sharpe and β, best-5-days share, Stage C (dev) Sharpe.
+  - The bar and the power, stated before the run (248 days, normal returns; SE of an annualized 1-year Sharpe
+    ≈ 1.0): a single pre-chosen test needs Sharpe ≈ 1.66 for PSR(0) > 0.95; the first Holm step (p < 0.05 / 14)
+    needs ≈ 2.72; full-search DSR > 0.95 (N = 1,402) ≈ 3.5. Probability of clearing the first Holm step if the
+    true Sharpe is 1.0 / 1.4 / 2.0: 4 / 10 / 24 % (a single test: 26 / 40 / 63 %). One year of holdout has little
+    power: "not demonstrated" means the holdout could not confirm an edge, not that it showed none. Dev reference
+    (Stage C live streams vs the symbol's buy-and-hold on the same days): strategy / buy-and-hold Sharpe NVDA 1Day
+    1.39 / 1.76 (β 0.30, alpha 0.32), SPY 1Day 1.13 / 1.13 (β 0.04, alpha 1.07), GOOGL 1Day 0.69 / 0.64, XLK
+    30Min 0.44 / 0.87, QQQ 1Hour 0.42 / 0.85, XLE 1Hour 0.35 / 0.48; buy-and-hold beat or matched every stream but
+    GOOGL's over 2019–2025 / 2022–2025 (bull years), while all streams but NVDA's are β ≈ 0.
   - Integrity check (reported, not a gate): each E cell's pre-holdout stream must equal its C stream except C's last
     5 days (where C closed positions at its data end) — `c_max_diff`. Unit-tested on synthetic data
     (`test_final_pwfo_cell_scores_only_the_holdout_and_extends_the_dev_stream`, `tests/test_pwfo.py`

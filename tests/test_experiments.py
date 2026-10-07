@@ -20,6 +20,7 @@ from experiments import ledger as L
 from experiments.legacy import import_legacy
 from experiments.report import (
     alpha_stats,
+    bh_fdr,
     holm,
     leaderboard,
     row_dsr,
@@ -855,6 +856,8 @@ def test_final_pwfo_cell_scores_only_the_holdout_and_extends_the_dev_stream(env,
 def test_holm_is_step_down_and_monotone():
     assert np.allclose(holm([0.01, 0.04, 0.03, 0.5]), [0.04, 0.09, 0.09, 0.5])
     assert np.allclose(holm([0.3, 0.6]), [0.6, 0.6])
+    assert np.allclose(bh_fdr([0.01, 0.04, 0.03, 0.5]), [0.04, 0.04 * 4 / 3, 0.04 * 4 / 3, 0.5])  # step-up
+    assert np.allclose(bh_fdr([0.3, 0.6]), [0.6, 0.6])
 
 
 def test_stage_e_selection_verdicts_and_integrity(tmp_path):
@@ -875,8 +878,9 @@ def test_stage_e_selection_verdicts_and_integrity(tmp_path):
         rows.append({"cell_hash": f"b{j}", "stage": "B", "status": "ok", "label": f"b{j}", "spec_json": "{}",
                      "sharpe": sr, "n_obs": 1000, "sr_skew": 0.0, "sr_kurt": 3.0, "n_trials": 1})  # fmt: skip
     # (holdout stream drift, row Sharpe, row PSR(0), expected verdict)
-    cases = {"SPY": (0.004, 8.0, 0.99999, "edge"), "QQQ": (0.0015, 2.0, 0.999, "positive_not_significant"),
-             "IWM": (-0.001, -1.0, 0.1, "no_edge"), "TLT": (None, None, None, None)}  # fmt: skip
+    cases = {"SPY": (0.004, 8.0, 0.99999, "edge"), "QQQ": (0.0015, 2.0, 0.97, "not_demonstrated"),
+             "XLK": (-0.002, 4.0, 0.9999, "not_demonstrated"),  # significant, but its alpha Sharpe is negative
+             "IWM": (-0.001, -3.0, 0.001, "negative"), "TLT": (None, None, None, None)}  # fmt: skip
     for k, (sym, (mu, sr, p0, _)) in enumerate(cases.items()):
         spec = normalize({"symbols": sym, "timeframe": "1Hour", "start": "2016-01-01", "end": "2025-10-01",
                           "overrides": {"TEST": 10}, "pwfo": {}})  # fmt: skip
@@ -897,7 +901,13 @@ def test_stage_e_selection_verdicts_and_integrity(tmp_path):
         write(e["cell_hash"], "daily_returns_full.csv", full)
         rows.append(e)
     t = stage_e_selection(rows, c_rows, tmp_path, bh_returns=lambda spec: bh).set_index("symbol")
-    assert {s: t.loc[s, "verdict"] for s in ("SPY", "QQQ", "IWM")} == {s: c[3] for s, c in cases.items() if c[3]}
-    assert not t.loc["TLT", "has_row"] and t.loc["SPY", "n_trials_total"] == 40 + 4 * 16 + 3 * 16
+    assert {s: t.loc[s, "verdict"] for s in ("SPY", "QQQ", "XLK", "IWM")} == {s: c[3] for s, c in cases.items() if c[3]}
+    assert not t.loc["TLT", "has_row"] and t.loc["SPY", "n_trials_total"] == 40 + 5 * 16 + 4 * 16
     assert t.loc["SPY", "c_max_diff"] == 0 and t.loc["IWM", "c_max_diff"] == pytest.approx(1e-3)
-    assert t.loc["SPY", "dsr"] > 0.95 > t.loc["QQQ", "dsr"] and t.loc["QQQ", "p_holm"] < 0.05
+    # Holm over 4 p-values: QQQ's 0.03 → 0.06 (no edge); Benjamini–Hochberg q 0.04 is reported only
+    assert t.loc["QQQ", "p_holm"] == pytest.approx(0.06) and t.loc["QQQ", "p_bh"] == pytest.approx(0.04)
+    assert t.loc["XLK", "p_holm"] < 0.05 and t.loc["XLK", "alpha_sr"] < 0
+    assert t.loc["IWM", "ci_hi"] < 0 < t.loc["QQQ", "ci_hi"] and t.loc["SPY", "ci_lo"] > 0
+    ho_bh = bh.reindex(ho)
+    assert t.loc["SPY", "bh_sharpe"] == pytest.approx(ho_bh.mean() / ho_bh.std() * np.sqrt(252))
+    assert t.loc["SPY", "dsr"] > 0.95  # reported, not deciding

@@ -562,11 +562,11 @@ def stage_c_selection(rows: list[dict], finalists: pd.DataFrame, root, bh_return
     return out.sort_values(["passed", "b3_psr"], ascending=[False, False]).reset_index(drop=True)
 
 
-# ── U11 Stage E: holdout cells and per-finalist verdict (PLAN U11, pre-registered 2026-10-07, before E ran) ──────
+# ── U11 Stage E: holdout cells and per-finalist verdict (PLAN U11, pre-registered 2026-10-07, amended before E ran) ─
 
 E_END = "2026-09-27"  # the cached bars' coverage end: no Alpaca top-up (which could re-adjust the history)
-E_DSR = 0.95  # "edge": holdout DSR (N = every counted trial in the ledger, E included) > E_DSR and alpha Sharpe > 0
-E_ALPHA = 0.05  # else "positive, not significant after deflation": Holm-adjusted 1 − PSR(0) < E_ALPHA over the E rows
+E_ALPHA = 0.05  # "edge": Holm-adjusted p = 1 − PSR(0) over the E rows < E_ALPHA and holdout alpha Sharpe > 0
+E_CI = 0.90  # "negative": the two-sided E_CI interval of the holdout Sharpe lies below 0
 E_C_TAIL = 5  # the C stream's last days close its positions at the C data end; compared up to here
 
 
@@ -586,6 +586,27 @@ def holm(p: np.ndarray) -> np.ndarray:
     return out
 
 
+def bh_fdr(p: np.ndarray) -> np.ndarray:
+    """Benjamini–Hochberg adjusted p-values (q-values; monotone, capped at 1)."""
+    p = np.asarray(p, dtype=float)
+    m = len(p)
+    order = np.argsort(p)
+    adj = np.minimum.accumulate((p[order] * m / np.arange(1, m + 1))[::-1])[::-1]
+    out = np.empty_like(adj)
+    out[order] = np.minimum(adj, 1.0)
+    return out
+
+
+def sharpe_ci(sharpe_ann: float, n_obs: int, skew: float, kurt: float, level: float = E_CI) -> tuple[float, float]:
+    """Two-sided `level` interval of an annualized Sharpe from daily returns (the PSR's standard error)."""
+    from scipy.stats import norm
+
+    sr = sharpe_ann / np.sqrt(TRADING_DAYS)
+    se = np.sqrt(max(1 - skew * sr + (kurt - 1) / 4 * sr**2, 0.0) / (n_obs - 1))
+    z = norm.ppf(0.5 + level / 2)
+    return float((sr - z * se) * np.sqrt(TRADING_DAYS)), float((sr + z * se) * np.sqrt(TRADING_DAYS))
+
+
 def _stream(path: Path) -> pd.Series:
     s = pd.read_csv(path, index_col=0)["ret"]
     s.index = pd.to_datetime(s.index, utc=True).tz_convert("America/New_York").normalize()
@@ -596,9 +617,13 @@ def stage_e_selection(rows: list[dict], c_rows: list[dict], root, bh_returns=Non
     """
     One row per Stage C cell in `c_rows` (the 14 finalists' C rows). Its E row = the stage-E ledger row whose spec is
     `stage_e_cell` of its C spec. Holdout statistics are the E row's (its daily_returns.csv = holdout days only).
-    `verdict`: "edge" iff DSR (N, V over every counted trial of the ledger) > E_DSR and alpha Sharpe > 0; else
-    "positive_not_significant" iff the Holm-adjusted 1 − PSR(0) over all E rows < E_ALPHA; else "no_edge".
-    `c_max_diff` = max |E full stream − C stream| on the C days before its last E_C_TAIL (integrity: E continues C).
+    `verdict` (the holdout test; the multiplicity is the E rows evaluated on the holdout, not the whole search):
+    "edge" iff the Holm-adjusted p = 1 − PSR(0) over all E rows < E_ALPHA and alpha Sharpe > 0; else "negative" iff
+    the E_CI interval of the holdout Sharpe is below 0; else "not_demonstrated".
+    Reported, not deciding: `p_bh` (Benjamini–Hochberg q-value), `dsr` (N, V over every counted trial of the ledger:
+    would the search's pick survive deflation of the whole search), `ci_lo` / `ci_hi`, `bh_sharpe` (the symbol's
+    buy-and-hold Sharpe on the same holdout days), `c_max_diff` = max |E full stream − C stream| on the C days
+    before its last E_C_TAIL (integrity: E continues C).
     """
     bh_returns = bh_returns or (lambda spec: _cached_bh(spec, allow_holdout=True))
     want = {json.dumps(normalize(stage_e_cell(json.loads(r["spec_json"]))), sort_keys=True): r for r in c_rows}
@@ -620,23 +645,29 @@ def stage_e_selection(rows: list[dict], c_rows: list[dict], root, bh_returns=Non
             continue
         g = _gated(e, root, bh_returns)
         d, n, _v = row_dsr(e, rows, through=STAGES[-1])
+        lo, hi = sharpe_ci(e["sharpe"], int(e["n_obs"]), e["sr_skew"], e["sr_kurt"])
+        ho = _stream(Path(root) / "cells" / e["cell_hash"] / "daily_returns.csv")
+        bh = bh_returns(json.loads(e["spec_json"])).reindex(ho.index).dropna()
         full = _stream(Path(root) / "cells" / e["cell_hash"] / "daily_returns_full.csv")
         cs = _stream(Path(root) / "cells" / c["cell_hash"] / "daily_returns.csv").iloc[:-E_C_TAIL]
         diff = (full.reindex(cs.index) - cs).abs()
         recs.append({**base, "has_row": True, "status": "ok", "n_obs": e.get("n_obs"),
                      **{k: g[k] for k in ("sharpe", "psr", "beta", "alpha_sr", "top_days_share", "label", "cell_hash")},
-                     "dsr": d, "n_trials_total": n, "c_max_diff": float(diff.max()) if diff.notna().all() else np.inf,
+                     "ci_lo": lo, "ci_hi": hi, "bh_sharpe": float(bh.mean() / bh.std() * np.sqrt(TRADING_DAYS))
+                     if len(bh) > 1 and bh.std() > 0 else np.nan, "dsr": d, "n_trials_total": n,
+                     "c_max_diff": float(diff.max()) if diff.notna().all() else np.inf,
                      "n_pre_holdout_days": e.get("n_pre_holdout_days")})  # fmt: skip
     out = pd.DataFrame(recs)
     if out.empty:
         return out
     ok = out["status"].eq("ok")
-    out["p_holm"] = np.nan
+    out["p_holm"] = out["p_bh"] = np.nan
     if ok.any():
-        out.loc[ok, "p_holm"] = holm(1 - out.loc[ok, "psr"].astype(float).to_numpy())
-    edge = ok & (out.get("dsr", np.nan) > E_DSR) & (out.get("alpha_sr", np.nan) > 0)
-    out["verdict"] = np.where(edge, "edge", np.where(ok & (out["p_holm"] < E_ALPHA), "positive_not_significant",
-                                                     np.where(ok, "no_edge", None)))  # fmt: skip
+        p = 1 - out.loc[ok, "psr"].astype(float).to_numpy()
+        out.loc[ok, "p_holm"], out.loc[ok, "p_bh"] = holm(p), bh_fdr(p)
+    edge = ok & (out["p_holm"] < E_ALPHA) & (out.get("alpha_sr", np.nan) > 0)
+    neg = ok & (out.get("ci_hi", np.nan) < 0)
+    out["verdict"] = np.where(edge, "edge", np.where(neg, "negative", np.where(ok, "not_demonstrated", None)))
     return out.sort_values(["c_sharpe"], ascending=False).reset_index(drop=True)
 
 
@@ -715,9 +746,9 @@ if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root 
         table = stage_e_selection(rows, c_rows, a.root)
         table.to_csv(out / "stage_e_verdicts.csv", index=False)
         short = int((~table["has_row"]).sum())
-        rule = (f"edge iff holdout DSR (N = every counted trial) > {E_DSR} and alpha Sharpe > 0; else "
-                f"positive_not_significant iff Holm-adjusted 1 − PSR(0) < {E_ALPHA} over the {len(table)} finalists; "
-                "else no_edge")  # fmt: skip
+        rule = (f"edge iff Holm-adjusted 1 − PSR(0) over the {len(table)} finalists < {E_ALPHA} and holdout alpha "
+                f"Sharpe > 0; negative iff the {E_CI:.0%} interval of the holdout Sharpe is below 0; else "
+                "not_demonstrated. Reported only: Benjamini–Hochberg q (p_bh), full-search DSR, buy-and-hold Sharpe")  # fmt: skip
         counts = table["verdict"].value_counts().to_dict() if "verdict" in table else {}
         status = f"{len(table)} finalists, verdicts {counts}" + (f"; NOT FINAL: {short} lack a row" if short else "")
         md = ["# Stage E (holdout) verdicts", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
