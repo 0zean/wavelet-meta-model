@@ -8,6 +8,9 @@ Run experiment specs one after another, detached, on Windows (U11).
 - Windows 11 puts a windowless background process under EcoQoS power throttling, which confines it to the E-cores
   (on the i9-14900KF: 16 E-cores busy, 8 P-cores idle). Every minute this opts the run's python processes out
   (SetProcessInformation / ProcessPowerThrottling, per process, nothing persists).
+- -InnerJobs N: parallel PWFO combos inside each PWFO cell (`--inner-jobs`, Stage C). Those processes are loky
+  workers too (command line has "joblib"), so the EcoQoS opt-out reaches them.
+- -Final: `run --final`, the one-time holdout evaluation (stage E specs only; the runner enforces one batch ever).
 - LOKY_MAX_CPU_COUNT=1: rf_ldp's n_jobs=-1 then fits single-threaded inside each cell process.
 - A spec whose run exits non-zero stops the chain. Stop everything: taskkill /T /F /PID <pid in run_specs.log>;
   finished per-symbol fits are kept and skipped on the next run.
@@ -16,8 +19,10 @@ Run experiment specs one after another, detached, on Windows (U11).
 param(
     [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)][string[]]$Specs,
     [int]$Jobs = 30,
+    [int]$InnerJobs = 1,
     [string]$Ledger = "",  # default: results\ledger.jsonl
     [string]$Root = "",  # default: results\experiments
+    [switch]$Final,
     [switch]$Attached
 )
 $ErrorActionPreference = "Stop"
@@ -26,7 +31,8 @@ $logDir = Join-Path $repo "results\experiments"
 $status = Join-Path $logDir "run_specs.log"
 
 if (-not $Attached) {
-    $args_ = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Jobs", $Jobs, "-Attached")
+    $args_ = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Jobs", $Jobs, "-InnerJobs", $InnerJobs, "-Attached")
+    if ($Final) { $args_ += "-Final" }
     if ($Ledger) { $args_ += @("-Ledger", "`"$Ledger`"") }
     if ($Root) { $args_ += @("-Root", "`"$Root`"") }
     $args_ += $Specs | ForEach-Object { "`"$_`"" }
@@ -57,10 +63,11 @@ $env:PYTHONIOENCODING = "utf-8"
 $global_ = @()
 if ($Ledger) { $global_ += @("--ledger", "`"$Ledger`"") }
 if ($Root) { $global_ += @("--root", "`"$Root`"") }
-Log "launcher pid $($PID): $($Specs -join ', ') with $Jobs jobs"
+Log "launcher pid $($PID): $($Specs -join ', ') with $Jobs jobs x $InnerJobs inner$(if ($Final) { ' (FINAL: holdout)' })"
 foreach ($spec in $Specs) {
     $stem = "$([IO.Path]::GetFileNameWithoutExtension($spec)).$(Get-Date -Format 'yyyyMMdd-HHmm')"
-    $argv = @("run", "python", "-m", "experiments") + $global_ + @("run", "`"$spec`"", "--jobs", $Jobs)
+    $argv = @("run", "python", "-m", "experiments") + $global_ + @("run", "`"$spec`"", "--jobs", $Jobs, "--inner-jobs", $InnerJobs)
+    if ($Final) { $argv += "--final" }
     $run = Start-Process uv -ArgumentList $argv `
         -WorkingDirectory $repo -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $logDir "$stem.out.log") -RedirectStandardError (Join-Path $logDir "$stem.err.log")

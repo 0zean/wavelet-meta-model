@@ -12,7 +12,8 @@ Window w of combo (IS, OOS), in units (trading sessions, or bars for the legacy 
     IS  = [a_w, b_w)  with b_w = IS + w·OOS, a_w = w·OOS (rolling) or 0 (expanding)
           train = [a_w, b_w − val), val = [b_w − val, b_w)
     OOS = [b_w, b_w + OOS)   — retraining cadence = OOS; the OOS windows tile [IS, …) contiguously
-Only full OOS windows are run. The embargo is the WFO's (SPEC §5): fitting samples whose exit falls in the last
+Only full OOS windows are run, unless `partial_last` (PWFO_PARTIAL_LAST): then a last, shorter OOS window runs
+to the end of the data, as the last retrain would trade live (U11 Stage E). The embargo is the WFO's (SPEC §5): fitting samples whose exit falls in the last
 `embargo` units before the end of their split (train → val, val → OOS) are dropped; no unit is skipped.
 """
 
@@ -87,6 +88,7 @@ def pwfo_windows(
     expanding: bool = False,
     unit: str = "days",
     sessions=None,
+    partial_last: bool = False,
 ) -> list[Window]:
     """Walk-forward windows of one combo as bar positions (module docstring). Raises on an infeasible split."""
     is_len, oos_len, val_len = combo
@@ -100,7 +102,9 @@ def pwfo_windows(
     n_units = len(bounds) - 1
     out = []
     w = 0
-    while (b := is_len + w * oos_len) + oos_len <= n_units:
+    while (b := is_len + w * oos_len) < n_units:
+        if b + oos_len > n_units and not partial_last:
+            break
         a = 0 if expanding else w * oos_len
         tr = b - val_len
         out.append(
@@ -109,7 +113,7 @@ def pwfo_windows(
                 int(bounds[a]),
                 int(bounds[tr]),
                 int(bounds[b]),
-                int(bounds[b + oos_len]),
+                int(bounds[min(b + oos_len, n_units)]),
                 int(bounds[tr] - bounds[tr - embargo]),
                 int(bounds[b] - bounds[b - embargo]),
             )
@@ -142,8 +146,9 @@ def run_combo(
 ) -> ComboRun:
     """Every window of one combo through wfo_engine.fit_window (rolling unless cfg.PWFO_EXPANDING)."""
     wins = pwfo_windows(
-        df.index, combo, embargo=cfg.EMBARGO, expanding=cfg.PWFO_EXPANDING, unit=unit, sessions=sessions
-    )
+        df.index, combo, embargo=cfg.EMBARGO, expanding=cfg.PWFO_EXPANDING, unit=unit, sessions=sessions,
+        partial_last=cfg.PWFO_PARTIAL_LAST,
+    )  # fmt: skip
     if not wins:
         raise ValueError(f"{combo.label}: the data holds no full window")
     frames, ins, rows = [], {}, []

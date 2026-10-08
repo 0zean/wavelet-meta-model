@@ -176,6 +176,7 @@ class RunConfig:
     PWFO_IS_GRID: tuple[int, ...] = (63, 126, 252, 504)
     PWFO_OOS_GRID: tuple[int, ...] = (5, 10, 21, 63)
     PWFO_EXPANDING: bool = False  # True: every IS window starts at the first unit
+    PWFO_PARTIAL_LAST: bool = False  # True: a last, shorter OOS window runs to the end of the data (U11 Stage E)
     PWFO_VAL_FRAC: float | None = None
     PWFO_DEFAULT: tuple[int, int] = (252, 10)  # (IS, OOS) used during the nested-selection burn-in
     PWFO_MIN_WINDOWS: int = 50  # fewer OOS windows flags a combo as statistically weak (Meyers)

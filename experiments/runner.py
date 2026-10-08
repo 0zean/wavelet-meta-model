@@ -56,7 +56,7 @@ LIBS = ("numpy", "pandas", "scipy", "scikit-learn", "xgboost", "lightgbm", "catb
 # RunConfig fields run_wfo never reads (only the backtest / PWFO do): left out of the per-symbol signals-cache key
 BACKTEST_ONLY = frozenset(
     {"RISK_PROFILE", "POSITION_MODE", "SIZE_STEP", "INIT_CASH", "SIZE", "PWFO_IS_GRID", "PWFO_OOS_GRID",
-     "PWFO_EXPANDING", "PWFO_VAL_FRAC", "PWFO_DEFAULT", "PWFO_MIN_WINDOWS", "PWFO_WFE_MIN_T", "SELECT_EVERY",
+     "PWFO_EXPANDING", "PWFO_PARTIAL_LAST", "PWFO_VAL_FRAC", "PWFO_DEFAULT", "PWFO_MIN_WINDOWS", "PWFO_WFE_MIN_T", "SELECT_EVERY",
      "SELECT_LOOKBACK"}
 )  # fmt: skip
 TRADING_DAYS = 252
@@ -284,6 +284,12 @@ def _run_pwfo_cell(cell: Cell, cfg: RunConfig, data: dict, out: Path, feature_ca
     )  # fmt: skip
     write_outputs(res, cfg, out, "pwfo", f"PWFO {cell.label()}")
     live = res.pwfo.loc[~res.pwfo["burn_in"], "ret"]
+    holdout = {}
+    if cfg.ALLOW_HOLDOUT:  # stage E: the row's return statistics are the holdout days'; the full stream is kept
+        live.to_csv(out / "daily_returns_full.csv")
+        ho = HOLDOUT_START if live.index.tz is None else HOLDOUT_START.tz_localize(live.index.tz)
+        holdout = {"holdout_start": str(HOLDOUT_START.date()), "n_pre_holdout_days": int((live.index < ho).sum())}
+        live = live[live.index >= ho]
     live.to_csv(out / "daily_returns.csv")
     st, summ = res.stats, res.summary
     default = Combo(*cfg.PWFO_DEFAULT, 0).label
@@ -303,6 +309,7 @@ def _run_pwfo_cell(cell: Cell, cfg: RunConfig, data: dict, out: Path, feature_ca
         "n_decisions": int(st["n_decisions"]),
         "picks": st.get("picks"),
         "combos": combos,
+        **holdout,
     }
 
 

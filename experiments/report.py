@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from experiments import ledger as L
-from experiments.spec import STAGES, stage_rank
+from experiments.spec import STAGES, normalize, stage_rank
 from utils.config import DEFAULT_FEATURE_GROUPS, RunConfig
 from validation.pbo import pbo
 from validation.stats import dsr
@@ -324,11 +324,12 @@ def alpha_stats(ret: pd.Series, bh: pd.Series, top_days: int = B1_TOP_DAYS) -> d
     return {"beta": beta, "alpha_sr": alpha_sr, "top_days_share": share}
 
 
-def _cached_bh(spec: dict) -> pd.Series:
+def _cached_bh(spec: dict, allow_holdout: bool = False) -> pd.Series:
     """Buy-and-hold daily returns of the cell's symbol: last close of each NY session, from the cell's own bars."""
     from experiments.runner import CachedBars
 
-    df = CachedBars().bars(spec["symbols"][0], spec["timeframe"], spec["start"], spec["end"], allow_holdout=False)
+    df = CachedBars().bars(spec["symbols"][0], spec["timeframe"], spec["start"], spec["end"],
+                           allow_holdout=allow_holdout)  # fmt: skip
     day = df.index.tz_convert("America/New_York").normalize()
     return df["close"].groupby(day).last().pct_change()
 
@@ -498,13 +499,185 @@ def stage_c_finalists(b3: pd.DataFrame, per_symbol: int = C_PER_SYMBOL) -> pd.Da
     return b3.assign(finalist=b3["cell_hash"].isin(picked["cell_hash"]))
 
 
+# ── U11 Stage C grid and C → D selection (PLAN U11, pre-registered 2026-10-06, before any Stage C cell ran) ──────
+
+# (IS grid, OOS grid, PWFO_DEFAULT) per timeframe. U9's default IS {63, 126, 252, 504} cannot fit a 1Day window
+# (~0.25 events / session: train >= 200 events needs ~800+ sessions) and its 63 / 126 rows are unfittable intraday.
+C_GRIDS = {"1Day": ((1260, 1512), (5, 10, 21, 63), (1512, 10))}
+C_GRID_INTRADAY = ((252, 378, 504, 756), (5, 10, 21, 63), (252, 10))
+C_PBO_MAX = 0.5  # PBO across the cell's combos must be < this (NaN fails)
+
+
+def c_grid(timeframe: str) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, int]]:
+    return C_GRIDS.get(timeframe, C_GRID_INTRADAY)
+
+
+def stage_c_cell(spec: dict) -> dict:
+    """A B3 row's spec as its Stage C PWFO cell: the same spec with `pwfo` = its timeframe's grid (rolling) and
+    PWFO_DEFAULT set explicitly."""
+    is_grid, oos_grid, default = c_grid(spec["timeframe"])
+    return {**spec, "pwfo": {"is_grid": list(is_grid), "oos_grid": list(oos_grid), "expanding": False},
+            "overrides": {**spec["overrides"], "PWFO_DEFAULT": list(default)}}  # fmt: skip
+
+
+def stage_c_selection(rows: list[dict], finalists: pd.DataFrame, root, bh_returns=_cached_bh) -> pd.DataFrame:
+    """
+    One row per Stage C finalist (`finalists`: stage_b3_selection rows with `finalist`; only those are used). Its
+    Stage C row = the stage-C ledger row whose spec is `stage_c_cell(finalist spec)` (ok or no_fit). `passed` iff that
+    row is `ok` and its nested-PWFO live stream (daily_returns.csv) has PSR > B1_PSR, alpha Sharpe > 0, top-days share
+    < 1 (the B gates) and the cell's PBO across combos < C_PBO_MAX. `has_row` False = not run yet (or error): final
+    only when every finalist has its row.
+    """
+    fin = finalists[finalists["finalist"]]
+    by_hash = {h: r for (h, _st), r in L.done(rows).items()}
+    want = {}
+    for h in fin["cell_hash"]:
+        want[json.dumps(normalize(stage_c_cell(json.loads(by_hash[h]["spec_json"]))), sort_keys=True)] = h
+    got = {}
+    for (_h, st), r in L.done(rows).items():
+        if st == "C" and r.get("status") in ("ok", "no_fit"):
+            key = json.dumps(json.loads(r["spec_json"]), sort_keys=True)
+            if key in want:
+                got[want[key]] = r
+    recs = []
+    for s in fin.itertuples():
+        base = {"symbol": s.symbol, "timeframe": s.timeframe, "primary": s.primary, "model": s.model, "arm": s.arm,
+                "sizer": s.sizer, "b3_psr": s.psr, "b3_cell_hash": s.cell_hash}  # fmt: skip
+        r = got.get(s.cell_hash)
+        if r is None or r["status"] != "ok":
+            recs.append({**base, "has_row": r is not None, "status": None if r is None else r["status"],
+                         "passed": False})  # fmt: skip
+            continue
+        g = _gated(r, root, bh_returns)
+        pbo_ = r.get("pbo")
+        pbo_ = np.nan if pbo_ is None else float(pbo_)
+        picks = r.get("picks") or {}
+        recs.append({**base, "has_row": True, "status": "ok", **{k: v for k, v in g.items() if k != "meta_auc"},
+                     "pbo": pbo_, "pwfo_dsr": r.get("pwfo_dsr"), "n_trials": r.get("n_trials"),
+                     "top_pick": max(picks, key=picks.get) if picks else None,
+                     "passed": bool(g["passed"] and pbo_ < C_PBO_MAX)})  # fmt: skip
+    out = pd.DataFrame(recs)
+    if out.empty:
+        return out
+    return out.sort_values(["passed", "b3_psr"], ascending=[False, False]).reset_index(drop=True)
+
+
+# ── U11 Stage E: holdout cells and per-finalist verdict (PLAN U11, pre-registered 2026-10-07, amended before E ran) ─
+
+E_END = "2026-09-27"  # the cached bars' coverage end: no Alpaca top-up (which could re-adjust the history)
+E_ALPHA = 0.05  # "edge": Holm-adjusted p = 1 − PSR(0) over the E rows < E_ALPHA and holdout alpha Sharpe > 0
+E_CI = 0.90  # "negative": the two-sided E_CI interval of the holdout Sharpe lies below 0
+E_C_TAIL = 5  # the C stream's last days close its positions at the C data end; compared up to here
+
+
+def stage_e_cell(spec: dict) -> dict:
+    """A Stage C cell's spec as its Stage E cell: the same procedure run through E_END, with a partial last OOS
+    window so the holdout is scored to the end of the data."""
+    return {**spec, "end": E_END, "overrides": {**spec["overrides"], "PWFO_PARTIAL_LAST": True}}
+
+
+def holm(p: np.ndarray) -> np.ndarray:
+    """Holm step-down adjusted p-values (monotone, capped at 1)."""
+    p = np.asarray(p, dtype=float)
+    order = np.argsort(p)
+    adj = np.maximum.accumulate(p[order] * (len(p) - np.arange(len(p))))
+    out = np.empty_like(adj)
+    out[order] = np.minimum(adj, 1.0)
+    return out
+
+
+def bh_fdr(p: np.ndarray) -> np.ndarray:
+    """Benjamini–Hochberg adjusted p-values (q-values; monotone, capped at 1)."""
+    p = np.asarray(p, dtype=float)
+    m = len(p)
+    order = np.argsort(p)
+    adj = np.minimum.accumulate((p[order] * m / np.arange(1, m + 1))[::-1])[::-1]
+    out = np.empty_like(adj)
+    out[order] = np.minimum(adj, 1.0)
+    return out
+
+
+def sharpe_ci(sharpe_ann: float, n_obs: int, skew: float, kurt: float, level: float = E_CI) -> tuple[float, float]:
+    """Two-sided `level` interval of an annualized Sharpe from daily returns (the PSR's standard error)."""
+    from scipy.stats import norm
+
+    sr = sharpe_ann / np.sqrt(TRADING_DAYS)
+    se = np.sqrt(max(1 - skew * sr + (kurt - 1) / 4 * sr**2, 0.0) / (n_obs - 1))
+    z = norm.ppf(0.5 + level / 2)
+    return float((sr - z * se) * np.sqrt(TRADING_DAYS)), float((sr + z * se) * np.sqrt(TRADING_DAYS))
+
+
+def _stream(path: Path) -> pd.Series:
+    s = pd.read_csv(path, index_col=0)["ret"]
+    s.index = pd.to_datetime(s.index, utc=True).tz_convert("America/New_York").normalize()
+    return s
+
+
+def stage_e_selection(rows: list[dict], c_rows: list[dict], root, bh_returns=None) -> pd.DataFrame:
+    """
+    One row per Stage C cell in `c_rows` (the 14 finalists' C rows). Its E row = the stage-E ledger row whose spec is
+    `stage_e_cell` of its C spec. Holdout statistics are the E row's (its daily_returns.csv = holdout days only).
+    `verdict` (the holdout test; the multiplicity is the E rows evaluated on the holdout, not the whole search):
+    "edge" iff the Holm-adjusted p = 1 − PSR(0) over all E rows < E_ALPHA and alpha Sharpe > 0; else "negative" iff
+    the E_CI interval of the holdout Sharpe is below 0; else "not_demonstrated".
+    Reported, not deciding: `p_bh` (Benjamini–Hochberg q-value), `dsr` (N, V over every counted trial of the ledger:
+    would the search's pick survive deflation of the whole search), `ci_lo` / `ci_hi`, `bh_sharpe` (the symbol's
+    buy-and-hold Sharpe on the same holdout days), `c_max_diff` = max |E full stream − C stream| on the C days
+    before its last E_C_TAIL (integrity: E continues C).
+    """
+    bh_returns = bh_returns or (lambda spec: _cached_bh(spec, allow_holdout=True))
+    want = {json.dumps(normalize(stage_e_cell(json.loads(r["spec_json"]))), sort_keys=True): r for r in c_rows}
+    got = {}
+    for (_h, st), r in L.done(rows).items():
+        if st == "E" and r.get("status") in ("ok", "no_fit"):
+            key = json.dumps(json.loads(r["spec_json"]), sort_keys=True)
+            if key in want:
+                got[want[key]["cell_hash"]] = r
+    recs = []
+    for c in c_rows:
+        spec = json.loads(c["spec_json"])
+        base = {"symbol": spec["symbols"][0], "timeframe": spec["timeframe"], "primary": spec["primary"]["name"],
+                "model": spec["model"]["meta"], "sizer": spec["sizer"], "c_sharpe": c.get("sharpe"),
+                "c_cell_hash": c["cell_hash"]}  # fmt: skip
+        e = got.get(c["cell_hash"])
+        if e is None or e["status"] != "ok":
+            recs.append({**base, "has_row": e is not None, "status": None if e is None else e["status"]})
+            continue
+        g = _gated(e, root, bh_returns)
+        d, n, _v = row_dsr(e, rows, through=STAGES[-1])
+        lo, hi = sharpe_ci(e["sharpe"], int(e["n_obs"]), e["sr_skew"], e["sr_kurt"])
+        ho = _stream(Path(root) / "cells" / e["cell_hash"] / "daily_returns.csv")
+        bh = bh_returns(json.loads(e["spec_json"])).reindex(ho.index).dropna()
+        full = _stream(Path(root) / "cells" / e["cell_hash"] / "daily_returns_full.csv")
+        cs = _stream(Path(root) / "cells" / c["cell_hash"] / "daily_returns.csv").iloc[:-E_C_TAIL]
+        diff = (full.reindex(cs.index) - cs).abs()
+        recs.append({**base, "has_row": True, "status": "ok", "n_obs": e.get("n_obs"),
+                     **{k: g[k] for k in ("sharpe", "psr", "beta", "alpha_sr", "top_days_share", "label", "cell_hash")},
+                     "ci_lo": lo, "ci_hi": hi, "bh_sharpe": float(bh.mean() / bh.std() * np.sqrt(TRADING_DAYS))
+                     if len(bh) > 1 and bh.std() > 0 else np.nan, "dsr": d, "n_trials_total": n,
+                     "c_max_diff": float(diff.max()) if diff.notna().all() else np.inf,
+                     "n_pre_holdout_days": e.get("n_pre_holdout_days")})  # fmt: skip
+    out = pd.DataFrame(recs)
+    if out.empty:
+        return out
+    ok = out["status"].eq("ok")
+    out["p_holm"] = out["p_bh"] = np.nan
+    if ok.any():
+        p = 1 - out.loc[ok, "psr"].astype(float).to_numpy()
+        out.loc[ok, "p_holm"], out.loc[ok, "p_bh"] = holm(p), bh_fdr(p)
+    edge = ok & (out["p_holm"] < E_ALPHA) & (out.get("alpha_sr", np.nan) > 0)
+    neg = ok & (out.get("ci_hi", np.nan) < 0)
+    out["verdict"] = np.where(edge, "edge", np.where(neg, "negative", np.where(ok, "not_demonstrated", None)))
+    return out.sort_values(["c_sharpe"], ascending=False).reset_index(drop=True)
+
+
 if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root <root>]
     import argparse
 
     from experiments.runner import DEFAULT_ROOT
 
     ap = argparse.ArgumentParser(prog="experiments.report")
-    ap.add_argument("cmd", choices=["pilot", "survivors", "b1", "b2", "b3"])
+    ap.add_argument("cmd", choices=["pilot", "survivors", "b1", "b2", "b3", "c-spec", "c", "e-spec", "e"])
     ap.add_argument("spec", nargs="?", help="pilot: the spec holding the pilot cells")
     ap.add_argument("--ledger", default=str(L.DEFAULT_PATH))
     ap.add_argument("--root", default=str(DEFAULT_ROOT))
@@ -550,6 +723,65 @@ if __name__ == "__main__":  # python -m experiments.report pilot <spec> [--root 
         )
         md = ["# Stage B3 selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
         (out / "stage_b3_selection.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+        print("\n".join(md))
+        raise SystemExit(0)
+    if a.cmd in ("e-spec", "e"):
+        rows = L.Ledger(a.ledger).rows()
+        c_rows = [r for (_h, st), r in L.done(rows).items()
+                  if st == "C" and r.get("spec_name") == "u11_c" and r.get("status") == "ok"]  # fmt: skip
+        if a.cmd == "e-spec":  # experiments/specs/u11_e.yaml (or the given path); slowest cells first
+            cells = [stage_e_cell(json.loads(r["spec_json"])) for r in sorted(c_rows, key=lambda r: -r["runtime_s"])]
+            path = Path(a.spec or "experiments/specs/u11_e.yaml")
+            head = [
+                "# U11 Stage E (PLAN U11, pre-registered 2026-10-07): the holdout, once. All 14 Stage C finalists (none",
+                f"# passed C -> D; the user chose to evaluate all of them), each its Stage C cell run through {E_END}",
+                "# (cached bars' end) with PWFO_PARTIAL_LAST; ledger statistics = holdout days only. Run with --final.",
+                "# Generated by `python -m experiments.report e-spec`.",
+                "name: u11_e", "stage: E", "cells:",
+            ]  # fmt: skip
+            path.write_text("\n".join(head + [f"  - {json.dumps(c, sort_keys=True)}" for c in cells]) + "\n",
+                            encoding="utf-8", newline="\n")  # fmt: skip
+            print(f"{len(cells)} cells → {path}")
+            raise SystemExit(0)
+        table = stage_e_selection(rows, c_rows, a.root)
+        table.to_csv(out / "stage_e_verdicts.csv", index=False)
+        short = int((~table["has_row"]).sum())
+        rule = (f"edge iff Holm-adjusted 1 − PSR(0) over the {len(table)} finalists < {E_ALPHA} and holdout alpha "
+                f"Sharpe > 0; negative iff the {E_CI:.0%} interval of the holdout Sharpe is below 0; else "
+                "not_demonstrated. Reported only: Benjamini–Hochberg q (p_bh), full-search DSR, buy-and-hold Sharpe")  # fmt: skip
+        counts = table["verdict"].value_counts().to_dict() if "verdict" in table else {}
+        status = f"{len(table)} finalists, verdicts {counts}" + (f"; NOT FINAL: {short} lack a row" if short else "")
+        md = ["# Stage E (holdout) verdicts", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
+        (out / "stage_e_verdicts.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+        print("\n".join(md))
+        raise SystemExit(0)
+    if a.cmd in ("c-spec", "c"):
+        rows = L.Ledger(a.ledger).rows()
+        fin = stage_c_finalists(stage_b3_selection(rows, a.root))
+        if a.cmd == "c-spec":  # experiments/specs/u11_c.yaml (or the given path); slowest cells first
+            by_hash = {h: r for (h, _st), r in L.done(rows).items()}
+            cells = [stage_c_cell(json.loads(by_hash[h]["spec_json"])) for h in fin.loc[fin["finalist"], "cell_hash"]]
+            cells.sort(key=lambda c: (c["model"]["meta"] != "catboost", c["sizer"] != "ecdf", c["timeframe"] == "1Day"))
+            path = Path(a.spec or "experiments/specs/u11_c.yaml")
+            head = [
+                "# U11 Stage C (PLAN U11, pre-registered 2026-10-06): the 14 Stage C finalists (stage_b3_selection.csv,",
+                "# finalist = True), each the B3 row's spec with a rolling PWFO grid: intraday IS {252, 378, 504, 756},",
+                "# 1Day IS {1260, 1512}, x OOS {5, 10, 21, 63}; every combo a trial. Slowest (catboost, ecdf) first.",
+                "# Generated by `python -m experiments.report c-spec`.",
+                "name: u11_c", "stage: C", "cells:",
+            ]  # fmt: skip
+            path.write_text("\n".join(head + [f"  - {json.dumps(c, sort_keys=True)}" for c in cells]) + "\n",
+                            encoding="utf-8", newline="\n")  # fmt: skip
+            print(f"{len(cells)} cells → {path}")
+            raise SystemExit(0)
+        table = stage_c_selection(rows, fin, a.root)
+        table.to_csv(out / "stage_c_selection.csv", index=False)
+        n_pass, short = int(table["passed"].sum()), int((~table["has_row"]).sum())
+        rule = (f"per finalist, its nested-PWFO live stream passes the B gates (PSR > {B1_PSR}, alpha Sharpe > 0, "
+                f"best-{B1_TOP_DAYS}-days share < 100 %) and its PBO across combos < {C_PBO_MAX}")  # fmt: skip
+        status = f"{len(table)} finalists, {n_pass} passed" + (f"; NOT FINAL: {short} lack a row" if short else "")
+        md = ["# Stage C selection", "", f"Rule: {rule}. {status}.", "", _markdown(_fmt(table))]
+        (out / "stage_c_selection.md").write_text("\n".join(md) + "\n", encoding="utf-8")
         print("\n".join(md))
         raise SystemExit(0)
     if a.cmd == "b2":
