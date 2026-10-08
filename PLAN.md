@@ -740,18 +740,25 @@ too small to be meaningful, inner CV leaking across window boundaries.
   **total** ledger trial count.
 
 **Done when.**
-- [ ] Report (published as an Artifact) with: stage funnel counts, leaderboard, heat-maps (symbol × timeframe,
+- [x] Report (published as an Artifact) with: stage funnel counts, leaderboard, heat-maps (symbol × timeframe,
       IS × cadence), sizing/risk ablations, PBO per stage, DSR on holdout, and an explicit verdict (edge / no edge) per finalist.
+      "Meta-Labeling Zoo Study", https://claude.ai/artifact/BeUrh91ELeDzHHE1nhuaMv (private; copy in
+      `results/experiments/report/u11_report.html`). Risk ablation: not run (every U11 cell used risk `none`; D was
+      not reached) — stated in the report. Verdicts use the amended E rule (Holm), full-search DSR reported.
 - [x] Holdout accessed exactly once (ledger shows a single `stage=E` batch). One batch `33b8b08e02e9413c`; the two
       error re-runs resumed it (same cells, same code), no second access record.
-- [ ] Recommended retraining cadence and IS length stated with its WFE and OOS window count.
+- [x] Recommended retraining cadence and IS length stated with its WFE and OOS window count. **None recommended**:
+      no finalist has a demonstrated edge to retrain. Descriptive (Stage C, dev): intraday IS 756 / OOS 10 — median
+      Sharpe 0.22 over 9 finalists (7 positive), median WFE 0.047, 169 OOS windows; 1Day IS 1512 / OOS 10 — median
+      0.70, WFE 0.33, 93 windows; cadence (5–63 sessions) made no consistent difference; combo choice was overfit in
+      the strongest cells (PBO 0.62–0.82).
 
 **Reviewer focus.** Any post-holdout tuning, cherry-picked reporting, trial undercount, survivorship bias in the universe.
 
-**Status.** In progress — Stage A done (2026-10-03, 558 trials, 54 cells pass the survivor gates); Stage B done
+**Status.** ✅ Complete (2026-10-08; report published) — Stage A done (2026-10-03, 558 trials, 54 cells pass the survivor gates); Stage B done
 (2026-10-06, 14 Stage C finalists); Stage C done (2026-10-07, 184 trials, 0 of 14 pass C → D, so D is not run);
-Stage E done (2026-10-08, holdout once: 0 edge, 13 not demonstrated, 1 negative). Remaining: the report Artifact
-and the cadence recommendation.
+Stage E done (2026-10-08, holdout once: 0 edge, 13 not demonstrated, 1 negative). Thesis answer: no robust
+out-of-sample edge on this universe and design.
 - Stage A spec `experiments/specs/u11_a_screen.yaml`: 950 cells = 19 symbols × {5Min, 15Min, 30Min, 1Hour, 1Day} ×
   {wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb} × meta {xgb, rf_ldp}; default features, oof,
   fixed sizing, risk none, bi-weekly cadence (`TEST = 10` sessions on every timeframe). 1Min excluded (not cached).
