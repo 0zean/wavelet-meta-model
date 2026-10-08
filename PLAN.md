@@ -742,14 +742,16 @@ too small to be meaningful, inner CV leaking across window boundaries.
 **Done when.**
 - [ ] Report (published as an Artifact) with: stage funnel counts, leaderboard, heat-maps (symbol × timeframe,
       IS × cadence), sizing/risk ablations, PBO per stage, DSR on holdout, and an explicit verdict (edge / no edge) per finalist.
-- [ ] Holdout accessed exactly once (ledger shows a single `stage=E` batch).
+- [x] Holdout accessed exactly once (ledger shows a single `stage=E` batch). One batch `33b8b08e02e9413c`; the two
+      error re-runs resumed it (same cells, same code), no second access record.
 - [ ] Recommended retraining cadence and IS length stated with its WFE and OOS window count.
 
 **Reviewer focus.** Any post-holdout tuning, cherry-picked reporting, trial undercount, survivorship bias in the universe.
 
 **Status.** In progress — Stage A done (2026-10-03, 558 trials, 54 cells pass the survivor gates); Stage B done
 (2026-10-06, 14 Stage C finalists); Stage C done (2026-10-07, 184 trials, 0 of 14 pass C → D, so D is not run);
-Stage E (all 14 finalists, holdout once) pre-registered 2026-10-07, next.
+Stage E done (2026-10-08, holdout once: 0 edge, 13 not demonstrated, 1 negative). Remaining: the report Artifact
+and the cadence recommendation.
 - Stage A spec `experiments/specs/u11_a_screen.yaml`: 950 cells = 19 symbols × {5Min, 15Min, 30Min, 1Hour, 1Day} ×
   {wavelet_trend, sma_cross, bollinger_mr, donchian_breakout, ml_xgb} × meta {xgb, rf_ldp}; default features, oof,
   fixed sizing, risk none, bi-weekly cadence (`TEST = 10` sessions on every timeframe). 1Min excluded (not cached).
@@ -1068,6 +1070,38 @@ Stage E (all 14 finalists, holdout once) pre-registered 2026-10-07, next.
   - Freeze: the final batch id includes the code hash, so **no hashed code may change from launch until E finishes**
     — a resume under different code is refused as a second holdout access. Cost ≈ Stage C + ~10 % windows: ~11–12 h
     with `-Jobs 2 -InnerJobs 16`.
+- Stage E run note: one holdout batch (`33b8b08e02e9413c`, code `23c33327…`, git 26267be; one `holdout_access`
+  record, `data/cache/holdout_access.jsonl`), three invocations within it. (1) 2026-10-08 02:32 → 14:02 (~11.5 h),
+  exit 0: 12 `ok`, 2 `error` — NVDA 1Day and GOOGL 1Day, both in combo workers inside scikit-learn forest code
+  (cMDA's forest; rf_ldp_fast) with Python-level `TypeError`s on objects the code never makes (a `bool` as a context
+  manager, a `Parameter` iterated); Windows logged an access violation (0xC0000005) in `python311.dll` at 11:49:29,
+  the moment GOOGL's IS1512/OOS5 log stops. NVDA's failing window (IS1260/OOS5 w193) is a dev window Stage C ran
+  without error on identical inputs: memory corruption in a worker, not a logic error. No WHEA hardware error was
+  logged. (2) `--retry-errors --jobs 2 --inner-jobs 8` (the registered "an error is re-run within the same batch"):
+  NVDA `ok`; GOOGL died again (`BrokenProcessPool`, IS1512/OOS5 w212 — a different window). (3) `--retry-errors
+  --jobs 1 --inner-jobs 1` (no nested pool; not in the cell hash or batch id; parallel = serial is tested): GOOGL
+  `ok`, past both earlier crash points. Ledger: 3 `error` rows (not trials) + 14 `ok`; N = 1,402.
+  Integrity: every E cell's pre-holdout stream equals its C stream **exactly** (max |diff| 0 on all C days but the
+  last 5), including the two re-run cells — so no crash left a silently wrong result; each scores all 248 holdout
+  days. Open (not a U11 result): the crashes — 3 in Stage E (none in Stages B1–C), all in forest code inside
+  nested pools; a CPU stability check (14900KF, Raptor Lake Vmin issue; BIOS 1836 of 2026-04-15) or running PWFO
+  cells with `--inner-jobs 1` would tell hardware from software.
+- **Stage E outcome (2026-10-08, `python -m experiments.report e`; final — all 14 have an `ok` row): no finalist shows
+  an edge on the holdout — 0 edge, 13 not demonstrated, 1 negative** (`results/experiments/report/
+  stage_e_verdicts.{csv,md}`).
+  - Negative: XLE 1Hour donchian_breakout / catboost / ecdf, holdout Sharpe −1.27 (90 % interval −2.26 … −0.29).
+  - Closest to edge: QQQ 1Hour donchian_breakout / xgb / ldp_sigmoid, holdout Sharpe 2.31, alpha Sharpe 2.18, β 0.00,
+    PSR(0) 0.993, best 5 days 66 % of P&L; raw p 0.0065 → Holm 0.091 (and BH q 0.091) — not significant over 14. It
+    had dev (Stage C) Sharpe 0.42 and failed C → D on PBO 0.82. One year cannot separate this from the best of 14
+    noisy draws.
+  - The dev leaders reversed: NVDA 1Day 1.39 → −0.41 (alpha −1.02), SPY 1Day 1.13 → −1.22, GOOGL 1Day 0.69 → 0.72.
+  - Reading for the report: **the 14 holdout Sharpes look like 14 draws of zero-edge noise** — mean 0.02, sd 1.03
+    (the SE of a 248-day Sharpe is ≈ 1.0), 7 of 14 positive, alpha > 0 in 6; Spearman(Stage C Sharpe, holdout
+    Sharpe) = −0.15 (p 0.62): dev performance did not predict holdout performance. Buy-and-hold Sharpe over the
+    holdout was 0.18–1.76 (median 1.24); 2 of 14 streams beat their symbol's. Full-search DSR (reported) ≤ 0.73.
+    Thesis answer on this universe and design: **no robust out-of-sample edge** — the Stage A–B selections were
+    largely luck (B → C collapse), and the survivors' rolling-PWFO streams did not carry into the holdout. Low power
+    caveat (registered): a true Sharpe ≈ 1 would usually also read "not demonstrated" on one year.
 
 ---
 
