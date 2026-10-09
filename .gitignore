@@ -24,3 +24,6 @@ results/experiments/signals/
 results/experiments/cells/
 results/ledger.jsonl.lock
 results/experiments/*.log
+
+# U13: raw quote samples (the reduced table data/costs/quotes_half_spread.csv is the checked-in product) and logs
+data/cache/exo/quotes/

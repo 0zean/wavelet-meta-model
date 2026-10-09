@@ -35,6 +35,7 @@ CFG = RunConfig.for_timeframe(
     TEST=100,
     MIN_TRAIN_EVENTS=50,
     MIN_VAL_EVENTS=30,
+    COST_MODEL="slippage",
     **SMALL,
 )
 

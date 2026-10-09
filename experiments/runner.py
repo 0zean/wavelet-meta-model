@@ -3,8 +3,8 @@ Experiment runner (SPEC §9, U10): cells → cached, parallel trials → ledger 
 
 Cell hash = sha256(canonical cell spec, every resolved RunConfig field, code hash, data hash)[:16]. The code hash
 covers every project source file that can change a result (all *.py under the pipeline packages and experiments/,
-except the report) plus the numeric library versions; the data hash covers each symbol's bars, the 5Min spread bars
-of a spread-charging risk profile and the exchange sessions of a PWFO cell. Artifacts live in
+except the report) plus the numeric library versions; the data hash covers each symbol's bars, its cost inputs
+(COST_MODEL "cs": its 5Min bars; "quotes": its quotes-table rows) and the exchange sessions of a PWFO cell. Artifacts live in
 `<root>/cells/<hash>/`. A cell whose (hash, stage) is already in the ledger is skipped; a hash already run in another
 stage is re-recorded for this stage without fitting (`cache_hit`). Per-symbol WFO signals are also cached under
 `<root>/signals/<key>.pkl`, keyed by the same hash minus the backtest-only fields (BACKTEST_ONLY), so risk-profile
@@ -56,7 +56,7 @@ CODE_EXCLUDE = {"experiments/report.py"}  # cannot change a result
 LIBS = ("numpy", "pandas", "scipy", "scikit-learn", "xgboost", "lightgbm", "catboost", "pywddff", "numba")
 # RunConfig fields run_wfo never reads (only the backtest / PWFO do): left out of the per-symbol signals-cache key
 BACKTEST_ONLY = frozenset(
-    {"RISK_PROFILE", "POSITION_MODE", "SIZE_STEP", "INIT_CASH", "SIZE", "PWFO_IS_GRID", "PWFO_OOS_GRID",
+    {"RISK_PROFILE", "COST_MODEL", "POSITION_MODE", "SIZE_STEP", "INIT_CASH", "SIZE", "PWFO_IS_GRID", "PWFO_OOS_GRID",
      "PWFO_EXPANDING", "PWFO_PARTIAL_LAST", "PWFO_VAL_FRAC", "PWFO_DEFAULT", "PWFO_MIN_WINDOWS", "PWFO_WFE_MIN_T", "SELECT_EVERY",
      "SELECT_LOOKBACK"}
 )  # fmt: skip
@@ -95,7 +95,8 @@ def _sha(obj) -> str:
 
 def data_hash(data: dict) -> str:
     parts = {f"bars:{s}": feature_cache.data_hash(df) for s, df in data["bars"].items()}
-    parts |= {f"spread:{s}": feature_cache.data_hash(df) for s, df in (data.get("spread") or {}).items()}
+    for s, d in (data.get("cost") or {}).items():  # cs: the 5Min bars; quotes: the symbol's quotes-table rows
+        parts[f"cost:{s}"] = _sha(d.to_dict("list")) if "half_spread_bp" in d else feature_cache.data_hash(d)
     if data.get("sessions") is not None:
         parts["sessions"] = _sha([str(d.date()) for d in data["sessions"]])
     return _sha(parts)
@@ -128,19 +129,30 @@ class CachedBars:
 
         return get_calendar(end).index
 
+    def quotes_table(self, symbols: list[str]) -> pd.DataFrame:
+        """Rows of the quotes half-spread table (data/costs/quotes_half_spread.csv) for `symbols`."""
+        from data.quotes import read_table
+
+        table = read_table()
+        return table[table["symbol"].isin(symbols)]
+
 
 def load_cell_data(cell: Cell, cfg: RunConfig, source, final: bool) -> dict:
-    from risk.profiles import get_profile
-
     s = cell.spec
     bars = {sym: source.bars(sym, s["timeframe"], s["start"], s["end"], allow_holdout=final) for sym in cell.symbols}
-    spread = None
-    if get_profile(cfg.RISK_PROFILE).spread == "cs":  # half-spreads are estimated from 5Min bars (SPEC §7)
-        spread = {
+    cost = None
+    if cfg.COST_MODEL == "cs":  # Corwin–Schultz half-spreads are estimated from 5Min bars (SPEC §7)
+        cost = {
             sym: bars[sym] if s["timeframe"] == "5Min" else source.bars(sym, "5Min", s["start"], s["end"],
                                                                          allow_holdout=final)
             for sym in cell.symbols
         }  # fmt: skip
+    elif cfg.COST_MODEL == "quotes":  # SPEC §19: the symbol's rows of the quotes half-spread table
+        table = source.quotes_table(list(cell.symbols))
+        cost = {sym: table[table["symbol"] == sym].reset_index(drop=True) for sym in cell.symbols}
+        missing = [sym for sym, rows in cost.items() if rows.empty]
+        if missing:
+            raise ValueError(f"COST_MODEL='quotes': no quotes-table rows for {missing} (run python -m data.quotes)")
     sessions = None
     if cell.is_pwfo:
         # Only the sessions between the first and last data session reach the PWFO (wfo.pwfo.unit_bounds); the
@@ -149,7 +161,7 @@ def load_cell_data(cell: Cell, cfg: RunConfig, source, final: bool) -> dict:
         cal = pd.DatetimeIndex(source.sessions(s["end"])).normalize()
         cal = cal.tz_localize(None) if cal.tz is not None else cal
         sessions = cal[(cal >= days[0]) & (cal <= days[-1])]
-    return {"bars": bars, "spread": spread, "sessions": sessions}
+    return {"bars": bars, "cost": cost, "sessions": sessions}
 
 
 # ── Metrics ──────────────────────────────────────────────────────────────────
@@ -223,7 +235,7 @@ def _signals(sym: str, df: pd.DataFrame, cfg: RunConfig, root: Path, feature_cac
 
 
 def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path, feature_cache_dir) -> dict:
-    from risk.costs import half_spread
+    from risk.costs import fill_costs
     from risk.portfolio import simulate_portfolio
     from risk.profiles import get_profile
     from wfo.backtest import run_backtest
@@ -235,11 +247,11 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
         sigs[sym] = _signals(sym, df, cfg, root, feature_cache_dir)
         sigs[sym].to_csv(out / f"signals_{sym}.csv")
         diags[sym] = _diag(df, sigs[sym], cfg)
-    spread = data.get("spread") or {}
+    cost = data.get("cost") or {}
     row: dict = {}
     if len(sigs) == 1:
         (sym, sig), df = next(iter(sigs.items())), next(iter(data["bars"].values()))
-        res = run_backtest(df.loc[sig.index[0] :], sig, cfg, spread_bars=spread.get(sym))
+        res = run_backtest(df.loc[sig.index[0] :], sig, cfg, cost_data=cost.get(sym))
         eq, trades = res["Meta-filtered"]
         row["sharpe_primary"] = daily_stats(daily_returns(res["Primary only"][0]))["sharpe"]
         row |= diags[sym]
@@ -248,11 +260,10 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
     else:
         profile = get_profile(cfg.RISK_PROFILE)
         bars = {s: data["bars"][s].loc[sig.index[0] :] for s, sig in sigs.items()}
-        hs = None
-        if profile.spread == "cs":
-            hs = {s: half_spread(bars[s].index, spread[s], profile.spread_window_days, profile.spread_floor)
-                  for s in sigs}  # fmt: skip
-        eq, trades, _ = simulate_portfolio(bars, sigs, cfg, profile, half_spreads=hs)
+        costs = None
+        if cfg.COST_MODEL != "slippage":
+            costs = {s: fill_costs(bars[s].index, cfg, cost.get(s)) for s in sigs}
+        eq, trades, _ = simulate_portfolio(bars, sigs, cfg, profile, costs=costs)
         aucs = [d["meta_auc"] for d in diags.values()]
         row |= {
             "kind": "portfolio",
@@ -278,10 +289,10 @@ def _run_pwfo_cell(cell: Cell, cfg: RunConfig, data: dict, out: Path, feature_ca
     """A PWFO cell in this process, its combos one after another (jobs = 1, or a crash re-run)."""
     from wfo.pwfo import run_pwfo
 
-    (sym, df), spread = next(iter(data["bars"].items())), (data.get("spread") or {})
+    (sym, df), cost = next(iter(data["bars"].items())), (data.get("cost") or {})
     (out / "logs").mkdir(exist_ok=True)
     res = run_pwfo(
-        df, cfg, sessions=data["sessions"], spread_bars=spread.get(sym), log_dir=out / "logs", symbol=sym,
+        df, cfg, sessions=data["sessions"], cost_data=cost.get(sym), log_dir=out / "logs", symbol=sym,
         feature_cache_dir=feature_cache_dir,
     )  # fmt: skip
     return _pwfo_row(cell, cfg, res, out)
@@ -393,14 +404,14 @@ def run_combo_task(cell: Cell, chash: str, data: dict, final: bool, root, featur
 
     out = Path(root) / "cells" / chash
     (out / "logs").mkdir(parents=True, exist_ok=True)
-    (sym, df), spread = next(iter(data["bars"].items())), (data.get("spread") or {})
+    (sym, df), cost = next(iter(data["bars"].items())), (data.get("cost") or {})
     t0 = time.time()
     with (
         open(out / "logs" / f"{combo.label}.log", "w", buffering=1, encoding="utf-8") as log,
         contextlib.redirect_stdout(log),
     ):
         try:
-            res = combo_job(df, cell.config(final), combo, "days", data["sessions"], spread.get(sym), symbol=sym,
+            res = combo_job(df, cell.config(final), combo, "days", data["sessions"], cost.get(sym), symbol=sym,
                             feature_cache_dir=feature_cache_dir)  # fmt: skip
             return res, None, time.time() - t0
         except Exception:  # noqa: BLE001 — recorded as the cell's error row by finish_pwfo_cell

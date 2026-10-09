@@ -85,6 +85,11 @@ class FakeSource:
     def sessions(self, end):
         return pd.bdate_range("2000-01-03", end, inclusive="left")
 
+    def quotes_table(self, symbols):
+        from tests.test_costs import const_quotes_table
+
+        return const_quotes_table(symbols)
+
 
 def doc(stage="U10", grid=None, cells=None, **defaults):
     d = {"stage": stage, "defaults": {**DEFAULTS, **defaults}, "grid": grid or {"symbols": ["AAA"]}}
@@ -254,7 +259,7 @@ def test_backtest_only_fields_do_not_change_wfo_signals():
     assert {k for k in R.cfg_fields(cfg) if R.cfg_fields(cfg)[k] != R.cfg_fields(alt)[k]} <= R.BACKTEST_ONLY
     assert R.signals_key("A", cfg, df) == R.signals_key("A", alt, df)
     pd.testing.assert_frame_equal(eng.run_wfo(df, cfg), eng.run_wfo(df, alt))
-    alt2 = cfg.replace(POSITION_MODE="average")
+    alt2 = cfg.replace(POSITION_MODE="average", COST_MODEL="slippage")
     pd.testing.assert_frame_equal(eng.run_wfo(df, cfg), eng.run_wfo(df, alt2))
 
 
@@ -332,7 +337,7 @@ def test_rerun_of_an_identical_spec_performs_zero_fits(env, fits):
 def test_signals_cache_serves_risk_ablations_without_refitting(env, fits):
     R.run(expand(doc(risk_profile="none")), source=FakeSource(), **env)
     n = len(fits)
-    rows = R.run(expand(doc(sizer="fixed", overrides={**SMALL, "POSITION_MODE": "average"})), source=FakeSource(),
+    rows = R.run(expand(doc(sizer="fixed", overrides={**SMALL, "POSITION_MODE": "average", "COST_MODEL": "slippage"})), source=FakeSource(),
                  **env)  # fmt: skip
     assert rows[0]["status"] == "ok" and len(fits) == n  # a new cell (different hash), same fits
 

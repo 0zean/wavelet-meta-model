@@ -1,10 +1,10 @@
 """
 Named risk profiles (SPEC §7 risk layer, U8). `RunConfig.RISK_PROFILE` selects one by name; "none" is the pre-U8
-behaviour (no vol target, no caps, no loss controls, costs = SLIPPAGE_PCT only).
+behaviour (no vol target, no caps, no loss controls). Costs are not part of a profile since U13: RunConfig.COST_MODEL
+chooses them (SPEC §19; the U8–U11 "standard" profile charged the Corwin–Schultz spread, now COST_MODEL="cs").
 """
 
 from dataclasses import dataclass
-from typing import Literal
 
 INF = float("inf")
 
@@ -26,8 +26,7 @@ class RiskProfile:
     dd_tiers: tuple[tuple[float, float], ...] = ()
     # Daily loss gate: session P&L ≤ −daily_loss · session-start equity → flatten at the next open, block entries
     daily_loss: float | None = None
-    # Costs: "cs" adds the trailing Corwin–Schultz half-spread (floored) to SLIPPAGE_PCT on every notional change
-    spread: Literal["none", "cs"] = "none"
+    # Corwin–Schultz half-spread parameters of COST_MODEL="cs" (floor, trailing window in sessions)
     spread_floor: float = 0.5e-4
     spread_window_days: int = 21
     borrow_bps: float = 0.0  # annual short-borrow rate, charged on short notional at entry for the bars held
@@ -47,8 +46,6 @@ class RiskProfile:
             raise ValueError(f"dd_tiers must be ascending (dd in (0, 1), multiplier in [0, 1]); got {self.dd_tiers}")
         if self.daily_loss is not None and not 0 < self.daily_loss < 1:
             raise ValueError(f"daily_loss must be in (0, 1) or None, got {self.daily_loss}")
-        if self.spread not in ("none", "cs"):
-            raise ValueError(f"spread must be 'none' or 'cs', got {self.spread!r}")
         if self.spread_floor < 0 or self.spread_window_days < 1 or self.borrow_bps < 0:
             raise ValueError("spread_floor and borrow_bps must be >= 0, spread_window_days >= 1")
 
@@ -83,7 +80,6 @@ PROFILES: dict[str, RiskProfile] = {
         max_concurrent=10,
         dd_tiers=((0.10, 0.5), (0.20, 0.0)),
         daily_loss=0.02,
-        spread="cs",
     ),
 }
 

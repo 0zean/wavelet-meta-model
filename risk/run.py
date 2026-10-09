@@ -32,7 +32,7 @@ import pandas as pd
 from data.bars import load_bars
 from features import cache as feature_cache
 from models.compare import _git_sha
-from risk.costs import half_spread
+from risk.costs import fill_costs
 from risk.portfolio import simulate_portfolio
 from risk.profiles import PROFILES, get_profile
 from utils.config import RunConfig
@@ -62,7 +62,13 @@ def _wfo_one(sym: str, a: argparse.Namespace, sig_dir: Path) -> str:
 
 def _cfg(a: argparse.Namespace, **kw) -> RunConfig:
     return RunConfig.for_timeframe(
-        a.timeframe, PRIMARY=a.primary, META_MODEL=a.meta_model, META_TRAIN=a.meta_train, SIZER=a.sizer, **kw
+        a.timeframe,
+        PRIMARY=a.primary,
+        META_MODEL=a.meta_model,
+        META_TRAIN=a.meta_train,
+        SIZER=a.sizer,
+        COST_MODEL=a.cost_model,
+        **kw,
     )
 
 
@@ -94,6 +100,7 @@ def main() -> None:
     ap.add_argument("--meta-train", choices=["val", "oof"], default="oof")
     ap.add_argument("--sizer", default="fixed")
     ap.add_argument("--profiles", default=",".join(PROFILES), help="comma-separated risk profiles")
+    ap.add_argument("--cost-model", choices=["slippage", "cs", "quotes"], default="quotes", help="SPEC §19")
     ap.add_argument("--jobs", type=int, default=5, help="parallel WFO processes")
     ap.add_argument("--reuse", action="store_true", help="load saved per-symbol signals when present")
     ap.add_argument("--out", default="results/portfolio")
@@ -109,14 +116,20 @@ def main() -> None:
         for sym in ex.map(_wfo_one, syms, [a] * len(syms), [sig_dir] * len(syms)):
             print(f"[PORT]  {sym} signals ready ({time.time() - t0:.0f}s)")
 
-    bars, sigs, spread_bars = {}, {}, {}
+    cfg0 = _cfg(a)
+    bars, sigs, cost_data = {}, {}, {}
     for sym in syms:
         sig = pd.read_pickle(sig_dir / f"{sym}_{a.timeframe}.pkl")
         df = load_bars(sym, a.timeframe, a.start, a.end)
         bars[sym], sigs[sym] = df.loc[sig.index[0] :], sig
-        spread_bars[sym] = df if a.timeframe == "5Min" else load_bars(sym, "5Min", a.start, a.end)
+        if cfg0.COST_MODEL == "cs":
+            cost_data[sym] = df if a.timeframe == "5Min" else load_bars(sym, "5Min", a.start, a.end)
+        elif cfg0.COST_MODEL == "quotes":
+            from data.quotes import read_table
 
-    cfg0 = _cfg(a)
+            table = read_table()
+            cost_data[sym] = table[table["symbol"] == sym].reset_index(drop=True)
+
     bh = pd.concat({s: b["close"] / b["close"].iloc[0] for s, b in bars.items()}, axis=1, sort=True)
     bh = bh.ffill().fillna(1.0).mean(axis=1) * cfg0.INIT_CASH
     cols, equities, rows = {}, {"Buy-and-Hold (EW)": bh}, []
@@ -125,14 +138,11 @@ def main() -> None:
     for name in a.profiles.split(","):
         profile = get_profile(name)
         cfg = _cfg(a, RISK_PROFILE=name)
-        hs = None
-        if profile.spread == "cs":
-            hs = {s: half_spread(bars[s].index, spread_bars[s], profile.spread_window_days, profile.spread_floor)
-                  for s in syms}  # fmt: skip
+        costs = None
+        if cfg.COST_MODEL != "slippage":
+            costs = {s: fill_costs(bars[s].index, cfg, cost_data[s]) for s in syms}
         for strat, side, size in (("meta", "trade_signal", "bet_size"), ("primary", "signed_dir", None)):
-            eq, trades, log = simulate_portfolio(
-                bars, sigs, cfg, profile, side_col=side, size_col=size, half_spreads=hs
-            )
+            eq, trades, log = simulate_portfolio(bars, sigs, cfg, profile, side_col=side, size_col=size, costs=costs)
             label = f"{strat} | {name}"
             m = strategy_metrics(eq, trades, cfg.bars_per_year)
             cols[label], equities[label] = m, eq

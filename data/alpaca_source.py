@@ -92,6 +92,54 @@ class AlpacaSource:
         # Alpaca's `end` is inclusive; keep [start, end)
         return df[df.index < pd.Timestamp(end).tz_convert("UTC")]
 
+    def quotes(self, symbols: list[str], start: datetime, end: datetime) -> dict[str, list[dict]]:
+        """
+        Raw SIP NBBO quotes in [start, end) per symbol ({"t", "bp", "ap", "bs", "as", ...}; every page fetched).
+        Raises on any API error, as `bars` does.
+        """
+        from alpaca.data.enums import DataFeed
+        from alpaca.data.requests import StockQuotesRequest
+
+        req = StockQuotesRequest(
+            symbol_or_symbols=list(symbols),
+            start=pd.Timestamp(start).tz_convert("UTC").to_pydatetime(),
+            end=pd.Timestamp(end).tz_convert("UTC").to_pydatetime(),
+            feed=DataFeed(self.feed),
+        )
+        raw = self._data.get_stock_quotes(req)
+        stop = pd.Timestamp(end).tz_convert("UTC")
+        out = {}
+        for s, rows in raw.items():  # Alpaca's `end` is inclusive; keep [start, end) (rows come time-ascending)
+            k = len(rows)
+            while k and pd.Timestamp(rows[k - 1]["t"]) >= stop:
+                k -= 1
+            out[s] = rows[:k]
+        return out
+
+    def option_chain(self, underlying: str, expiry_lte: date) -> dict[str, dict]:
+        """Current option snapshots of `underlying` (indicative feed on the free plan) expiring by `expiry_lte`."""
+        from alpaca.data.historical.option import OptionHistoricalDataClient
+        from alpaca.data.requests import OptionChainRequest
+
+        key, secret = _credentials()
+        client = OptionHistoricalDataClient(key, secret, raw_data=True)
+        return client.get_option_chain(OptionChainRequest(underlying_symbol=underlying, expiration_date_lte=expiry_lte))
+
+    def option_contracts(self, underlying: str, expiry_lte: date) -> list[dict]:
+        """Active option contracts of `underlying` expiring by `expiry_lte`, every page (open interest as of the
+        contract's `open_interest_date`)."""
+        from alpaca.trading.requests import GetOptionContractsRequest
+
+        rows, token = [], None
+        while True:
+            req = GetOptionContractsRequest(underlying_symbols=[underlying], expiration_date_lte=expiry_lte,
+                                            limit=10000, page_token=token)  # fmt: skip
+            page = self._trading.get_option_contracts(req)
+            rows += page.get("option_contracts", [])
+            token = page.get("next_page_token")
+            if not token:
+                return rows
+
     def calendar(self, start: date, end: date) -> pd.DataFrame:
         """Trading sessions in [start, end] — see calendar_from_raw."""
         from alpaca.trading.requests import GetCalendarRequest

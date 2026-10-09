@@ -18,6 +18,9 @@ DEFAULT_UNIVERSE = [
     "SPY", "QQQ", "IWM", "DIA", "XLF", "XLK", "XLE", "XLV", "TLT", "GLD",
     # Stocks
     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "JPM", "XOM", "UNH",
+    # U13 (PLAN2 F2 cross-asset ETFs, SVXY for F9): all listed before 2016. SVXY went from −1× to −0.5× VIX
+    # short-term futures on 2018-02-28 (after 2018-02-05); USO reverse-split 1:8 on 2020-04-29 (bars are adjusted)
+    "IEF", "LQD", "HYG", "DBC", "USO", "UUP", "EFA", "EEM", "VNQ", "SLV", "SVXY",
 ]  # fmt: skip
 
 
