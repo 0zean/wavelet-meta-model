@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "1986-01-02",
+  "fetched_at": "2026-10-09T17:20:41.786441-04:00",
+  "n_rows": 10193,
+  "name": "BAA10Y",
+  "schema_version": 1,
+  "sha256": "1451f70bed1fad0ae87f30e3d99770b168406c034822fdf35545216e4e6f8319",
+  "source": "fred",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAA10Y"
+}

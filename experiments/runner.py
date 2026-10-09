@@ -98,6 +98,8 @@ def _sha(obj) -> str:
 
 def data_hash(data: dict) -> str:
     parts = {f"bars:{s}": feature_cache.data_hash(df) for s, df in data["bars"].items()}
+    for s, ctx in (data.get("context") or {}).items():  # feature context (U15): market / sector bars, exo series
+        parts |= {f"context:{s}:{k}": feature_cache.context_hash(v) for k, v in ctx.items()}
     for s, d in (data.get("cost") or {}).items():  # cs: the 5Min bars; quotes: the symbol's quotes-table rows
         parts[f"cost:{s}"] = _sha(d.to_dict("list")) if "half_spread_bp" in d else feature_cache.data_hash(d)
     if data.get("sessions") is not None:
@@ -109,11 +111,12 @@ def cell_hash(cell: Cell, cfg: RunConfig, dhash: str) -> str:
     return _sha({"spec": cell.spec, "cfg": cfg_fields(cfg), "code": code_hash(), "data": dhash})[:16]
 
 
-def signals_key(symbol: str, cfg: RunConfig, df: pd.DataFrame) -> str:
-    return _sha(
-        {"symbol": symbol, "cfg": cfg_fields(cfg, BACKTEST_ONLY), "code": code_hash(),
-         "data": feature_cache.data_hash(df)}
-    )[:24]  # fmt: skip
+def signals_key(symbol: str, cfg: RunConfig, df: pd.DataFrame, context: dict | None = None) -> str:
+    key = {"symbol": symbol, "cfg": cfg_fields(cfg, BACKTEST_ONLY), "code": code_hash(),
+           "data": feature_cache.data_hash(df)}  # fmt: skip
+    if context:
+        key["context"] = {k: feature_cache.context_hash(v) for k, v in context.items()}
+    return _sha(key)[:24]
 
 
 # ── Data ─────────────────────────────────────────────────────────────────────
@@ -132,6 +135,11 @@ class CachedBars:
 
         return get_calendar(end).index
 
+    def exo(self, source: str, name: str, start, end, *, allow_holdout: bool) -> pd.DataFrame:
+        from data.exo import load_series
+
+        return load_series(source, name, start, end, allow_holdout=allow_holdout)
+
     def quotes_table(self, symbols: list[str]) -> pd.DataFrame:
         """Rows of the quotes half-spread table (data/costs/quotes_half_spread.csv) for `symbols`."""
         from data.quotes import read_table
@@ -141,6 +149,8 @@ class CachedBars:
 
 
 def load_cell_data(cell: Cell, cfg: RunConfig, source, final: bool) -> dict:
+    from features.context import load_context
+
     s = cell.spec
     bars = {sym: source.bars(sym, s["timeframe"], s["start"], s["end"], allow_holdout=final) for sym in cell.symbols}
     cost = None
@@ -164,7 +174,14 @@ def load_cell_data(cell: Cell, cfg: RunConfig, source, final: bool) -> dict:
         cal = pd.DatetimeIndex(source.sessions(s["end"])).normalize()
         cal = cal.tz_localize(None) if cal.tz is not None else cal
         sessions = cal[(cal >= days[0]) & (cal <= days[-1])]
-    return {"bars": bars, "cost": cost, "sessions": sessions}
+    # Feature context (SPEC §15): market / sector bars and exo series, only for cells whose groups read them
+    context = {}
+    for sym in cell.symbols:
+        ctx = load_context(sym, s["timeframe"], s["start"], s["end"], cfg.FEATURE_GROUPS, bars=source.bars,
+                           exo=lambda *a, **k: source.exo(*a, **k), allow_holdout=final)  # fmt: skip
+        if ctx:
+            context[sym] = ctx
+    return {"bars": bars, "cost": cost, "sessions": sessions, "context": context}
 
 
 # ── Metrics ──────────────────────────────────────────────────────────────────
@@ -216,15 +233,15 @@ def _diag(df: pd.DataFrame, sig: pd.DataFrame, cfg: RunConfig) -> dict:
 # ── One cell ─────────────────────────────────────────────────────────────────
 
 
-def _signals(sym: str, df: pd.DataFrame, cfg: RunConfig, root: Path, feature_cache_dir) -> pd.DataFrame:
+def _signals(sym: str, df: pd.DataFrame, cfg: RunConfig, root: Path, feature_cache_dir, context=None) -> pd.DataFrame:
     """run_wfo for one symbol, through the signals cache."""
     from wfo.wfo_engine import run_wfo
 
-    path = root / "signals" / f"{signals_key(sym, cfg, df)}.pkl"
+    path = root / "signals" / f"{signals_key(sym, cfg, df, context)}.pkl"
     if path.exists():
         print(f"[EXP]  {sym}: signals cache hit {path.name}")
         return pd.read_pickle(path)
-    sig = run_wfo(df, cfg, symbol=sym, feature_cache_dir=feature_cache_dir)
+    sig = run_wfo(df, cfg, context=context, symbol=sym, feature_cache_dir=feature_cache_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".pkl")
     os.close(fd)
@@ -246,8 +263,9 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
     from wfo.wfo_metrics import strategy_metrics
 
     sigs, diags = {}, {}
+    context = data.get("context") or {}
     for sym, df in data["bars"].items():
-        sigs[sym] = _signals(sym, df, cfg, root, feature_cache_dir)
+        sigs[sym] = _signals(sym, df, cfg, root, feature_cache_dir, context.get(sym))
         sigs[sym].to_csv(out / f"signals_{sym}.csv")
         diags[sym] = _diag(df, sigs[sym], cfg)
     cost = data.get("cost") or {}
@@ -296,7 +314,7 @@ def _run_pwfo_cell(cell: Cell, cfg: RunConfig, data: dict, out: Path, feature_ca
     (out / "logs").mkdir(exist_ok=True)
     res = run_pwfo(
         df, cfg, sessions=data["sessions"], cost_data=cost.get(sym), log_dir=out / "logs", symbol=sym,
-        feature_cache_dir=feature_cache_dir,
+        feature_cache_dir=feature_cache_dir, context=(data.get("context") or {}).get(sym),
     )  # fmt: skip
     return _pwfo_row(cell, cfg, res, out)
 
@@ -415,7 +433,8 @@ def run_combo_task(cell: Cell, chash: str, data: dict, final: bool, root, featur
     ):
         try:
             res = combo_job(df, cell.config(final), combo, "days", data["sessions"], cost.get(sym), symbol=sym,
-                            feature_cache_dir=feature_cache_dir)  # fmt: skip
+                            feature_cache_dir=feature_cache_dir,
+                            context=(data.get("context") or {}).get(sym))  # fmt: skip
             return res, None, time.time() - t0
         except Exception:  # noqa: BLE001 — recorded as the cell's error row by finish_pwfo_cell
             return None, traceback.format_exc(), time.time() - t0
@@ -615,10 +634,11 @@ def _run(cells, ledger, root, source, jobs, final, retry_errors, spec_name, feat
         if cell.is_pwfo:
             continue
         cfg = cell.config(final)
+        context = data.get("context") or {}
         for sym, df in data["bars"].items():
-            key = signals_key(sym, cfg, df)
+            key = signals_key(sym, cfg, df, context.get(sym))
             if key not in sig_jobs and not (root / "signals" / f"{key}.pkl").exists():
-                sig_jobs[key] = (sym, df, cfg)
+                sig_jobs[key] = (sym, df, cfg, context.get(sym))
     if len(sig_jobs) > 1 and jobs > 1:
         print(f"[EXP]  fitting {len(sig_jobs)} per-symbol WFO(s) with {jobs} job(s)")
         par = Parallel(n_jobs=min(jobs, len(sig_jobs)), return_as="generator_unordered")
@@ -686,7 +706,7 @@ def _run(cells, ledger, root, source, jobs, final, retry_errors, spec_name, feat
     return written
 
 
-def _signals_job(key, sym, df, cfg, root, feature_cache_dir):
+def _signals_job(key, sym, df, cfg, context, root, feature_cache_dir):
     root = Path(root)
     (root / "signals").mkdir(parents=True, exist_ok=True)
     with (
@@ -694,7 +714,7 @@ def _signals_job(key, sym, df, cfg, root, feature_cache_dir):
         contextlib.redirect_stdout(log),
     ):
         try:
-            _signals(sym, df, cfg, root, feature_cache_dir)
+            _signals(sym, df, cfg, root, feature_cache_dir, context)
             return key, None
         except Exception as e:  # noqa: BLE001 — re-raised (and recorded) by the cell
             return key, f"{type(e).__name__}: {e}"

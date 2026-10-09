@@ -649,6 +649,56 @@ must not be visible at 15:30 the same day), GARCH fit leaking across the embargo
 
 **Cost.** 1 session. Depends on U13.
 
+**Status (2026-10-09).** ✅ Complete (adversarial review done: no BREAKING; the SEVERE and two MINORs fixed, the rest
+deferred below). 614 tests pass (38 in `tests/test_u15.py`; the registry-wide §8 and stationarity tests in
+`tests/test_features.py` now cover every new group); ruff clean. Branch `unit/15-state-features`. As-built notes and
+deviations in SPEC §15 "Implementation (U15, as built)".
+- **Groups:** `vol_state` (per fold: VIX, VIX9D / VIX3M / VX1 / VX2 ratios, rv21 / VIX, GARCH(1,1) σ and standardized
+  return), `calendar_events` (to / since FOMC, CPI, NFP; event-day, OPEX-week, turn-of-month, pre-holiday flags;
+  minutes since the release), `rates_credit` (Δ 10-year, 2s10s, Δ Baa − 10-year credit spread, Δ broad dollar),
+  `cross_asset` + lagged market returns and, for stocks, the sector ETF's lagged returns, sector residual and
+  relative strength (`data/sectors.py`). `gamma_proxy` not built (no historical chain; deferred below).
+- **Point in time — met.** Groups get an `Exo` view restricted to their declared series, never raw frames; every
+  accessor uses a row only when `available_at` ≤ the bar's stamp. A planted same-day VIX close (public 16:20) is
+  invisible to every bar of its day and visible at the next open; a by-date join of the same frame fails the exo
+  causality checker (the mutation check). Every exo group is causal under exo perturbation (rows public after bar c
+  randomized or dropped; 5Min and 1Day) and, through the registry-wide test, under bar perturbation and truncation.
+  Real-data spot checks (`results/u15/state_features.json`): the SPY bars of 2020-03-16 see VIX 57.83 (03-13 close),
+  03-17 sees 82.69; `fomc_day` flips at 10:00 on 2020-03-03 (the unscheduled cut); Δ DGS10 follows the H.15 lag.
+- **Runner smoke — met.** `experiments/specs/u15_smoke.yaml` on a scratch ledger: AAPL and JPM, 1Day 2016-01-04 →
+  2025-09-30 and 5Min 2024-01-02 → 2025-09-30, groups `cross_asset` (market SPY, sector XLK / XLF), `vol_state`,
+  `calendar_events`, `rates_credit` (+ `session` on 5Min): 4 / 4 `ok`. A unit test runs the same through
+  `R.run` on synthetic bars and checks the context reaches the data hash and the signals key.
+- **Stationarity and warm-ups — met.** `check_group_output` passes for every new column on SPY 5Min / 1Day and AAPL
+  5Min over the development window (largest |corr with close| 0.39, `t10y2y`). NaN only in documented warm-ups:
+  `since_*` until the event table's first 2016 event, `rv21_vix` 22 sessions, `ret_std_garch` the first bar,
+  `cross_asset` its rolling windows. On short 5Min cells the warm-up costs ~22 sessions of events per fold start
+  (the `session` group already needs 20).
+- **Regression — met.** Legacy CSV run: all five outputs byte-identical to `main` (`wfo_signals.csv` sha1
+  `f8e0617e…` on both; see the open question below). U12 parity (no new switches): PASS, all 8 hashes, at 7a52fdd
+  (after the review fixes).
+- **Review fixes:**
+  - S1: `to_*` encoded later cancellations: the event table holds held releases only, so before the 2020-03-18
+    FOMC was replaced (03-15) and before the BLS releases moved by the 2025 shutdown and the 2026-01-31 funding
+    lapse, the bars saw no upcoming release (`to_*` up to 63). `to_*` now reads a schedule series with the
+    originally published dates (Fed 2020 calendar; Wayback snapshots of BLS's schedule pages), each withdrawn at its
+    own scheduled instant, so a cancellation is never visible early (stale between its announcement and that time).
+  - M1: calendar rows were clipped at HOLDOUT_START outside final runs, giving the dev window's last weeks a false
+    "nothing scheduled"; schedules (no outcomes) now load past it, still gated by `known_from`.
+  - M2: a runner cell with `cross_asset` on SPY itself got degenerate columns silently; refused now (as the CLI does).
+- **Deferred:**
+  - A release on a non-session day (the Sunday 2020-03-15 FOMC statement, Good Friday CPI / NFP) flags no session
+    (`since_*` = 1 on the next one). Whether the next session should carry the event-day flag is a family-spec
+    choice for F8 (U16 / U17).
+  - Sector ETFs get no "sector" context (their reference is the market); PLAN asked for it "for sector ETFs and
+    stocks". AMZN / GOOGL / META map to QQQ (no cached XLY / XLC covering 2016).
+  - `gamma_proxy`: no historical option chain or open interest exists (U13); `data/options.py` collects forward.
+    Revisit after a year of snapshots (U19 / U20).
+  - BAA10Y's `available_at` (next business day 16:30 ET, the H.15 rule) is assumed, not verified against FRED's
+    actual publication lag (conservative if FRED posts it the same evening).
+  - Open: the legacy CSV hash on `main` today is `f8e0617e…`, not the `551d8074…` recorded after U12–U14; U15 does not
+    change it (branch = `main`), so the reference value or the environment drifted between sessions.
+
 ### U16 — Primaries with a mechanism
 
 **Goal.** One registered primary per family, each a thin rule over the new samplers/exits/features.
@@ -858,7 +908,8 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
   default, `HOLDOUT_START` 2026-10-01; status note under U13).
 - U14 — ✅ complete 2026-10-09 (branch `unit/14-samplers-exits-isom`; samplers, exits, `tod` profile, `session` group;
   status note under U14).
-- U15 — not started.
+- U15 — ✅ complete 2026-10-09 (branch `unit/15-state-features`; `vol_state`, `calendar_events`, `rates_credit`,
+  `cross_asset` sector / lags, point-in-time `Exo` view, runner context; status note under U15).
 - U16 — not started.
 - U17 — not started.
 - U18 — not started (family specs not yet registered).

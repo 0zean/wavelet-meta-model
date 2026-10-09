@@ -5,6 +5,7 @@ import pandas as pd
 
 from features import cache as feature_cache
 from features.causal_modwt import wavelet_ar_features
+from features.exo_align import Exo
 from features.fractional_diff import fit_fracdiff_d, fracdiff_transform
 from features.indicators import compute_log_return, compute_rsi, compute_siegel_slope, compute_vwap
 from features.registry import FeatureGroup, check_group_output, resolve_groups
@@ -52,6 +53,21 @@ class _LegacyFracdiff:
         return fracdiff_transform(df["close"], state).reindex(df.index).rename("fd_close").to_frame()
 
 
+class _PerFold:
+    """A per-fold group with its context bound: transform(df, state, cfg[, context])."""
+
+    def __init__(self, fn, context: dict | None):
+        self.fn, self.context = fn, context
+
+    def fit(self, train_df, cfg):
+        return self.fn.fit(train_df, cfg)
+
+    def transform(self, df, state, cfg):
+        if self.context is None:
+            return self.fn.transform(df, state, cfg)
+        return self.fn.transform(df, state, cfg, self.context)
+
+
 class FeatureSet:
     """
     The resolved feature groups for one run.
@@ -83,13 +99,22 @@ class FeatureSet:
             self.per_fold = [_LegacyFracdiff]
             return
         specs = resolve_groups(groups, cfg.TIMEFRAME)
-        for spec in specs:
-            missing = [k for k in spec.needs if k not in self.context]
-            if missing:
-                raise ValueError(f"feature group {spec.name!r} needs context {missing} (e.g. market bars)")
+        self.group_context = {s.name: self._group_context(s) for s in specs}
         self.static = [s for s in specs if not s.per_fold]
-        self.per_fold = [s.fn for s in specs if s.per_fold]
+        self.per_fold = [_PerFold(s.fn, self.group_context[s.name] if s.needs else None) for s in specs if s.per_fold]
         self.names = [s.name for s in specs]
+
+    def _group_context(self, spec: FeatureGroup) -> dict:
+        """The context a group sees: its `needs` (required), its `optional` keys when supplied, and for "exo" an
+        Exo view restricted to its declared series (SPEC §15: point-in-time access only)."""
+        missing = [k for k in spec.needs if k not in self.context]
+        if missing:
+            raise ValueError(f"feature group {spec.name!r} needs context {missing} (e.g. market bars, exo series)")
+        ctx = {k: self.context[k] for k in (*spec.needs, *spec.optional) if k in self.context}
+        if "exo" in spec.needs:
+            exo = ctx["exo"] if isinstance(ctx["exo"], Exo) else Exo(ctx["exo"])
+            ctx["exo"] = exo.restrict(spec.exo)
+        return ctx
 
     def build(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.legacy:
@@ -103,7 +128,7 @@ class FeatureSet:
         return pd.concat(parts, axis=1)
 
     def _cached(self, spec: FeatureGroup, df: pd.DataFrame) -> pd.DataFrame:
-        ctx = {k: self.context[k] for k in spec.needs}
+        ctx = self.group_context[spec.name]
         use_cache = self.symbol is not None and self.cache_dir is not None
         if use_cache:
             key = feature_cache.cache_key(spec.name, self.symbol, self.cfg, df, ctx)

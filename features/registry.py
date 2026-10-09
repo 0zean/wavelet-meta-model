@@ -4,7 +4,10 @@ Feature-group registry (SPEC §3).
 A group is a named, causal block of feature columns. Static groups are functions
 `(df, cfg, context) -> DataFrame` computed once on the full series; per-fold groups
 (e.g. fracdiff, whose d is fit on train) are classes with `fit(train_df, cfg) -> state`
-and `transform(df, state, cfg) -> DataFrame`. Every column is prefixed `{group}__`.
+and `transform(df, state, cfg) -> DataFrame` (`transform(df, state, cfg, context)` when the
+group declares `needs`). Every column is prefixed `{group}__`. `context` holds the keys the
+group declares in `needs` (required) and `optional` (when supplied); "exo" is a
+features.exo_align.Exo view restricted to the group's declared `exo` series.
 
     @feature_group("trend")
     def trend(df, cfg, context): ...
@@ -35,8 +38,10 @@ class FeatureGroup:
     required: bool = False
     intraday_only: bool = False
     per_fold: bool = False
-    needs: tuple[str, ...] = ()  # context keys the group reads (e.g. "market")
+    needs: tuple[str, ...] = ()  # context keys the group reads (e.g. "market"); "exo" = point-in-time series
     level_check: bool = True  # False only for deterministic encodings (calendar) that can trend with a short sample
+    optional: tuple[str, ...] = ()  # context keys read when present (e.g. "sector")
+    exo: tuple[str, ...] = ()  # "source/name" exo series the group reads (needs "exo"; see features.exo_align)
 
 
 REGISTRY: dict[str, FeatureGroup] = {}
@@ -49,6 +54,8 @@ def feature_group(
     per_fold: bool = False,
     needs: tuple[str, ...] = (),
     level_check: bool = True,
+    optional: tuple[str, ...] = (),
+    exo: tuple[str, ...] = (),
 ) -> Callable:
     """Register a feature group under `name` (see module docstring)."""
 
@@ -57,7 +64,11 @@ def feature_group(
             raise ValueError(f"feature group {name!r} registered twice")
         if per_fold and not (hasattr(fn, "fit") and hasattr(fn, "transform")):
             raise TypeError(f"per_fold group {name!r} must define fit() and transform()")
-        REGISTRY[name] = FeatureGroup(name, fn, required, intraday_only, per_fold, tuple(needs), level_check)
+        if bool(exo) != ("exo" in needs):
+            raise ValueError(f"feature group {name!r}: `exo` series and needs=('exo',) go together")
+        REGISTRY[name] = FeatureGroup(
+            name, fn, required, intraday_only, per_fold, tuple(needs), level_check, tuple(optional), tuple(exo)
+        )
         return fn
 
     return register
@@ -89,6 +100,15 @@ def resolve_groups(groups, timeframe: str) -> list[FeatureGroup]:
             continue
         out.append(spec)
     return out
+
+
+def context_needs(groups, timeframe: str) -> tuple[set[str], set[str]]:
+    """(context keys, exo series) the resolved groups read: needs ∪ optional, and the union of their `exo`."""
+    keys, exo = set(), set()
+    for spec in resolve_groups(groups, timeframe):
+        keys |= set(spec.needs) | set(spec.optional)
+        exo |= set(spec.exo)
+    return keys, exo
 
 
 def check_group_output(name: str, feats: pd.DataFrame, df: pd.DataFrame, level_check: bool = True) -> None:

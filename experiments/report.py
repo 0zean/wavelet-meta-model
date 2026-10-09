@@ -238,8 +238,9 @@ def pilot_rule(spec_path, root, timeframe: str = "5Min", source=None, n_boot: in
     recs = []
     for cell in [c for c in load_spec(spec_path)[1] if c.spec["timeframe"] == timeframe]:
         cfg = cell.config(False)
-        ((sym, df),) = load_cell_data(cell, cfg, source or CachedBars(), False)["bars"].items()
-        path = Path(root) / "signals" / f"{signals_key(sym, cfg, df)}.pkl"
+        data = load_cell_data(cell, cfg, source or CachedBars(), False)
+        ((sym, df),) = data["bars"].items()
+        path = Path(root) / "signals" / f"{signals_key(sym, cfg, df, data['context'].get(sym))}.pkl"
         rec = {"label": cell.label(), "n_events": 0, "n_sessions": 0, "auc": np.nan, "auc_ub95": np.nan}
         if not path.exists():
             recs.append(rec | {"status": "missing"})

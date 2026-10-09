@@ -1,0 +1,686 @@
+{
+  "window": [
+    "2016-01-04",
+    "2025-10-01"
+  ],
+  "runs": [
+    {
+      "symbol": "SPY",
+      "timeframe": "5Min",
+      "bars": 190402,
+      "context": [
+        "exo"
+      ],
+      "exo": [
+        "calendar/CPI",
+        "calendar/CPI_SCHEDULE",
+        "calendar/FOMC",
+        "calendar/FOMC_SCHEDULE",
+        "calendar/NFP",
+        "calendar/NFP_SCHEDULE",
+        "calendar/OPEX",
+        "calendar/PRE_HOLIDAY",
+        "calendar/TOM",
+        "cboe/VIX",
+        "cboe/VIX3M",
+        "cboe/VIX9D",
+        "cboe/VX1_VIX",
+        "cboe/VX2_VX1",
+        "fred/BAA10Y",
+        "fred/DGS10",
+        "fred/DTWEXBGS",
+        "fred/T10Y2Y"
+      ],
+      "static_s": 0.35,
+      "garch": {
+        "first_fold": {
+          "train_bars": 3197,
+          "omega": 6.7920678977076665e-09,
+          "alpha": 0.04421789298596549,
+          "beta": 0.9511779240382168,
+          "vbar": 1.4751950418524486e-06,
+          "persistence": 0.9953958170241822,
+          "seconds": 0.38
+        },
+        "full": {
+          "train_bars": 190402,
+          "omega": 2.157855686349454e-09,
+          "alpha": 0.07408369497198837,
+          "beta": 0.9232148853067218,
+          "vbar": 7.987857900582696e-07,
+          "persistence": 0.9972985802787102,
+          "seconds": 0.2
+        }
+      },
+      "columns": {
+        "calendar_events__to_fomc": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 16.84529574269178,
+          "std": 12.947462397502393,
+          "min": 0.0,
+          "max": 63.0,
+          "abs_corr_close": 0.0027190399623754197
+        },
+        "calendar_events__since_fomc": {
+          "n_nan": 1248,
+          "last_nan": "2016-01-26 15:55:00-05:00",
+          "mean": 15.307262865178638,
+          "std": 9.408119716285558,
+          "min": 0.0,
+          "max": 38.0,
+          "abs_corr_close": 0.003939114394958638
+        },
+        "calendar_events__to_cpi": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 12.22104284618859,
+          "std": 12.528257768447146,
+          "min": 0.0,
+          "max": 63.0,
+          "abs_corr_close": 0.019547022706393705
+        },
+        "calendar_events__since_cpi": {
+          "n_nan": 858,
+          "last_nan": "2016-01-19 15:55:00-05:00",
+          "mean": 10.00326573249483,
+          "std": 6.12864371689551,
+          "min": 0.0,
+          "max": 24.0,
+          "abs_corr_close": 0.0027353927156249127
+        },
+        "calendar_events__to_nfp": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 13.167125345322003,
+          "std": 14.050167374145717,
+          "min": 0.0,
+          "max": 63.0,
+          "abs_corr_close": 0.005349517281682285
+        },
+        "calendar_events__since_nfp": {
+          "n_nan": 312,
+          "last_nan": "2016-01-07 15:55:00-05:00",
+          "mean": 10.070082592456204,
+          "std": 6.23404047802008,
+          "min": 0.0,
+          "max": 24.0,
+          "abs_corr_close": 0.005023428469836157
+        },
+        "calendar_events__fomc_day": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.03192193359313453,
+          "std": 0.17579273606503026,
+          "min": 0.0,
+          "max": 1.0,
+          "abs_corr_close": 0.0030144255584408793
+        },
+        "calendar_events__cpi_nfp_day": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.09403262570771316,
+          "std": 0.29187486777200555,
+          "min": 0.0,
+          "max": 1.0,
+          "abs_corr_close": 0.0010843833777427838
+        },
+        "calendar_events__opex_week": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.2338683417190996,
+          "std": 0.42329054028565166,
+          "min": 0.0,
+          "max": 1.0,
+          "abs_corr_close": 0.002483675814645334
+        },
+        "calendar_events__tom": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.23756052982636738,
+          "std": 0.8098656590292845,
+          "min": -1.0,
+          "max": 3.0,
+          "abs_corr_close": 0.006918032924129136
+        },
+        "calendar_events__pre_holiday": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.035797943298914926,
+          "std": 0.18578652221678904,
+          "min": 0.0,
+          "max": 1.0,
+          "abs_corr_close": 0.009479685897369647
+        },
+        "calendar_events__mins_since_release": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 442.79850001575613,
+          "std": 117.39188697747709,
+          "min": -265.0,
+          "max": 480.0,
+          "abs_corr_close": 0.008574341235098367
+        },
+        "rates_credit__d_dgs10": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.0010330248631842107,
+          "std": 0.05406360008677252,
+          "min": -0.30000000000000027,
+          "max": 0.29000000000000004,
+          "abs_corr_close": 0.014795943682259928
+        },
+        "rates_credit__t10y2y": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.379624688816294,
+          "std": 0.5860087437595826,
+          "min": -1.08,
+          "max": 1.59,
+          "abs_corr_close": 0.3869373865419774
+        },
+        "rates_credit__d_credit": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": -0.0007474711400090326,
+          "std": 0.030937866605566095,
+          "min": -0.19999999999999973,
+          "max": 0.38000000000000034,
+          "abs_corr_close": 0.00442643822255175
+        },
+        "rates_credit__d_dollar": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 1.9822480204452754e-05,
+          "std": 0.007320384623718978,
+          "min": -0.027444919624708852,
+          "max": 0.03666146690727157,
+          "abs_corr_close": 0.016604185870963153
+        },
+        "vol_state__vix": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 18.52889061039275,
+          "std": 7.411239322449274,
+          "min": 9.14,
+          "max": 82.69,
+          "abs_corr_close": 0.06413340103860699
+        },
+        "vol_state__vix9d_vix": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.9390113631292815,
+          "std": 0.1040849347734122,
+          "min": 0.6592890677397719,
+          "max": 1.590032154340836,
+          "abs_corr_close": 0.06377031830391572
+        },
+        "vol_state__vix3m_vix": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 1.1315814407691305,
+          "std": 0.0947241716782735,
+          "min": 0.7442034405385192,
+          "max": 1.3588621444201312,
+          "abs_corr_close": 0.05875112362154018
+        },
+        "vol_state__vx1_vix": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 1.0452280516121222,
+          "std": 0.07509992557795882,
+          "min": 0.5669804489500362,
+          "max": 1.2956204379562044,
+          "abs_corr_close": 0.11172792441736537
+        },
+        "vol_state__vx2_vx1": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 1.0624633765498928,
+          "std": 0.06799674845810859,
+          "min": 0.7516099356025759,
+          "max": 1.3317555938037866,
+          "abs_corr_close": 0.015523600364108466
+        },
+        "vol_state__rv21_vix": {
+          "n_nan": 1715,
+          "last_nan": "2016-02-03 15:55:00-05:00",
+          "mean": 0.7764024093823101,
+          "std": 0.26335369388497454,
+          "min": 0.29980304456324197,
+          "max": 2.1698047420277726,
+          "abs_corr_close": 0.01778965463436796
+        },
+        "vol_state__garch_sigma": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.011917206420482213,
+          "std": 0.007466199293098135,
+          "min": 0.005611390143005216,
+          "max": 0.12854870007837477,
+          "abs_corr_close": 0.010598505880813744
+        },
+        "vol_state__ret_std_garch": {
+          "n_nan": 1,
+          "last_nan": "2016-01-04 09:30:00-05:00",
+          "mean": 0.0036769595295679095,
+          "std": 0.8908969910228405,
+          "min": -24.84916125677077,
+          "max": 15.183625005937975,
+          "abs_corr_close": 0.0006373508959528612
+        }
+      },
+      "stationarity_guard": "pass"
+    },
+    {
+      "symbol": "SPY",
+      "timeframe": "1Day",
+      "bars": 2449,
+      "context": [
+        "exo"
+      ],
+      "exo": [
+        "calendar/CPI",
+        "calendar/CPI_SCHEDULE",
+        "calendar/FOMC",
+        "calendar/FOMC_SCHEDULE",
+        "calendar/NFP",
+        "calendar/NFP_SCHEDULE",
+        "calendar/OPEX",
+        "calendar/PRE_HOLIDAY",
+        "calendar/TOM",
+        "cboe/VIX",
+        "cboe/VIX3M",
+        "cboe/VIX9D",
+        "cboe/VX1_VIX",
+        "cboe/VX2_VX1",
+        "fred/BAA10Y",
+        "fred/DGS10",
+        "fred/DTWEXBGS",
+        "fred/T10Y2Y"
+      ],
+      "static_s": 0.02,
+      "garch": {
+        "first_fold": {
+          "train_bars": 1007,
+          "omega": 4.1833796633262645e-06,
+          "alpha": 0.19275591553309138,
+          "beta": 0.7430794477406149,
+          "vbar": 6.519758977474226e-05,
+          "persistence": 0.9358353632737062,
+          "seconds": 0.01
+        },
+        "full": {
+          "train_bars": 2449,
+          "omega": 3.3831239427293408e-06,
+          "alpha": 0.1671433042411748,
+          "beta": 0.8070898963835647,
+          "vbar": 0.0001312977950213554,
+          "persistence": 0.9742332006247394,
+          "seconds": 0.01
+        }
+      },
+      "columns": {
+        "calendar_events__to_fomc": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 16.871376071866067,
+          "std": 12.988627558711531,
+          "min": 0.0,
+          "max": 63.0,
+          "abs_corr_close": 0.0034853665425437948
+        },
+        "calendar_events__since_fomc": {
+          "n_nan": 16,
+          "last_nan": "2016-01-26 00:00:00-05:00",
+          "mean": 15.307850390464447,
+          "std": 9.395863190226319,
+          "min": 0.0,
+          "max": 38.0,
+          "abs_corr_close": 0.0030561033144430212
+        },
+        "calendar_events__to_cpi": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 12.25479787668436,
+          "std": 12.5881695375437,
+          "min": 0.0,
+          "max": 63.0,
+          "abs_corr_close": 0.01886208676625822
+        },
+        "calendar_events__since_cpi": {
+          "n_nan": 11,
+          "last_nan": "2016-01-19 00:00:00-05:00",
+          "mean": 10.0,
+          "std": 6.118378108376596,
+          "min": 0.0,
+          "max": 24.0,
+          "abs_corr_close": 0.0012054732679008958
+        },
+        "calendar_events__to_nfp": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 13.178848509595753,
+          "std": 14.104703943958938,
+          "min": 0.0,
+          "max": 63.0,
+          "abs_corr_close": 0.0049732211875703446
+        },
+        "calendar_events__since_nfp": {
+          "n_nan": 4,
+          "last_nan": "2016-01-07 00:00:00-05:00",
+          "mean": 10.08875255623722,
+          "std": 6.237843847476943,
+          "min": 0.0,
+          "max": 24.0,
+          "abs_corr_close": 0.004435392050478952
+        },
+        "calendar_events__fomc_day": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.03144140465496121,
+          "std": 0.17454306808068779,
+          "min": 0.0,
+          "max": 1.0,
+          "abs_corr_close": 0.0033828187671037235
+        },
+        "calendar_events__cpi_nfp_day": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.09391588403429972,
+          "std": 0.29177123242694913,
+          "min": 0.0,
+          "max": 1.0,
+          "abs_corr_close": 2.0274135559808224e-05
+        },
+        "calendar_events__opex_week": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.23274806043282972,
+          "std": 0.4226693136173105,
+          "min": 0.0,
+          "max": 1.0,
+          "abs_corr_close": 0.002797592845198623
+        },
+        "calendar_events__tom": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.2388730093915884,
+          "std": 0.8122980617593764,
+          "min": -1.0,
+          "max": 3.0,
+          "abs_corr_close": 0.0054706320186893986
+        },
+        "calendar_events__pre_holiday": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.037566353613719884,
+          "std": 0.1901838372190278,
+          "min": 0.0,
+          "max": 1.0,
+          "abs_corr_close": 0.011607522151017414
+        },
+        "rates_credit__d_dgs10": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.0010779910167415274,
+          "std": 0.05408309580190371,
+          "min": -0.30000000000000027,
+          "max": 0.29000000000000004,
+          "abs_corr_close": 0.015534968683690356
+        },
+        "rates_credit__t10y2y": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.3793262556145366,
+          "std": 0.5861778643837816,
+          "min": -1.08,
+          "max": 1.59,
+          "abs_corr_close": 0.38705871695666205
+        },
+        "rates_credit__d_credit": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": -0.0007717435688035926,
+          "std": 0.030922905167416585,
+          "min": -0.19999999999999973,
+          "max": 0.38000000000000034,
+          "abs_corr_close": 0.003927775842179564
+        },
+        "rates_credit__d_dollar": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 1.8360103580107413e-05,
+          "std": 0.007319762014784685,
+          "min": -0.027444919624708852,
+          "max": 0.03666146690727157,
+          "abs_corr_close": 0.017363488286749763
+        },
+        "vol_state__vix": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 18.52217231523071,
+          "std": 7.412853790873695,
+          "min": 9.14,
+          "max": 82.69,
+          "abs_corr_close": 0.06404948986482856
+        },
+        "vol_state__vix9d_vix": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.9386743001127428,
+          "std": 0.10419821059855153,
+          "min": 0.6592890677397719,
+          "max": 1.590032154340836,
+          "abs_corr_close": 0.06479811137895926
+        },
+        "vol_state__vix3m_vix": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 1.1316826497289052,
+          "std": 0.09474380163759913,
+          "min": 0.7442034405385192,
+          "max": 1.3588621444201312,
+          "abs_corr_close": 0.05837881123502448
+        },
+        "vol_state__vx1_vix": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 1.045372702369695,
+          "std": 0.07518855356846352,
+          "min": 0.5669804489500362,
+          "max": 1.2956204379562044,
+          "abs_corr_close": 0.11082044140808685
+        },
+        "vol_state__vx2_vx1": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 1.0625154428315238,
+          "std": 0.06800947023968458,
+          "min": 0.7516099356025759,
+          "max": 1.3317555938037866,
+          "abs_corr_close": 0.015383835414067295
+        },
+        "vol_state__rv21_vix": {
+          "n_nan": 21,
+          "last_nan": "2016-02-02 00:00:00-05:00",
+          "mean": 0.7738753559514714,
+          "std": 0.2557569774758964,
+          "min": 0.30564160023181963,
+          "max": 2.0857154233055892,
+          "abs_corr_close": 0.018068989492829805
+        },
+        "vol_state__garch_sigma": {
+          "n_nan": 0,
+          "last_nan": null,
+          "mean": 0.009083343649246399,
+          "std": 0.005684838299463705,
+          "min": 0.004207732665023109,
+          "max": 0.07676274184582677,
+          "abs_corr_close": 0.010104736234764457
+        },
+        "vol_state__ret_std_garch": {
+          "n_nan": 1,
+          "last_nan": "2016-01-04 00:00:00-05:00",
+          "mean": 0.0695039493538533,
+          "std": 1.0779259755483246,
+          "min": -6.422181333715149,
+          "max": 4.221793006720785,
+          "abs_corr_close": 0.01770355744306533
+        }
+      },
+      "stationarity_guard": "pass"
+    },
+    {
+      "symbol": "AAPL",
+      "timeframe": "5Min",
+      "bars": 190243,
+      "context": [
+        "market",
+        "sector"
+      ],
+      "exo": [],
+      "static_s": 0.2,
+      "sector_bars": 190401,
+      "columns": {
+        "cross_asset__mkt_ret_1": {
+          "n_nan": 1,
+          "last_nan": "2016-01-04 09:30:00-05:00",
+          "mean": 7.125585856439293e-06,
+          "std": 0.0012772774025417782,
+          "min": -0.11750905054119443,
+          "max": 0.06183215953982746,
+          "abs_corr_close": 0.0013872107173087934
+        },
+        "cross_asset__mkt_sigma": {
+          "n_nan": 100,
+          "last_nan": "2016-01-05 11:15:00-05:00",
+          "mean": 0.0009890350647278128,
+          "std": 0.0008098781802025999,
+          "min": 0.00017511642324491693,
+          "max": 0.018103719831830598,
+          "abs_corr_close": 0.04231807850948984
+        },
+        "cross_asset__beta_50": {
+          "n_nan": 50,
+          "last_nan": "2016-01-04 13:35:00-05:00",
+          "mean": 1.2309399245528423,
+          "std": 0.7548300607349727,
+          "min": -5.033754443284,
+          "max": 16.243459269044386,
+          "abs_corr_close": 0.05314201824140749
+        },
+        "cross_asset__corr_50": {
+          "n_nan": 50,
+          "last_nan": "2016-01-04 13:35:00-05:00",
+          "mean": 0.6436518043291409,
+          "std": 0.2517898323802184,
+          "min": -0.8999319778502001,
+          "max": 0.9960507440012011,
+          "abs_corr_close": 0.014399507488219198
+        },
+        "cross_asset__resid_ret": {
+          "n_nan": 50,
+          "last_nan": "2016-01-04 13:35:00-05:00",
+          "mean": 4.604536887853046e-06,
+          "std": 0.001257478711847725,
+          "min": -0.07503780291739846,
+          "max": 0.05351837588445747,
+          "abs_corr_close": 0.0006681856317637734
+        },
+        "cross_asset__rel_mom_12": {
+          "n_nan": 12,
+          "last_nan": "2016-01-04 10:25:00-05:00",
+          "mean": 6.544406218505526e-05,
+          "std": 0.0049131369759881655,
+          "min": -0.08551395757009095,
+          "max": 0.08418709434863869,
+          "abs_corr_close": 0.0024290304772306205
+        },
+        "cross_asset__mkt_ret_lag1": {
+          "n_nan": 2,
+          "last_nan": "2016-01-04 09:35:00-05:00",
+          "mean": 7.1280158159013715e-06,
+          "std": 0.0012772803198188374,
+          "min": -0.11750905054119443,
+          "max": 0.06183215953982746,
+          "abs_corr_close": 0.0013181830172587577
+        },
+        "cross_asset__mkt_ret_lag3": {
+          "n_nan": 4,
+          "last_nan": "2016-01-04 09:45:00-05:00",
+          "mean": 7.117076091931525e-06,
+          "std": 0.0012772820743035076,
+          "min": -0.11750905054119443,
+          "max": 0.06183215953982746,
+          "abs_corr_close": 0.0012770444536270734
+        },
+        "cross_asset__mkt_ret_lag6": {
+          "n_nan": 7,
+          "last_nan": "2016-01-04 10:00:00-05:00",
+          "mean": 7.119984130340852e-06,
+          "std": 0.0012772912883198338,
+          "min": -0.11750905054119443,
+          "max": 0.06183215953982746,
+          "abs_corr_close": 0.0012972000129305228
+        },
+        "cross_asset__sector_ret_lag1": {
+          "n_nan": 2,
+          "last_nan": "2016-01-04 09:35:00-05:00",
+          "mean": 1.0580836202087373e-05,
+          "std": 0.0016695475063051054,
+          "min": -0.13751853848024131,
+          "max": 0.0708081341511666,
+          "abs_corr_close": 0.0004272510750692103
+        },
+        "cross_asset__sector_ret_lag3": {
+          "n_nan": 4,
+          "last_nan": "2016-01-04 09:45:00-05:00",
+          "mean": 1.0563680849822891e-05,
+          "std": 0.001669547833060306,
+          "min": -0.13751853848024131,
+          "max": 0.0708081341511666,
+          "abs_corr_close": 0.0003829733657987233
+        },
+        "cross_asset__sector_ret_lag6": {
+          "n_nan": 7,
+          "last_nan": "2016-01-04 10:00:00-05:00",
+          "mean": 1.056610285635178e-05,
+          "std": 0.0016695604514518785,
+          "min": -0.13751853848024131,
+          "max": 0.0708081341511666,
+          "abs_corr_close": 0.00041812172957539573
+        },
+        "cross_asset__sector_resid_ret": {
+          "n_nan": 50,
+          "last_nan": "2016-01-04 13:35:00-05:00",
+          "mean": 2.4855711375155193e-06,
+          "std": 0.0010343780207682487,
+          "min": -0.029508757761573252,
+          "max": 0.054795713943758984,
+          "abs_corr_close": 0.001073760039361712
+        },
+        "cross_asset__rel_strength_12": {
+          "n_nan": 12,
+          "last_nan": "2016-01-04 10:25:00-05:00",
+          "mean": 2.4074570484161586e-05,
+          "std": 0.004209481801230752,
+          "min": -0.06902508777289862,
+          "max": 0.06911865806143203,
+          "abs_corr_close": 4.480119376802855e-05
+        }
+      },
+      "stationarity_guard": "pass"
+    }
+  ],
+  "spot_checks": {
+    "vix_2020-03-16_09:30": 57.83,
+    "vix_2020-03-16_15:55": 57.83,
+    "vix_2020-03-17_09:30": 82.69,
+    "fomc_2020-03-03_09:55": 0.0,
+    "fomc_2020-03-03_10:00": 1.0,
+    "d_dgs10_2020-03-09_15:55": -0.09999999999999998,
+    "d_dgs10_2020-03-10_09:30": -0.18000000000000005,
+    "d_dgs10_2020-03-11_09:30": -0.19999999999999996
+  }
+}

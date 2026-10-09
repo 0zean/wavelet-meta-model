@@ -16,6 +16,15 @@ from features.causal_modwt import wavelet_ar_features
 from features.fractional_diff import fit_fracdiff_d, fracdiff_transform
 from features.indicators import compute_rsi, compute_siegel_slope, compute_vwap
 from features.registry import feature_group
+from features.state import (
+    CALENDAR_EXO,
+    RATES_EXO,
+    VOL_STATE_EXO,
+    calendar_events_frame,
+    fit_vol_state,
+    rates_credit_frame,
+    vol_state_frame,
+)
 from features.vol_profile import bar_volatility
 
 WAVELET_EXT_FILTERS = ("db1", "db2", "la8")
@@ -31,6 +40,7 @@ VOL_OF_VOL_WINDOW = 50
 SPREAD_WINDOW = 20  # Amihud / Roll / Corwin–Schultz
 SADF_WINDOWS = (50, 100, 200)
 BETA_WINDOW = 50
+CROSS_LAGS = (1, 3, 6)  # lagged market / sector 1-bar returns (the lead-lag features)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -321,29 +331,64 @@ def intraday(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
     return _prefixed("intraday", cols, df.index)
 
 
-@feature_group("cross_asset", needs=("market",))
+def _aligned_close(bars: pd.DataFrame, index: pd.DatetimeIndex) -> pd.Series:
+    """Another symbol's close on `index`: bar t takes the last bar stamped <= t."""
+    c = bars["close"].astype(float)
+    return c.reindex(index.union(c.index)).ffill().reindex(index)
+
+
+def _beta(r: pd.Series, m: pd.Series, w: int) -> pd.Series:
+    return pd.Series(_div(r.rolling(w, min_periods=w).cov(m), m.rolling(w, min_periods=w).var()), index=r.index)
+
+
+@feature_group("cross_asset", needs=("market",), optional=("sector",))
 def cross_asset(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
     """
     Market (SPY) context for another symbol: market return and σ, rolling beta and
-    correlation, residual return, relative momentum. The market close is aligned
-    causally: bar t takes the last market bar stamped <= t.
+    correlation, residual return, relative momentum, and the market's 1-bar returns
+    CROSS_LAGS bars ago (the lead-lag features). With a "sector" context (the mapped
+    sector ETF, data/sectors.py): its lagged 1-bar returns, the sector-beta residual
+    return and the relative strength log(close/close_h) − log(sector/sector_h). Other
+    symbols' closes are aligned causally: bar t takes their last bar stamped <= t.
     """
-    market = context["market"]
-    mc = market["close"].astype(float)
-    mc = mc.reindex(df.index.union(mc.index)).ffill().reindex(df.index)
-    r = np.log(df["close"].astype(float)).diff()
+    mc = _aligned_close(context["market"], df.index)
+    logc = np.log(df["close"].astype(float))
+    r = logc.diff()
     m = np.log(mc).diff()
     w, h = BETA_WINDOW, cfg.VERTICAL_BARS
-    beta = pd.Series(_div(r.rolling(w, min_periods=w).cov(m), m.rolling(w, min_periods=w).var()), index=df.index)
+    beta = _beta(r, m, w)
     cols = {
         "mkt_ret_1": m,
         "mkt_sigma": bar_volatility(mc, cfg.VOL_SPAN),
         f"beta_{w}": beta,
         f"corr_{w}": r.rolling(w, min_periods=w).corr(m).clip(-1, 1),
         "resid_ret": r - beta * m,
-        f"rel_mom_{h}": np.log(df["close"].astype(float)).diff(h) - np.log(mc).diff(h),
+        f"rel_mom_{h}": logc.diff(h) - np.log(mc).diff(h),
+        **{f"mkt_ret_lag{k}": m.shift(k) for k in CROSS_LAGS},
     }
+    if "sector" in context:
+        sc = _aligned_close(context["sector"], df.index)
+        s = np.log(sc).diff()
+        cols |= {
+            **{f"sector_ret_lag{k}": s.shift(k) for k in CROSS_LAGS},
+            "sector_resid_ret": r - _beta(r, s, w) * s,
+            f"rel_strength_{h}": logc.diff(h) - np.log(sc).diff(h),
+        }
     return _prefixed("cross_asset", cols, df.index)
+
+
+@feature_group("calendar_events", needs=("exo",), exo=CALENDAR_EXO, level_check=False)
+def calendar_events(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
+    """Sessions to / since FOMC, CPI and NFP, event-day / OPEX-week / turn-of-month / pre-holiday flags and (intraday)
+    minutes since the day's release; known in advance, read point in time (features/state.py)."""
+    return _prefixed("calendar_events", calendar_events_frame(df, cfg, context["exo"]), df.index)
+
+
+@feature_group("rates_credit", needs=("exo",), exo=RATES_EXO)
+def rates_credit(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
+    """10-year yield change, 2s10s, Baa credit-spread change and broad-dollar change, as of each bar (FRED,
+    available_at rules of SPEC §12; features/state.py)."""
+    return _prefixed("rates_credit", rates_credit_frame(df, cfg, context["exo"]), df.index)
 
 
 @feature_group("fracdiff", per_fold=True)
@@ -385,3 +430,20 @@ class Session:
         profile, iaom = state
         frame = session_frame(df, cfg, profile, iaom)
         return _prefixed("session", {c: frame[c].to_numpy() for c in GROUP_COLUMNS}, df.index)
+
+
+@feature_group("vol_state", per_fold=True, needs=("exo",), exo=VOL_STATE_EXO)
+class VolState:
+    """
+    Volatility state (SPEC §15, features/state.py): VIX, the VIX9D / VIX3M / futures term-structure ratios, 21-session
+    realized σ / VIX, and a GARCH(1,1) conditional σ and standardized return. Per fold: the GARCH parameters (and,
+    intraday, the time-of-day profile its returns are deseasonalized by) are fit on train bars.
+    """
+
+    @staticmethod
+    def fit(train_df: pd.DataFrame, cfg):
+        return fit_vol_state(train_df, cfg)
+
+    @staticmethod
+    def transform(df: pd.DataFrame, state, cfg, context) -> pd.DataFrame:
+        return _prefixed("vol_state", vol_state_frame(df, state, cfg, context["exo"]), df.index)
