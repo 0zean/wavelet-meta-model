@@ -106,7 +106,8 @@ user's request) pushed, opened as PR #17 and merged into `main` (merge commit 6b
 - Open: the legacy CSV hash on `main` is `f8e0617e…`, not the `551d8074…` recorded after U12–U14; U15 does not change
   it. Either the reference value or the environment drifted (task chip spawned).
 - Open: delete the merged `unit/13-…` / `unit/14-…` / `unit/15-…` branches and the stage-b worktree? (the user's call)
-- Open: this handoff.md is written to the working tree on `main` but not committed.
+- Noted in PLAN2 (U15 deferred): explore CBOE SKEW and VVIX in the exo layer plus a bar-based realized-gamma proxy as
+  the gamma proxy (SqueezeMetrics GEX as a later cross-check).
 
 ## Pick up here
 Start U16 (mechanism primaries; PLAN2 U16, SPEC §16) on a new branch `unit/16-...` off `main`. It builds on the U14

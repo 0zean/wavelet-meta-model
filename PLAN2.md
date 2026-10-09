@@ -694,6 +694,15 @@ deviations in SPEC §15 "Implementation (U15, as built)".
     stocks". AMZN / GOOGL / META map to QQQ (no cached XLY / XLC covering 2016).
   - `gamma_proxy`: no historical option chain or open interest exists (U13); `data/options.py` collects forward.
     Revisit after a year of snapshots (U19 / U20).
+  - **To explore (gamma proxy without a chain):** add CBOE SKEW (S&P tail / put skew) and VVIX (vol of vol) to the
+    exo layer: free daily histories from the same CBOE index-history endpoint as VIX (`data/exo.py` `CBOE_INDEXES`,
+    available at 16:20 ET like VIX), so a few lines plus `vol_state` / `gamma_proxy` columns (e.g. `skew`, `vvix`,
+    `vvix_vix`). Alongside, a bar-based "revealed gamma" proxy needing no new data: the rolling autocorrelation /
+    variance ratio of 5Min SPY returns (dealers long gamma damp moves → reversal; short gamma → continuation; the
+    mechanism Baltussen et al. 2021 tie to intraday momentum, F5). Cross-check later against SqueezeMetrics' free
+    daily GEX / DIX CSV (proprietary method, check revisions) before paying for a chain history (ThetaData, ORATS,
+    OptionMetrics, CBOE DataShop Open-Close; open interest lags one session). Candidate for U16 (F5 state splits) or
+    a small exo top-up before U18; each added column is a reported state split, not a selection trial.
   - BAA10Y's `available_at` (next business day 16:30 ET, the H.15 rule) is assumed, not verified against FRED's
     actual publication lag (conservative if FRED posts it the same evening).
   - Open: the legacy CSV hash on `main` today is `f8e0617e…`, not the `551d8074…` recorded after U12–U14; U15 does not
