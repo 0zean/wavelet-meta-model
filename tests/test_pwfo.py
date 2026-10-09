@@ -353,7 +353,7 @@ def test_pwfo_is_causal(daily, pwfo_result):
 
 
 def test_pwfo_respects_the_holdout():
-    idx = pd.bdate_range("2023-01-02", "2025-10-03", tz="America/New_York")
+    idx = pd.bdate_range("2024-01-02", "2026-10-03", tz="America/New_York")
     with pytest.raises(HoldoutError):
         run_pwfo(synthetic_daily(len(idx)).set_axis(idx), PW_CFG)
 

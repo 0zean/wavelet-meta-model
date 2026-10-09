@@ -442,7 +442,7 @@ def test_pwfo_cell_counts_its_grid(env):
 
 def test_holdout_crossing_cells_are_refused_without_final(env):
     src = FakeSource()
-    cells = expand(doc(grid={"symbols": ["AAA"], "end": ["2017-06-01", "2025-12-01"]}))
+    cells = expand(doc(grid={"symbols": ["AAA"], "end": ["2017-06-01", "2026-12-01"]}))
     with pytest.raises(HoldoutError, match="HOLDOUT_START"):
         R.run(cells, source=src, **env)
     assert src.loads == [] and not env["ledger"].path.exists()  # refused before any data or ledger access
@@ -450,7 +450,7 @@ def test_holdout_crossing_cells_are_refused_without_final(env):
 
 def test_final_run_is_stage_e_once(env):
     src = FakeSource()
-    hold = {"start": "2020-01-01", "end": "2025-12-01"}
+    hold = {"start": "2021-01-01", "end": "2026-12-01"}
     with pytest.raises(HoldoutError, match="stage E"):
         R.run(expand(doc(stage="D", **hold)), source=src, final=True, **env)
     rows = R.run(expand(doc(stage="E", **hold)), source=src, final=True, **env)
@@ -528,7 +528,7 @@ def test_final_cells_must_reach_the_holdout_and_the_marker_spans_ledgers(env, tm
     with pytest.raises(HoldoutError, match="must run past"):
         R.run(expand(doc(stage="E")), source=src, final=True, **env)
     assert src.loads == [] and not env["holdout_marker"].exists()
-    hold = {"start": "2020-01-01", "end": "2025-12-01"}
+    hold = {"start": "2021-01-01", "end": "2026-12-01"}
     R.run(expand(doc(stage="E", **hold)), source=src, final=True, **env)
     other = {**env, "ledger": L.Ledger(tmp_path / "elsewhere.jsonl")}
     with pytest.raises(HoldoutError, match="already accessed"):
@@ -820,7 +820,7 @@ class ExtendingSource(FakeSource):
 
     def bars(self, symbol, timeframe, start, end, *, allow_holdout):
         self.loads.append((symbol, timeframe, start, end, allow_holdout))
-        idx = pd.bdate_range("2019-01-01", "2026-01-01", inclusive="left", tz="America/New_York")
+        idx = pd.bdate_range("2020-01-01", "2027-01-01", inclusive="left", tz="America/New_York")
         df = synthetic_daily(len(idx), seed=sum(map(ord, symbol)))
         df.index = idx
         lo, hi = pd.Timestamp(start, tz="America/New_York"), pd.Timestamp(end, tz="America/New_York")
@@ -832,9 +832,9 @@ def test_final_pwfo_cell_scores_only_the_holdout_and_extends_the_dev_stream(env,
 
     pwfo = {"is_grid": [400, 600], "oos_grid": [50, 100]}
     over = {**SMALL, "PWFO_DEFAULT": [400, 50], "SELECT_LOOKBACK": 60, "SELECT_EVERY": 20}
-    dev_spec = doc(stage="C", start="2019-01-01", end="2025-10-01", pwfo=pwfo, overrides=over)
+    dev_spec = doc(stage="C", start="2020-01-01", end="2026-10-01", pwfo=pwfo, overrides=over)
     (dev,) = R.run(expand(dev_spec), source=ExtendingSource(), **env)
-    e_spec = doc(stage="E", start="2019-01-01", end="2025-12-01", pwfo=pwfo,
+    e_spec = doc(stage="E", start="2020-01-01", end="2026-12-01", pwfo=pwfo,
                  overrides={**over, "PWFO_PARTIAL_LAST": True})  # fmt: skip
     (e,) = R.run(expand(e_spec), source=ExtendingSource(), final=True, **env)
     assert dev["status"] == e["status"] == "ok" and e["final"] is True
@@ -850,8 +850,8 @@ def test_final_pwfo_cell_scores_only_the_holdout_and_extends_the_dev_stream(env,
         read(dev["cell_hash"], "daily_returns.csv"),
     )
     start = HOLDOUT_START.tz_localize("America/New_York")
-    assert ho.index.min() >= start and e["n_obs"] == len(ho) and e["holdout_start"] == "2025-10-01"
-    assert ho.index.max() == pd.Timestamp("2025-11-28", tz="America/New_York")  # partial last window: to the data end
+    assert ho.index.min() >= start and e["n_obs"] == len(ho) and e["holdout_start"] == "2026-10-01"
+    assert ho.index.max() == pd.Timestamp("2026-11-30", tz="America/New_York")  # partial last window: to the data end
     assert e["n_pre_holdout_days"] == int((full.index < start).sum()) and len(full) == len(ho) + e["n_pre_holdout_days"]
     common = c.index[:-5]  # the dev cell's last days close its positions at its data end
     assert np.allclose(full.loc[common], c.loc[common], atol=1e-12, rtol=0)  # E continues C's stream

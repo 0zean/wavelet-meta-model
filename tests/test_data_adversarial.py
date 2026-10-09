@@ -176,12 +176,13 @@ def test_quality_report_empty_intrasession_is_nan_safe():
 
 def test_holdout_guard(cache):
     with pytest.raises(bars.HoldoutError):
-        bars.load_bars("SPY", "5Min", "2025-09-01", "2025-10-02", cache_dir=cache, source=FakeSource())
+        bars.load_bars("SPY", "5Min", "2026-09-01", "2026-10-02", cache_dir=cache, source=FakeSource())
     with pytest.raises(bars.HoldoutError):  # resampled timeframes too
-        bars.load_bars("SPY", "1Hour", "2025-09-01", "2025-10-02", cache_dir=cache, source=FakeSource())
+        bars.load_bars("SPY", "1Hour", "2026-09-01", "2026-10-02", cache_dir=cache, source=FakeSource())
     # exactly up to HOLDOUT_START is allowed; allow_holdout opts in
-    bars.load_bars("SPY", "5Min", "2024-11-25", "2025-10-01", cache_dir=cache, source=FakeSource())
-    bars.load_bars("SPY", "5Min", "2024-11-25", "2025-10-03", cache_dir=cache, source=FakeSource(), allow_holdout=True)
+    assert bars.HOLDOUT_START == pd.Timestamp("2026-10-01")
+    bars.load_bars("SPY", "5Min", "2024-11-25", "2026-10-01", cache_dir=cache, source=FakeSource())
+    bars.load_bars("SPY", "5Min", "2024-11-25", "2026-10-03", cache_dir=cache, source=FakeSource(), allow_holdout=True)
 
 
 def test_stale_calendar_is_refetched(tmp_path, monkeypatch):
