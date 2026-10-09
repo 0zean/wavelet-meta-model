@@ -232,6 +232,8 @@ def microstructure(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
 
 def cusum_state(close: pd.Series, threshold: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     """The symmetric CUSUM filter's running S+ / S− (reset on crossing), in units of the threshold."""
+    if len(threshold) != len(close):
+        raise ValueError(f"cusum_state: threshold has {len(threshold)} values for {len(close)} prices")
     ret = np.log(close.astype(float)).diff().to_numpy()
     return _cusum_state_kernel(ret, threshold.to_numpy(dtype=float))
 
@@ -239,7 +241,7 @@ def cusum_state(close: pd.Series, threshold: pd.Series) -> tuple[np.ndarray, np.
 @numba.njit(cache=True)
 def _cusum_state_kernel(ret: np.ndarray, h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """cusum_state's recursion, compiled (U12; the loop's float operations in the same order, checked in
-    tests/test_features.py). NaN on bars with a NaN return or a NaN / zero threshold, which leave the state as is."""
+    tests/test_harness_speed.py). NaN on bars with a NaN return or a NaN / zero threshold, which leave the state as is."""
     pos, neg = np.full(len(ret), np.nan), np.full(len(ret), np.nan)
     s_pos = 0.0
     s_neg = 0.0

@@ -52,6 +52,7 @@ def fit_meta_model(
     cfg: RunConfig,
     spans: pd.DataFrame | None = None,
     cal_pairs: pd.DataFrame | None = None,
+    need_oof: bool = False,
 ) -> ZooModel | None:
     """
     Train the meta-label classifier (cfg.META_MODEL, models/zoo.py).
@@ -77,6 +78,8 @@ def fit_meta_model(
             average uniqueness). With >= MIN_VAL_EVENTS rows of both classes the model is fit uncalibrated and
             a weighted Platt map on these pairs becomes its calibrator; otherwise (the first window, or a caller
             without a walk-forward) the model cross-fits its own calibration.
+        need_oof (bool): a zoo model keeps purged-CV OOF predictions even when it needs none (OOF_META="reuse"
+            with a train-fit sizer: k fits + 1 refit instead of 1).
 
     Returns:
         ZooModel | None: Trained meta-model, or None if the labels (or an inner purged train split) have a
@@ -95,7 +98,7 @@ def fit_meta_model(
         and cal_pairs["y"].nunique() == 2
     )
     calibration = "none" if rolling or cfg.CALIBRATION == "none" else "crossfit"
-    meta = make_model(cfg.META_MODEL, cfg, role="meta", calibration=calibration)
+    meta = make_model(cfg.META_MODEL, cfg, role="meta", calibration=calibration, need_oof=need_oof)
     if cfg.META_MODEL == "legacy":
         meta.fit(X_m, meta_labels, weights.loc[meta_labels.index])
     else:
@@ -142,7 +145,7 @@ def oof_meta_prob(
         if meta.oof_raw_ is None or len(meta.oof_raw_) != len(meta_labels):
             raise RuntimeError(
                 f"OOF_META='reuse': the {meta.name} meta-model holds no OOF predictions for these "
-                f"{len(meta_labels)} events (one grid point fit without cross-fitting); use OOF_META='refit'"
+                f"{len(meta_labels)} events (fit_meta_model was called without need_oof=True)"
             )
         return pd.Series(_clip(meta.cal.predict(meta.oof_raw_)), index=meta_labels.index, name="oof_meta_prob")
     rolling = cfg.CALIBRATION == "rolling" and cfg.META_MODEL != "legacy"

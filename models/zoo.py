@@ -17,7 +17,7 @@ Every zoo model except `legacy` does the same thing inside `fit`, using only the
 
 U12 (SPEC §11.2): `cfg.ZOO_FIXED_PARAMS[name]` replaces the grid by that one point (step 1 then only produces the
 OOF predictions); `make_model(..., calibration="none")` skips step 2 (identity calibrator), and with one grid point
-also step 1: one fit, no OOF predictions. The walk-forward attaches the rolling calibrator (models/meta_model.py).
+also step 1 (unless `need_oof`: a train-fit sizer reuses the OOF predictions): one fit, no OOF predictions. The walk-forward attaches the rolling calibrator (models/meta_model.py).
 
 Feature columns with no value in any fitting row (a rule primary's `clf_prob`) are dropped; any other NaN raises.
 
@@ -76,8 +76,13 @@ def zoo_model(name: str) -> Callable:
     return register
 
 
-def make_model(name: str, cfg: RunConfig, role: Role = "meta", calibration: Calibration = "crossfit") -> ZooModel:
-    """A fresh, unfitted zoo model seeded with cfg.SEED; `calibration` applies to the grid-searched models."""
+def make_model(
+    name: str, cfg: RunConfig, role: Role = "meta", calibration: Calibration = "crossfit", need_oof: bool = False
+) -> ZooModel:
+    """
+    A fresh, unfitted zoo model seeded with cfg.SEED. For the grid-searched models: `calibration`, and `need_oof` =
+    always produce purged-CV OOF predictions (`oof_raw_`), even with one grid point and no calibration to choose.
+    """
     if role not in ("meta", "primary"):
         raise ValueError(f"role must be 'meta' or 'primary', got {role!r}")
     if calibration not in ("crossfit", "none"):
@@ -86,7 +91,7 @@ def make_model(name: str, cfg: RunConfig, role: Role = "meta", calibration: Cali
         cls = REGISTRY[name]
     except KeyError:
         raise ValueError(f"unknown zoo model {name!r}; expected one of {sorted(REGISTRY)}") from None
-    return cls(cfg, role, calibration) if issubclass(cls, _Tuned) else cls(cfg, role)
+    return cls(cfg, role, calibration, need_oof) if issubclass(cls, _Tuned) else cls(cfg, role)
 
 
 def inner_cv(labels: pd.DataFrame, cfg: RunConfig) -> BoundSplitter:
@@ -173,8 +178,10 @@ class _Tuned:
     name: str
     grid: ClassVar[dict[str, list]] = {}
 
-    def __init__(self, cfg: RunConfig, role: Role = "meta", calibration: Calibration = "crossfit"):
-        self.cfg, self.role, self.calibration = cfg, role, calibration
+    def __init__(
+        self, cfg: RunConfig, role: Role = "meta", calibration: Calibration = "crossfit", need_oof: bool = False
+    ):
+        self.cfg, self.role, self.calibration, self.need_oof = cfg, role, calibration, need_oof
         self.est = self.cal = None
 
     @classmethod
@@ -189,8 +196,8 @@ class _Tuned:
 
     def fit(self, X, y, sample_weight, cv: BoundSplitter) -> "_Tuned":
         """
-        Module docstring steps 1–3. A single grid point with calibration "none" skips the purged CV: one fit, no
-        OOF predictions (`oof_raw_` None), identity calibrator.
+        Module docstring steps 1–3. A single grid point with calibration "none" skips the purged CV unless need_oof:
+        one fit, no OOF predictions (`oof_raw_` None), identity calibrator.
         """
         Xa, ya, w = _as_xyw(X, y, sample_weight)
         # Columns with no value in any fitting row carry nothing (e.g. a rule primary's clf_prob); any other NaN raises
@@ -199,7 +206,7 @@ class _Tuned:
         if not isinstance(cv, BoundSplitter) or len(cv.t0) != len(ya):
             raise ValueError("cv must be a BoundSplitter bound to the fitting rows' spans")
         grid = self.param_grid(self.cfg)
-        if len(grid) == 1 and self.calibration == "none":
+        if len(grid) == 1 and self.calibration == "none" and not self.need_oof:
             self.best_index_, self.best_params_ = 0, grid[0]
             self.cv_results_ = pd.DataFrame([{"params": grid[0], "score": np.nan, "score_sd": np.nan}])
             self.calibration_, self.calibration_brier_ = "none", {}

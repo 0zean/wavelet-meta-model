@@ -1,5 +1,6 @@
 """
-PWFO runner (U9): every (IS, OOS) combo of one symbol's walk-forward in parallel, nested selection, PBO and DSR.
+PWFO runner (U9): every (IS, OOS) combo of one symbol's walk-forward in parallel, the combined stream
+(cfg.PWFO_COMBINE: average or nested selection), PBO and DSR.
 
     uv run python -m wfo.pwfo_run --symbol SPY --timeframe 1Hour --start 2016-01-01 --end 2025-10-01 \\
         --primary wavelet_trend --meta-model logit_l2 --meta-train oof --out results/pwfo
@@ -8,7 +9,7 @@ Windows count exchange-calendar sessions (data/cache/calendar.json). Writes to `
 row per combo), `windows_<cell>.csv`, `returns_<cell>.csv` (daily OOS returns per combo), `choice_<cell>.csv`
 (nested-selection decisions), `pwfo_<cell>.csv` (stitched PWFO daily returns), `stats_<cell>.json`,
 `heatmaps_<cell>.png` and per-combo logs under `logs/`; appends one counted trial per run combo plus one for the
-nested PWFO to `<out>/trials.jsonl` (stage "U9").
+combined PWFO (`combo` = average | nested) to `<out>/trials.jsonl` (stage "U9").
 """
 
 import os
@@ -201,7 +202,7 @@ def main() -> None:
             "status": "ok",
             "git_sha": sha,
             "started_at": started,
-            "combo": "nested",
+            "combo": cfg.PWFO_COMBINE,
             "run_id": run_id,
             "n_trials_dsr": st["n_combos"],
             "ret_ann": num(st.get("pwfo_ret_ann")),
@@ -213,7 +214,7 @@ def main() -> None:
             "n_obs": st["n_live_days"],
             "runtime_s": round(runtime, 1),
         }
-        f.write(json.dumps({**row, "spec": {**spec, "combo": "nested"}}) + "\n")
+        f.write(json.dumps({**row, "spec": {**spec, "combo": cfg.PWFO_COMBINE}}) + "\n")
 
     cols = ["n_oos_windows", "n_ok_windows", "oos_sharpe", "oos_ret_ann", "max_dd", "wfe", "wfe_sharpe",
             "pct_profitable_oos", "is_oos_spearman", "n_trades"]  # fmt: skip

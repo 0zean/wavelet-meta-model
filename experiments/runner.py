@@ -244,6 +244,7 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
         row["sharpe_primary"] = daily_stats(daily_returns(res["Primary only"][0]))["sharpe"]
         row |= diags[sym]
         row["kind"] = "wfo"
+        row["calibration_folds"] = sig.attrs.get("calibration_folds")
     else:
         profile = get_profile(cfg.RISK_PROFILE)
         bars = {s: data["bars"][s].loc[sig.index[0] :] for s, sig in sigs.items()}
@@ -316,6 +317,8 @@ def _pwfo_row(cell: Cell, cfg: RunConfig, res, out: Path) -> dict:
         # nested: the default combo's windows (U9–U11); average: every combo's (all of them are traded)
         "n_oos_windows": int(summ.loc[default, "n_oos_windows"] if nested else summ["n_oos_windows"].sum()),
         "combine": cfg.PWFO_COMBINE,
+        "n_run_combos": int(st["n_run_combos"]),  # combos with a fitted window (the average / selection is over these)
+        "calibration_windows": st.get("calibration_windows"),
         "pbo": st.get("pbo"),
         "pwfo_dsr": st.get("pwfo_dsr"),
         "n_decisions": int(st["n_decisions"]),

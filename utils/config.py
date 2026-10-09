@@ -276,18 +276,6 @@ class RunConfig:
 
         if self.SIZER not in SIZERS:
             raise ValueError(f"SIZER must be one of {sorted(SIZERS)}, got {self.SIZER!r}")
-        if (
-            SIZERS[self.SIZER].needs_train
-            and self.OOF_META == "reuse"
-            and self.META_MODEL != "legacy"
-            and self.CALIBRATION != "crossfit"
-            and len(ZOO[self.META_MODEL].param_grid(self)) < 2
-        ):
-            raise ValueError(
-                f"SIZER={self.SIZER!r} with OOF_META='reuse' needs the meta-model's purged-CV OOF predictions, which "
-                f"{self.META_MODEL!r} computes only with CALIBRATION='crossfit' or a grid of >= 2 points; "
-                "use CALIBRATION='crossfit' or OOF_META='refit'"
-            )
         if not (
             self.SIZE_STEP == 0
             or (0 < self.SIZE_STEP <= 1 and abs(1 / self.SIZE_STEP - round(1 / self.SIZE_STEP)) < 1e-9)

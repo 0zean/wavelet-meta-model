@@ -67,13 +67,25 @@ def test_new_switches_are_validated():
     assert REGISTRY["logit_l2"].param_grid(RunConfig(ZOO_FIXED_PARAMS={})) == [{"C": 0.01}, {"C": 0.1}, {"C": 1.0}]
 
 
-def test_oof_reuse_with_a_train_fit_sizer_needs_oof_predictions():
-    kw = {"META_MODEL": "logit_l2", "SIZER": "ecdf", "OOF_META": "reuse"}
-    with pytest.raises(ValueError, match="OOF_META='reuse'"):
-        RunConfig.for_timeframe("1Day", **kw, CALIBRATION="rolling", ZOO_FIXED_PARAMS=FIXED)
-    RunConfig.for_timeframe("1Day", **kw, CALIBRATION="rolling", ZOO_FIXED_PARAMS={})  # a 3-point grid has OOF
-    RunConfig.for_timeframe("1Day", **kw, CALIBRATION="crossfit", ZOO_FIXED_PARAMS=FIXED)  # cross-fitting has OOF
-    RunConfig.for_timeframe("1Day", **{**kw, "SIZER": "linear"}, CALIBRATION="none", ZOO_FIXED_PARAMS=FIXED)
+def test_train_fit_sizers_with_oof_reuse_get_the_oof_predictions_they_need(daily, monkeypatch):
+    """A train-fit sizer (cfg.SIZER or an extra one) under OOF_META="reuse" makes every window's meta-model keep its
+    purged-CV OOF predictions (need_oof), also when rolling calibration and fixed parameters need none."""
+    cfg = WCFG.replace(ZOO_FIXED_PARAMS=FIXED, CALIBRATION="rolling", OOF_META="reuse")
+    seen, real = [], eng.fit_meta_model
+    monkeypatch.setattr(
+        eng, "fit_meta_model", lambda *a, **k: seen.append((k["need_oof"], real(*a, **k))) or seen[-1][1]
+    )
+    sig = eng.run_wfo(daily, cfg, sizers=("ecdf",))
+    assert "bet_size:ecdf" in sig and all(need for need, _ in seen)
+    assert all(m.oof_raw_ is not None for _, m in seen if m is not None)
+    assert any(m.calibration_.startswith("rolling") for _, m in seen if m is not None)
+    seen.clear()
+    eng.run_wfo(daily, cfg.replace(SIZER="ecdf"))
+    assert seen and all(need for need, _ in seen)
+    seen.clear()
+    eng.run_wfo(daily, cfg)  # fixed sizer: no OOF needed, one fit per window
+    assert seen and not any(need for need, _ in seen)
+    assert all(m.oof_raw_ is None for _, m in seen if m is not None and m.calibration_.startswith("rolling"))
 
 
 # ── Fixed hyper-parameters, calibration modes ────────────────────────────────
@@ -93,12 +105,14 @@ def logit_fits(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "fixed, calibration, n_fits",
-    [({}, "crossfit", 3 * 4 + 1), (FIXED, "crossfit", 4 + 1), (FIXED, "none", 1), ({}, "none", 3 * 4 + 1)],
-)
-def test_fits_per_window(logit_fits, fixed, calibration, n_fits):
+    "fixed, calibration, need_oof, n_fits",
+    [({}, "crossfit", False, 3 * 4 + 1), (FIXED, "crossfit", False, 4 + 1), (FIXED, "none", False, 1),
+     ({}, "none", False, 3 * 4 + 1), (FIXED, "none", True, 4 + 1)],
+)  # fmt: skip
+def test_fits_per_window(logit_fits, fixed, calibration, need_oof, n_fits):
     X, y, w, t0, t1 = planted()
-    m = make_model("logit_l2", RunConfig(ZOO_FIXED_PARAMS=fixed), calibration=calibration).fit(X, y, w, cv_for(t0, t1))
+    cfg = RunConfig(ZOO_FIXED_PARAMS=fixed)
+    m = make_model("logit_l2", cfg, calibration=calibration, need_oof=need_oof).fit(X, y, w, cv_for(t0, t1))
     assert len(logit_fits) == n_fits
     assert (m.oof_raw_ is None) == (n_fits == 1)
     if calibration == "none":
@@ -237,6 +251,10 @@ def test_average_is_the_mean_of_the_combo_columns_on_their_common_span(avg_resul
     assert r.choice.empty and r.stats["n_decisions"] == 0 and r.stats["picks"] == {}
     assert r.stats["n_live_days"] == len(common) and 0 <= r.stats["pbo"] <= 1 and r.stats["pbo_n_combos"] == 4
     assert r.stats["combine"] == "average" and r.stats["n_windows"] == r.summary["n_oos_windows"].sum()
+    ok = r.windows["status"] == "ok"  # every fitted window says how its meta-model was calibrated
+    assert r.windows.loc[ok, "calibration"].isin(["rolling", "sigmoid", "isotonic"]).all()
+    assert r.stats["calibration_windows"] == r.windows.loc[ok, "calibration"].value_counts().to_dict()
+    assert r.stats["calibration_windows"].get("rolling", 0) > 0
     assert 0 <= r.stats["pwfo_dsr"] <= r.stats["pwfo_psr0"] <= 1 and r.stats["dsr_n_trials"] == 4
 
 
@@ -278,7 +296,19 @@ def test_flat_pool_records_every_pwfo_cell_and_equals_serial(env, tmp_path, comb
     par = R.run(spec, source=FakeSource(), ledger=L.Ledger(tmp_path / "l2.jsonl"), root=root2, feature_cache_dir=None,
                 holdout_marker=env["holdout_marker"], jobs=4)  # fmt: skip
     assert [r["status"] for r in par] == ["ok", "ok"] and all(r["kind"] == "pwfo" for r in par)
-    keys = ("sharpe", "n_obs", "n_trades", "pbo", "pwfo_dsr", "n_trials", "n_oos_windows", "combos", "combine")
+    keys = (
+        "sharpe",
+        "n_obs",
+        "n_trades",
+        "pbo",
+        "pwfo_dsr",
+        "n_trials",
+        "n_oos_windows",
+        "combos",
+        "combine",
+        "n_run_combos",
+        "calibration_windows",
+    )
     pick = lambda rs: {r["cell_hash"]: L.clean({k: r.get(k) for k in keys}) for r in rs}  # NaN → None
     assert pick(serial) == pick(par)
     for r in par:

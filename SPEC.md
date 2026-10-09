@@ -549,6 +549,30 @@ Invariant: with every new switch at its old value (`ZOO_FIXED_PARAMS={}`, `CALIB
 `EXIT_MODEL=triple_barrier`) the U11 Stage C `daily_returns.csv` of the parity cells
 (`tests/fixtures/u12_parity.json`) and the legacy hash `402ef202…` reproduce exactly.
 
+Implementation (U12, as built):
+- `ZOO_FIXED_PARAMS[name]` must set exactly the model's grid keys. With `CALIBRATION=crossfit` a fixed model still
+  runs its purged CV once (the OOF predictions the cross-fitted calibrator needs: k fits + 1 refit); with
+  `rolling` / `none` and one grid point it is one fit and holds no OOF predictions (`oof_raw_ = None`). Applies to
+  the primary role too (a zoo `PRIMARY_MODEL`), whose calibration is always cross-fitted.
+- `rolling` (`wfo_engine.CalHistory`, one per combo / per WFO run, walked in window order): after a window predicts
+  its OOS events, their raw meta P(y=1) and side-aware meta-labels are stored. A later fit on `[fit_start, val_end)`
+  may use the pairs whose event bar is ≥ `fit_start` and whose barrier exit is before `val_end − val embargo` (the
+  `purged` rule of the fit's own events), weighted by their average uniqueness. With ≥ `MIN_VAL_EVENTS` such pairs of
+  both classes the meta-model is fit uncalibrated and a weighted Platt map on the pairs is its calibrator; otherwise
+  (always the first window) it cross-fits. A window without a meta-model adds no pairs. `legacy` meta-models are
+  never calibrated (the switch does not apply).
+- `OOF_META=reuse` applies to zoo meta-models (`legacy` refits); RunConfig refuses a train-fit sizer (`ecdf`,
+  `kelly_capped`) with `reuse` when the meta-model would hold no OOF predictions (`CALIBRATION != crossfit` and a
+  one-point grid). Under `refit` + `rolling` the per-split refits' raw predictions go through the window's calibrator.
+- `average`: the common span is every day on which all run combos (those with ≥ 1 fitted window) have an OOS return;
+  `n_trials` / DSR still count every grid combo. The ledger row's `n_oos_windows` is the sum over combos (nested: the
+  default combo's). `PWFO_DEFAULT` (only read by `nested`) defaults to the first IS length × OOS 21.
+- Flat pool (`--jobs ≥ 2`): a PWFO cell's `runtime_s` is its combos' summed task seconds plus assembly (its serial
+  cost); a failed combo makes the cell an `error` row with every combo traceback; a dead worker re-runs the unfinished
+  cells one per process (serially). `--jobs 1` runs each cell in-process.
+- `cusum_events` / `cusum_state` are numba kernels with the loops' float operations in the same order (identical
+  output, tested against the loops); numba is in the code hash's library list.
+
 ---
 
 ## §12 Exogenous data (U13)

@@ -181,6 +181,7 @@ def run_combo(
                 "n_oos_events": 0 if res.oos is None else len(res.oos),
                 "n_oos_trades": 0 if res.oos is None else int((res.oos["trade_signal"] != 0).sum()),
                 "meta_skipped": res.meta_skipped,
+                "calibration": res.calibration,
             }
         )
         if res.status == "ok":
@@ -529,6 +530,9 @@ def assemble(cfg: RunConfig, grid: list[Combo], outs: list) -> PWFOResult:
         "live_start": str(live.index[0].date()) if len(live) else None,
         "live_end": str(live.index[-1].date()) if len(live) else None,
         "picks": choice.loc[~choice["burn_in"].astype(bool), "chosen"].value_counts().to_dict(),
+        # meta-model calibration → fitted windows over all combos (CALIBRATION="rolling" cross-fits a window with too
+        # few resolved pairs)
+        "calibration_windows": windows.loc[windows["status"] == "ok", "calibration"].value_counts().to_dict(),
     }
     if len(live) > 1:
         curve = (1 + live).cumprod()

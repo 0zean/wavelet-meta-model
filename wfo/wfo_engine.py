@@ -10,6 +10,7 @@ from features.triple_barrier_labels import average_uniqueness, sample_events, tr
 from models.meta_model import fit_meta_model, make_meta_labels, meta_predict, oof_meta_prob, side_returns
 from models.zoo import ZooFitError, inner_cv
 from primaries import check_signal, make_primary
+from sizing import REGISTRY as SIZERS
 from sizing import SizerFitError, make_sizer
 from utils.config import RunConfig
 
@@ -206,6 +207,9 @@ class WindowFit(NamedTuple):
     meta_skipped: bool  # no meta-model could be fit (no trades)
     sizer_skipped: tuple[str, ...]  # sizers that could not be fit while a meta-model exists
     n_fit_events: int  # meta-model fitting rows
+    calibration: str = (
+        ""  # the meta-model's calibration: "rolling", "sigmoid" / "isotonic" (cross-fit), "none", "legacy"
+    )
 
 
 def prepare(
@@ -325,7 +329,8 @@ def fit_window(
     meta_lbl = make_meta_labels(df, events.loc[X_fit.index], prim_fit, cfg)
     rolling = cfg.CALIBRATION == "rolling" and cfg.META_MODEL != "legacy" and cal_history is not None
     cal_pairs = cal_history.pairs(labels, fit_start, val_end, emb_vl, N) if rolling else None
-    meta_mdl = fit_meta_model(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit, cal_pairs=cal_pairs)
+    need_oof = cfg.OOF_META == "reuse" and any(SIZERS[n].needs_train for n in size_names)
+    meta_mdl = fit_meta_model(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit, cal_pairs=cal_pairs, need_oof=need_oof)
 
     # ── Final prediction on OOS test fold ─────────────────────────────────
     fitted = fold_sizers(size_names, meta_mdl, df, events, X_fit, prim_fit, meta_lbl, w_fit, lab_fit, cfg)
@@ -357,7 +362,8 @@ def fit_window(
         if not ONE_SIDED_SHARE <= sh <= 1 - ONE_SIDED_SHARE:
             print(f"[PRIM]  Warning: fold {fold} {split} sides are {sh:.1%} long (one-sided primary)")
     skipped = tuple(n for n, sz in fitted.items() if sz is None and meta_mdl is not None)
-    return WindowFit("ok", result_ts, is_frame, meta_mdl is None, skipped, len(X_fit))
+    cal = "" if meta_mdl is None else str(getattr(meta_mdl, "calibration_", "legacy")).split(" ")[0]
+    return WindowFit("ok", result_ts, is_frame, meta_mdl is None, skipped, len(X_fit), cal)
 
 
 def run_wfo(
@@ -420,6 +426,7 @@ def run_wfo(
     size_names = prep.size_names
     all_results, meta_skipped, primary_skipped = [], [], []
     sizer_skipped = {n: [] for n in size_names}
+    calibration: dict[str, int] = {}
     hist = CalHistory() if cfg.CALIBRATION == "rolling" else None
     for fold, (train_end, val_end, test_end, emb_tr, emb_vl) in enumerate(wfo_folds(df.index, cfg), start=1):
         print(f"\n{'─' * 60}")
@@ -434,6 +441,8 @@ def run_wfo(
             continue
         if res.meta_skipped:
             meta_skipped.append(fold)
+        if res.calibration:
+            calibration[res.calibration] = calibration.get(res.calibration, 0) + 1
         for n in res.sizer_skipped:
             sizer_skipped[n].append(fold)
         result_ts = res.oos
@@ -448,6 +457,7 @@ def run_wfo(
 
     combined = pd.concat(all_results).sort_index()
     combined.attrs["meta_skipped_folds"] = meta_skipped  # folds whose meta-model could not be fit (no trades)
+    combined.attrs["calibration_folds"] = calibration  # meta-model calibration → folds (rolling vs cross-fit fallback)
     combined.attrs["primary_skipped_folds"] = primary_skipped  # folds dropped: primary could not be fit
     combined.attrs["sizer_skipped_folds"] = sizer_skipped[cfg.SIZER]  # sizer could not be fit (no trades)
     for n in size_names[1:]:

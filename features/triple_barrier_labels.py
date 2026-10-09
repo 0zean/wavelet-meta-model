@@ -64,7 +64,7 @@ def cusum_events(close: pd.Series, threshold: pd.Series) -> pd.DatetimeIndex:
 @numba.njit(cache=True)
 def _cusum_kernel(ret: np.ndarray, h: np.ndarray) -> np.ndarray:
     """cusum_events' recursion, compiled (U12: the Python loop's float operations in the same order, so the events
-    are identical; tests/test_features.py checks it against the loop). Bars with a NaN return or threshold are
+    are identical; tests/test_harness_speed.py checks it against the loop). Bars with a NaN return or threshold are
     skipped; an up-crossing takes precedence over a down-crossing on the same bar."""
     out = np.empty(len(ret), np.int64)
     k = 0
