@@ -264,7 +264,7 @@ def isom_diagnostic(df: pd.DataFrame, cfg: RunConfig, win: WindowEvents, fit_sta
 
 
 class WindowFit(NamedTuple):
-    status: str  # "ok" | "fracdiff_failed" | "insufficient_events" | "primary_failed"
+    status: str  # "ok" | "feature_fit_failed" | "insufficient_events" | "primary_failed"
     oos: pd.DataFrame | None  # OOS predictions of the test events (run_wfo's per-fold frame)
     in_sample: pd.DataFrame | None  # the same models' predictions on their own fitting events (if asked)
     meta_skipped: bool  # no meta-model could be fit (no trades)
@@ -337,13 +337,13 @@ def fit_window(
     isom = isom_diagnostic(df, cfg, win, fit_start, train_end - emb_tr)
     N = len(df)
 
-    # ── Features: per-fold groups (fracdiff d) fit on train bars before the embargo ──
+    # ── Features: per-fold groups (fracdiff d, vol_state's GARCH) fit on train bars before the embargo ──
     # (fitting on the embargo bars would make every train feature depend on them)
     try:
         states = fset.fit(df.iloc[fit_start : train_end - emb_tr])
-    except RuntimeWarning as e:  # fit_fracdiff_d raises this when no d <= 1 is stationary
-        print(f"[WFO]  Fold {fold}: fracdiff failed ({e}) — skipping")
-        return WindowFit("fracdiff_failed", None, None, False, (), 0)
+    except RuntimeWarning as e:  # fit_fracdiff_d: no d <= 1 is stationary; fit_garch: too few returns / no convergence
+        print(f"[WFO]  Fold {fold}: per-fold feature fit failed ({e}) — skipping")
+        return WindowFit("feature_fit_failed", None, None, False, (), 0)
     X_all = base_feats.iloc[:test_end].join(fset.transform(df.iloc[:test_end], states))
 
     # ── Samples: events with complete features; fitting splits purged ─────

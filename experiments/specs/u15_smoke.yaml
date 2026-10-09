@@ -1,0 +1,21 @@
+# U15 smoke run: the state and context groups in runner cells on cached Alpaca data (stage U10, the runner's
+# smoke stage; development window only; run on a scratch ledger). cross_asset gets the market (SPY) and the mapped
+# sector ETF (AAPL → XLK, JPM → XLF); the exo-backed groups read the cached CBOE / FRED series and the event table.
+stage: U10
+name: u15_smoke
+defaults:
+  timeframe: 1Day
+  start: 2016-01-04
+  end: 2025-10-01
+  primary: sma_cross
+  model: {meta: logit_l2}
+  meta_train: oof
+  sizer: fixed
+  risk_profile: none
+  feature_groups: [wavelet_core, trend, volatility, cross_asset, vol_state, calendar_events, rates_credit]
+grid:
+  symbols: [AAPL, JPM]
+cells:
+  - {}
+  - {timeframe: 5Min, start: 2024-01-02, symbols: AAPL,
+     feature_groups: [wavelet_core, trend, intraday, session, cross_asset, vol_state, calendar_events, rates_credit]}

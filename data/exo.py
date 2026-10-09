@@ -9,10 +9,12 @@ Sources (the `available_at` rules are in AVAILABLE_AT and the functions below):
   session date 16:20 ET. VX1, VX2 (continuous front / second monthly VIX future settlements, rolled on the expiry
   date, whose row carries the final settlement) and the ratios VX1_VIX, VX2_VX1, from CFE's per-expiry files,
   available at the settlement date 16:20 ET.
-- `fred`: VIXCLS, DGS2, DGS10, T10Y2Y, BAMLH0A0HYM2, DTWEXBGS from fredgraph.csv. VIXCLS: next federal business day
-  09:00 ET; the H.15 series and HY OAS: next federal business day 16:30 ET (H.15's daily update is 16:15 ET);
+- `fred`: VIXCLS, DGS2, DGS10, T10Y2Y, BAMLH0A0HYM2, BAA10Y, DTWEXBGS from fredgraph.csv. VIXCLS: next federal
+  business day 09:00 ET; the H.15 series, HY OAS and BAA10Y: next federal business day 16:30 ET (H.15's daily update
+  is 16:15 ET);
   DTWEXBGS (H.10, weekly): the Monday after the observation's week 16:30 ET (next business day if a holiday).
-  BAMLH0A0HYM2 only has the last three years on FRED (ICE licence), so it cannot cover the development window.
+  BAMLH0A0HYM2 only has the last three years on FRED (ICE licence), so it cannot cover the development window;
+  BAA10Y (Moody's seasoned Baa yield − DGS10, daily, full history; U15's credit spread) takes the H.15 rule.
 - `calendar`, `earnings`: the checked-in tables of data/events.py (no network, not cached here).
 
 Cache: `{cache_dir}/{source}/{name}.npz` + `.json` (schema_version, source, name, columns, n_rows, coverage_start,
@@ -49,7 +51,7 @@ FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={name}"
 
 CBOE_INDEXES = ("VIX", "VIX9D", "VIX3M", "VIX6M")
 VX_SERIES = ("VX1", "VX2", "VX1_VIX", "VX2_VX1")
-FRED_SERIES = ("VIXCLS", "DGS2", "DGS10", "T10Y2Y", "BAMLH0A0HYM2", "DTWEXBGS")
+FRED_SERIES = ("VIXCLS", "DGS2", "DGS10", "T10Y2Y", "BAMLH0A0HYM2", "BAA10Y", "DTWEXBGS")
 SETTLE_TIME = "16:20"  # CBOE index closes and CFE settlements (16:15 ET) plus 5 minutes
 
 

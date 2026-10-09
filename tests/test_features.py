@@ -63,14 +63,69 @@ def market_for(df: pd.DataFrame, seed: int = 7) -> pd.DataFrame:
     return df.assign(close=df["close"] * np.exp(np.cumsum(rng.normal(0, 1e-3, len(df)))))
 
 
+def synthetic_exo(index: pd.DatetimeIndex, seed: int = 0) -> dict[str, pd.DataFrame]:
+    """
+    Every registered group's exo series around the bars' dates (U15): cboe / fred rows on business days with random
+    positive values and the real available_at rules (data.exo.available_at); calendar kinds as synthetic schedules
+    public from 1 January of their year, FOMC / CPI / NFP with release instants, plus one unscheduled FOMC statement
+    at 10:00 on a mid-sample day, public only from that instant.
+    """
+    from data.alpaca_source import NY_TZ
+    from data.exo import available_at
+    from features.exo_align import bar_days
+
+    rng = np.random.default_rng(seed)
+    days = pd.DatetimeIndex(np.unique(bar_days(index)))
+    span = pd.bdate_range(days[0] - pd.Timedelta(days=45), days[-1] + pd.Timedelta(days=120), name="date")
+    names = sorted(set().union(*(REGISTRY[g].exo for g in REGISTRY)))
+    out = {}
+    for name in names:
+        src, series = name.split("/")
+        if src != "calendar":
+            v = 15 * np.exp(np.cumsum(rng.normal(0, 0.03, len(span))))
+            out[name] = pd.DataFrame({"value": v, "available_at": available_at(src, series, span)}, index=span)
+            continue
+        step, offset, at = {"FOMC": (30, 3, "14:00"), "CPI": (21, 7, "08:30"), "NFP": (21, 12, "08:30"),
+                            "OPEX": (21, 15, None), "TOM": (5, 1, None), "PRE_HOLIDAY": (37, 9, None)}[series]  # fmt: skip
+        dates = span[offset::step]
+        value = np.resize([-1.0, 1.0, 2.0, 3.0], len(dates)) if series == "TOM" else np.ones(len(dates))
+        jan1 = pd.DatetimeIndex([pd.Timestamp(year=d.year, month=1, day=1) for d in dates])
+        avail = jan1.tz_localize(NY_TZ).tz_convert("UTC")
+        event_at = pd.DatetimeIndex([pd.NaT] * len(dates), tz="UTC")
+        if at is not None:
+            event_at = (
+                (dates + pd.Timedelta(hours=int(at[:2]), minutes=int(at[3:]))).tz_localize(NY_TZ).tz_convert("UTC")
+            )
+        f = pd.DataFrame({"value": value, "event_at": event_at, "available_at": avail}, index=dates)
+        if series == "FOMC":  # an unscheduled statement: public at its instant (data.events)
+            d = days[len(days) // 2]
+            if d not in f.index:
+                inst = (d + pd.Timedelta(hours=10)).tz_localize(NY_TZ).tz_convert("UTC")
+                f = pd.concat([f, pd.DataFrame({"value": 1.0, "event_at": [inst], "available_at": [inst]}, index=[d])])
+        out[name] = f.sort_index().rename_axis("date")
+    return out
+
+
 def group_frame(
-    name: str, d: pd.DataFrame, cfg: RunConfig, market: pd.DataFrame | None, fit_end: int = 1500
+    name: str,
+    d: pd.DataFrame,
+    cfg: RunConfig,
+    market: pd.DataFrame | None,
+    fit_end: int = 1500,
+    exo: dict | None = None,
+    sector: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
+    """One group's frame through the FeatureSet's context rules (market, optional sector, an Exo view)."""
     spec = REGISTRY[name]
-    ctx = {"market": market} if "market" in spec.needs else {}
+    context = {"market": market, "exo": exo if exo is not None else synthetic_exo(d.index)}
+    if sector is not None:
+        context["sector"] = sector
+    ctx = FeatureSet(cfg, ["wavelet_core", name] if name != "wavelet_core" else [name], context=context).group_context[
+        name
+    ]
     if spec.per_fold:
         state = spec.fn.fit(d.iloc[:fit_end], cfg)  # fixed train prefix, before every cut
-        return spec.fn.transform(d, state, cfg)
+        return spec.fn.transform(d, state, cfg, ctx) if spec.needs else spec.fn.transform(d, state, cfg)
     return spec.fn(d, cfg, ctx)
 
 
@@ -80,8 +135,8 @@ def group_frame(
 @pytest.mark.parametrize("name", ALL_GROUPS)
 def test_every_group_is_causal(df, name):
     cuts = np.sort(np.random.default_rng(123).integers(1600, len(df) - 50, 3))
-    market = market_for(df)
-    base = group_frame(name, df, CFG5, market)
+    market, exo = market_for(df), synthetic_exo(df.index)  # exo is perturbed separately (tests/test_u15.py)
+    base = group_frame(name, df, CFG5, market, exo=exo)
     assert base.notna().any().all(), f"{name}: a column is all-NaN on the fixture"
     for i, c in enumerate(cuts):
         variants = {
@@ -89,7 +144,7 @@ def test_every_group_is_causal(df, name):
             "truncated": (df.iloc[: c + 1], market.iloc[: c + 1]),
         }
         for label, (d2, m2) in variants.items():
-            other = group_frame(name, d2, CFG5, m2)
+            other = group_frame(name, d2, CFG5, m2, exo=exo)
             np.testing.assert_allclose(
                 other.iloc[: c + 1].to_numpy(),
                 base.iloc[: c + 1].to_numpy(),
@@ -112,10 +167,10 @@ def test_causality_check_catches_a_one_bar_leak(df):
 @pytest.mark.parametrize("name", [g for g in ALL_GROUPS if not REGISTRY[g].intraday_only])
 def test_daily_groups_are_causal(name):
     d = synthetic_daily(900)
-    m = market_for(d)
-    base = group_frame(name, d, CFGD, m, fit_end=600)
+    m, exo = market_for(d), synthetic_exo(d.index)
+    base = group_frame(name, d, CFGD, m, fit_end=600, exo=exo)
     c = 850
-    other = group_frame(name, random_walk_after(d, c, 3), CFGD, random_walk_after(m, c, 4), fit_end=600)
+    other = group_frame(name, random_walk_after(d, c, 3), CFGD, random_walk_after(m, c, 4), fit_end=600, exo=exo)
     np.testing.assert_allclose(other.iloc[: c + 1], base.iloc[: c + 1], rtol=0, atol=1e-12, equal_nan=True)
 
 
@@ -168,10 +223,11 @@ def test_stationarity_guard_rejects_price_levels(df):
         check_group_output("trend", pd.DataFrame({"trend__x": np.inf}, index=df.index), df)
 
 
-@pytest.mark.parametrize("name", [g for g in ALL_GROUPS if not REGISTRY[g].per_fold])
+@pytest.mark.parametrize("name", ALL_GROUPS)
 def test_no_group_is_a_price_level(df, name):
-    """Every static group passes the stationarity guard on the fixture (the build runs it)."""
-    feats = group_frame(name, df, CFG5, market_for(df))
+    """Every group passes the stationarity guard on the fixture (the build runs it on the static ones)."""
+    feats = group_frame(name, df, CFG5, market_for(df), sector=market_for(df, seed=11))
+    check_group_output(name, feats, df, REGISTRY[name].level_check)
     feats = feats.loc[:, feats.std() > 0]
     corr = feats.corrwith(df["close"]).abs()
     assert (corr.fillna(0) < 0.99).all(), corr.sort_values().tail(3)

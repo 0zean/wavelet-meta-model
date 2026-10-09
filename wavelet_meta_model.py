@@ -24,7 +24,10 @@ from pathlib import Path
 import pandas as pd
 
 from data.bars import load_bars
+from data.exo import load_series
 from features import cache as feature_cache
+from features.context import load_context
+from features.registry import context_needs
 from models.zoo import REGISTRY as ZOO
 from primaries import REGISTRY as PRIMARIES
 from primaries.diagnostics import primary_diagnostics
@@ -111,12 +114,15 @@ def main(
     if cfg.COST_MODEL == "quotes" and (not symbol or data_path):  # fail before the WFO, not after it
         raise ValueError("COST_MODEL='quotes' needs an Alpaca symbol (its quotes-table rows); pass --cost-model")
 
-    # Feature context (cross-asset market bars) and cache (Alpaca data only: the key needs a symbol)
+    # Feature context (market / sector bars, exo series; SPEC §15) and cache (Alpaca data only: the key needs a symbol)
     context = {}
-    if cfg.FEATURE_GROUPS and "cross_asset" in cfg.FEATURE_GROUPS:
-        if not symbol or symbol == market_symbol:
+    if cfg.FEATURE_GROUPS and context_needs(cfg.FEATURE_GROUPS, cfg.TIMEFRAME) != (set(), set()):
+        if not symbol or data_path:
+            raise ValueError(f"feature groups {cfg.FEATURE_GROUPS} need context: pass an Alpaca --symbol")
+        if "cross_asset" in cfg.FEATURE_GROUPS and symbol == market_symbol:
             raise ValueError(f"'cross_asset' needs an Alpaca --symbol other than the market ({market_symbol})")
-        context["market"] = load_bars(market_symbol, timeframe, start, end)
+        context = load_context(symbol, timeframe, start, end, cfg.FEATURE_GROUPS, bars=load_bars, exo=load_series,
+                               market=market_symbol)  # fmt: skip
 
     # Walk-forward optimisation
     signals = run_wfo(

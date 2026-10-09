@@ -109,6 +109,19 @@ def data_hash(df: pd.DataFrame) -> str:
     return h.hexdigest()
 
 
+def context_hash(obj) -> str:
+    """A context entry's hash: bars by data_hash, an exo view / dict of exo frames by their full contents (U15)."""
+    from features.exo_align import Exo
+
+    if isinstance(obj, pd.DataFrame):
+        return data_hash(obj)
+    if isinstance(obj, dict):
+        obj = Exo(obj)
+    if isinstance(obj, Exo):
+        return obj.digest()
+    raise TypeError(f"cannot hash a context entry of type {type(obj).__name__}")
+
+
 def cfg_hash(cfg) -> str:
     fields = {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg) if f.name not in _NON_FEATURE_FIELDS}
     return hashlib.sha256(json.dumps(fields, sort_keys=True, default=str).encode()).hexdigest()
@@ -117,7 +130,7 @@ def cfg_hash(cfg) -> str:
 def cache_key(group: str, symbol: str, cfg, df: pd.DataFrame, context: dict | None) -> str:
     parts = [group, symbol, cfg.TIMEFRAME, code_hash(), cfg_hash(cfg), data_hash(df)]
     for name in sorted(context or {}):
-        parts += [name, data_hash(context[name])]
+        parts += [name, context_hash(context[name])]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:32]
 
 
