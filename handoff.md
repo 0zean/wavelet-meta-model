@@ -22,7 +22,7 @@ branch. The docs went to `main` as 632867b (not pushed). U12 was then built, rev
   value.
 - Review fixes: OOF on demand (`need_oof`) instead of refusing train-fit sizers; calibration mode recorded per window.
 - Not met: "≥ 10× fewer fits per window" for xgb (9×) and rf_ldp_fast (5×); "≥ 8× fewer windows" on 1Day (7.7×).
-  Reported in the status note; the user decides whether to accept.
+  Accepted by the user; tuning deferred.
 
 ## Key files for next session
 - `PLAN2.md` — U12 status note; U13 / U14 are next (parallel).
@@ -45,7 +45,7 @@ branch. The docs went to `main` as 632867b (not pushed). U12 was then built, rev
   `scripts/u12_parity.py check R R/ledger.jsonl` → `parity: PASS` (about 17 min).
 
 ## Deferred + open questions
-- Open: accept the partly met cost targets (xgb 9×, rf_ldp_fast 5× per window; 1Day windows 7.7×)?
+- Deferred: tuning the partly met cost targets (accepted by the user 2026-10-09).
 - Open: at 1Day about a third of windows fall back to cross-fit calibration (`MIN_VAL_EVENTS = 100` resolved
   pairs) — revisit in the family specs (U17 / U18).
 - Deferred MINORs: `ZOO_FIXED_PARAMS` value validation; a minimum length for the averaged stream; serial batch

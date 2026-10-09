@@ -397,6 +397,8 @@ below). 463 tests pass; ruff clean. Branch `unit/12-harness-speed`. Interfaces a
   - M2: `ZOO_FIXED_PARAMS` values are not validated; a bad value fails at the first fit, loudly.
   - M3b: no minimum-length guard on the averaged stream; the default grids are long enough.
   - M4: after a dead worker the batch finishes serially; correct but slow; documented in SPEC §11.2.
+  - Cost targets accepted as partly met (user, 2026-10-09); tuning deferred (candidates: xgb warm starts or fewer
+    CV folds, rf_ldp_fast trees, a longer 1Day OOS).
   - Open for U17/U18: at 1Day, `MIN_VAL_EVENTS = 100` resolved pairs leaves about a third of windows on cross-fit
     calibration. Lowering the threshold, or a calibration-specific minimum, is a decision for the family specs.
   - U13/U14 must add `COST_MODEL`, `VOL_PROFILE`, `EVENT_SAMPLER` and `EXIT_MODEL` to `OLD_SWITCHES` in
