@@ -23,7 +23,7 @@ from wfo import wfo_engine
 from wfo.wfo_engine import purged, run_wfo, wfo_folds
 from wfo.wfo_metrics import calibration_table, meta_outcomes, signal_diagnostics
 
-CFG = RunConfig.for_timeframe("1Day")
+CFG = RunConfig.for_timeframe("1Day", ZOO_FIXED_PARAMS={})  # the purged-CV grid search (U12 fixes it by default)
 TUNED = sorted(n for n in REGISTRY if n != "legacy")
 
 

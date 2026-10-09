@@ -150,7 +150,7 @@ def normalize(raw: dict) -> dict:
         p = {"is_grid": None, "oos_grid": None, "expanding": False} | dict(c["pwfo"])
         if set(p) != {"is_grid", "oos_grid", "expanding"}:
             raise ValueError(f"pwfo takes is_grid, oos_grid, expanding; got {sorted(p)}")
-        base = RunConfig()
+        base = RunConfig.for_timeframe(c["timeframe"])  # the timeframe's default grid (SPEC §11.2)
         p["is_grid"] = [int(v) for v in (p["is_grid"] or base.PWFO_IS_GRID)]
         p["oos_grid"] = [int(v) for v in (p["oos_grid"] or base.PWFO_OOS_GRID)]
         p["expanding"] = bool(p["expanding"])

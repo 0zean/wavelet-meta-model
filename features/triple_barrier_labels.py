@@ -1,3 +1,4 @@
+import numba
 import numpy as np
 import pandas as pd
 
@@ -55,10 +56,20 @@ def cusum_events(close: pd.Series, threshold: pd.Series) -> pd.DatetimeIndex:
     Returns:
         pd.DatetimeIndex: Event timestamps.
     """
-    ret = np.log(close).diff().to_numpy()
-    h = threshold.reindex(close.index).to_numpy()
-    events = []
-    s_pos = s_neg = 0.0
+    ret = np.log(close).diff().to_numpy(dtype=float)
+    h = threshold.reindex(close.index).to_numpy(dtype=float)
+    return close.index[_cusum_kernel(ret, h)]
+
+
+@numba.njit(cache=True)
+def _cusum_kernel(ret: np.ndarray, h: np.ndarray) -> np.ndarray:
+    """cusum_events' recursion, compiled (U12: the Python loop's float operations in the same order, so the events
+    are identical; tests/test_harness_speed.py checks it against the loop). Bars with a NaN return or threshold are
+    skipped; an up-crossing takes precedence over a down-crossing on the same bar."""
+    out = np.empty(len(ret), np.int64)
+    k = 0
+    s_pos = 0.0
+    s_neg = 0.0
     for t in range(1, len(ret)):
         if np.isnan(h[t]) or np.isnan(ret[t]):
             continue
@@ -66,11 +77,13 @@ def cusum_events(close: pd.Series, threshold: pd.Series) -> pd.DatetimeIndex:
         s_neg = min(0.0, s_neg + ret[t])
         if s_pos > h[t]:
             s_pos = 0.0
-            events.append(t)
+            out[k] = t
+            k += 1
         elif s_neg < -h[t]:
             s_neg = 0.0
-            events.append(t)
-    return close.index[events]
+            out[k] = t
+            k += 1
+    return out[:k]
 
 
 def barrier_exits(

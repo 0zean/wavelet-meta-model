@@ -32,8 +32,7 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="run a spec")
     r.add_argument("spec")
-    r.add_argument("--jobs", type=int, default=1, help="parallel cells (processes)")
-    r.add_argument("--inner-jobs", type=int, default=1, help="parallel PWFO combos inside a cell")
+    r.add_argument("--jobs", type=int, default=1, help="worker processes: WFO cells and PWFO combos share one pool")
     r.add_argument("--final", action="store_true", help="the one-time holdout evaluation (stage E)")
     r.add_argument("--retry-errors", action="store_true", help="re-run cells whose ledger row is an error")
     p = sub.add_parser("report", help="leaderboard, funnel, PBO per stage")
@@ -52,7 +51,7 @@ def main() -> None:
         doc, cells = load_spec(a.spec)
         print(f"[EXP]  {a.spec}: {len(cells)} cell(s), stage {doc['stage']}")
         rows = run(
-            cells, ledger=ledger, root=a.root, jobs=a.jobs, inner_jobs=a.inner_jobs, final=a.final,
+            cells, ledger=ledger, root=a.root, jobs=a.jobs, final=a.final,
             retry_errors=a.retry_errors, spec_name=doc.get("name") or Path(a.spec).stem,
         )  # fmt: skip
         status = {}

@@ -122,6 +122,9 @@ def main() -> None:
                 "sizer": r["sizer"],
                 "position_mode": r["position_mode"],
                 "size_step": cfg.SIZE_STEP,
+                "zoo_fixed_params": cfg.ZOO_FIXED_PARAMS,
+                "calibration": cfg.CALIBRATION,
+                "oof_meta": cfg.OOF_META,
                 "seed": cfg.SEED,
             }
             row = {

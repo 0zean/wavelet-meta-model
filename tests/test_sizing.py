@@ -341,7 +341,7 @@ def test_wfo_fixed_sizer_leaves_signals_unchanged(daily):
 def test_sizer_inputs_are_train_window_oof(daily, monkeypatch, meta_train):
     """ECDF / Kelly are fit on OOF meta-probabilities of the fold's fitting events only (purged at the fitting split's
     end, never a test event), each predicted by a meta-model whose training rows exclude it and every overlapping span."""
-    cfg = wfo_cfg(SIZER="ecdf", META_TRAIN=meta_train, META_MODEL="logit_l2")
+    cfg = wfo_cfg(SIZER="ecdf", META_TRAIN=meta_train, META_MODEL="logit_l2", OOF_META="refit", CALIBRATION="crossfit")
     seen, fits = [], []
     fit = sizers_mod.Ecdf.fit
 
@@ -351,9 +351,9 @@ def test_sizer_inputs_are_train_window_oof(daily, monkeypatch, meta_train):
 
     orig_oof = meta_model.oof_meta_prob
 
-    def spy_oof(X_fit, prim_fit, lbl, w, cfg, spans):
+    def spy_oof(X_fit, prim_fit, lbl, w, cfg, spans, **kw):
         fits.append(spans.loc[lbl.index])
-        return orig_oof(X_fit, prim_fit, lbl, w, cfg, spans)
+        return orig_oof(X_fit, prim_fit, lbl, w, cfg, spans, **kw)
 
     monkeypatch.setattr(sizers_mod.Ecdf, "fit", spy_fit)
     monkeypatch.setattr(wfo_engine, "oof_meta_prob", spy_oof)

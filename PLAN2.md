@@ -335,6 +335,75 @@ different OOS spans; the parity fixture actually exercising the old code paths.
 
 **Cost.** 2 sessions. Depends on nothing.
 
+**Status (2026-10-09).** ✅ Complete (adversarial review done: no BREAKING; SEVERE fixed; MINORs fixed or deferred
+below). 463 tests pass; ruff clean. Branch `unit/12-harness-speed`. Interfaces and as-built choices in SPEC §11.2.
+- **Parity — met.** The parity criterion is SPEC §11.2's invariant: every new switch at its old value
+  (`ZOO_FIXED_PARAMS={}`, `CALIBRATION=crossfit`, `OOF_META=refit`, `PWFO_COMBINE=nested`). The "parameters U11 chose
+  in ≥ 95 % of windows" wording above cannot give hash equality, since the other ≤ 5 % of windows differ. Fixture
+  `tests/fixtures/u12_parity.json` holds four U11 Stage C cells: NVDA 1Day ml_xgb/logit_l2/cmda/ecdf, QQQ 1Hour
+  donchian/xgb, AMZN 1Hour wavelet_trend/rf_ldp_fast, SPY 1Day wavelet_trend/logit_l2. Together they cover 3-, 2- and
+  1-point grids, the cross-fitted calibration choice, the per-split OOF-meta refit, cmda, ml_xgb and nested selection
+  (`tests/test_harness_speed.py` pins this). `scripts/u12_parity.py spec|check` re-runs and compares them.
+  - Baseline: unchanged `main` code on this PC reproduces all 8 hashes (`daily_returns.csv`, `returns_pwfo.csv`).
+  - U12 code: `parity: PASS` at code hash `8701b118…` (commit 7906389) and again at `374d631d…` (commit 02c4fca,
+    after the review fixes), both through the flat pool, about 17 min wall-clock. The last code commit after that
+    only stops attaching the `calibration_folds` attr for legacy meta-models (a signals attr, not a result).
+  - Legacy CSV run: `wfo_signals.csv`, `wfo_run.json` and `meta_calibration.csv` are byte-identical to `main` on this
+    PC. `wfo_signals.csv` is sha1 `551d8074…` (754 rows, CRLF). The `402ef202…` reference is the MacBook value and is
+    not reproducible on Windows with either main or U12.
+- **Cost table — partly met** (`scripts/u12_cost.py`, SPY 2016-01-04 → 2025-09-30). Rule primary, META_TRAIN=oof;
+  means over 3 windows of the first U12 combo once the "on" arm calibrates from rolling history; this PC under load.
+
+  | timeframe | model | fits/window off → on | s/window off → on | off+ecdf fits (s) |
+  |---|---|---|---|---|
+  | 30Min | logit_l2 | 13 → 1 | 0.13 → 0.07 | 65 (0.48) |
+  | 30Min | rf_ldp_fast | 5 → 1 | 1.30 → 0.32 | 25 (5.90) |
+  | 30Min | xgb | 9 → 1 | 2.33 → 0.23 | 45 (10.35) |
+  | 1Hour | logit_l2 | 13 → 1 | 0.10 → 0.06 | 65 (0.42) |
+  | 1Hour | rf_ldp_fast | 5 → 1 | 1.14 → 0.27 | 25 (5.40) |
+  | 1Hour | xgb | 9 → 1 | 1.95 → 0.18 | 45 (8.90) |
+  | 1Day | logit_l2 | 13 → 1 | 0.10 → 0.03 | 65 (0.33) |
+  | 1Day | rf_ldp_fast | 5 → 1 | 0.99 → 0.22 | 25 (4.80) |
+  | 1Day | xgb | 9 → 1 | 1.33 → 0.13 | 45 (5.13) |
+
+  - Windows per PWFO cell, U11 grid → U12 grid: 30Min / 1Hour 2,865 → 172 (16.7×); 1Day 769 → 100 (7.7×).
+  - Target "≥ 10× fewer fits per window": met for logit_l2 (13×); not for xgb (9×) or rf_ldp_fast (5×; U11 had
+    already cut its grid to one point). With U11's ecdf sizer as the baseline every model is ≥ 25×.
+  - Target "≥ 8× fewer windows": met intraday; 1Day is 7.7×, because U11's 1Day grid had 8 combos, not 16. Per cell,
+    fits fall 83–217× intraday and 38–100× on 1Day. Seconds fall less (2–11× per window), since features and the
+    primary don't shrink.
+- **Average — met.** It equals the row mean of the combo columns on their common span, is causal (perturbation test
+  with rolling calibration), and PBO is still reported. The nested path is bit-identical (parity).
+- **Flat pool — met.** 2 PWFO cells × 2 combos with `--jobs 4` give 2 `ok` rows and files byte-equal to serial,
+  under both nested and average. A failing combo gives an `error` row; a dead worker is re-run in isolation.
+- **CUSUM — met.** Numba kernels equal the loops on 10 seeded series (NaN, zero thresholds, threshold jumps), on SPY
+  5Min (`data/data.csv`) and on a crafted both-sides-cross bar. Numba was added because the exact pure-numpy reset
+  recursion is 0.7× the loop's speed (sequential cumsum segments are needed for bit-exactness), while numba is 407×
+  (SPY 5Min, 190k bars: 314 ms → 0.8 ms). numba 0.68 / llvmlite 0.50 only; numpy stays 1.26.4; numba is in the
+  code-hash library list.
+- **Defaults** are the SPEC §11.2 values. Tests that exercise the old paths pin the old switches.
+  `run_specs.ps1 -Jobs` defaults to 24 and `-InnerJobs` / `--inner-jobs` are gone. U11 specs still load but now run
+  with the new defaults; re-running a U11 cell as it was needs the four old switches as overrides (see
+  `scripts/u12_parity.py spec`).
+- **Review fixes:**
+  - S1/S2: extra train-fit sizers crashed mid-run, and ecdf + zoo meta was refused by RunConfig (U11 B3/C/E specs and
+    the legacy CLIs could not use it). Fix: a window whose sizers need train-window OOF fits its meta-model with
+    `need_oof` (k + 1 fits, still 5× fewer than the per-split refit).
+  - S3: the rolling → cross-fit fallback was invisible. Each window now records its calibration (window table,
+    `calibration_windows` / `calibration_folds` in stats and the ledger). At 1Day about a third of windows cross-fit.
+  - M1: `cusum_state` checks lengths. M3: the ledger records `n_run_combos`. M5: `pwfo_run` labels the stream by
+    `PWFO_COMBINE`, and the compare tools record the switches. M7: docstrings fixed.
+- **Deferred:**
+  - M2: `ZOO_FIXED_PARAMS` values are not validated; a bad value fails at the first fit, loudly.
+  - M3b: no minimum-length guard on the averaged stream; the default grids are long enough.
+  - M4: after a dead worker the batch finishes serially; correct but slow; documented in SPEC §11.2.
+  - Cost targets accepted as partly met (user, 2026-10-09); tuning deferred (candidates: xgb warm starts or fewer
+    CV folds, rf_ldp_fast trees, a longer 1Day OOS).
+  - Open for U17/U18: at 1Day, `MIN_VAL_EVENTS = 100` resolved pairs leaves about a third of windows on cross-fit
+    calibration. Lowering the threshold, or a calibration-specific minimum, is a decision for the family specs.
+  - U13/U14 must add `COST_MODEL`, `VOL_PROFILE`, `EVENT_SAMPLER` and `EXIT_MODEL` to `OLD_SWITCHES` in
+    `scripts/u12_parity.py` and re-check parity.
+
 ### U13 — Exogenous data layer and quotes-based cost model
 
 **Goal.** Point-in-time exogenous series and a cost model from real quotes, cached like bars.
@@ -690,7 +759,7 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
 
 ## Status
 
-- U12 — not started.
+- U12 — ✅ complete 2026-10-09 (branch `unit/12-harness-speed`; parity PASS, cost table in the U12 status note).
 - U13 — not started.
 - U14 — not started.
 - U15 — not started.

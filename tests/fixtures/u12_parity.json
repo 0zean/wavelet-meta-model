@@ -1,0 +1,277 @@
+{
+  "cells": [
+    {
+      "label": "NVDA_1Day_ml_xgb_logit_l2_oof_ecdf_none_pwfo",
+      "sha256": {
+        "daily_returns.csv": "d5bd4bc4b4ab519d7d98a373f0d62b243bd3854362fca88058283adfc49c68be",
+        "returns_pwfo.csv": "501fabc7b6d615256c6c75432eb165e20b8ea099fcc73f6ddeacc9830afe711b"
+      },
+      "spec": {
+        "end": "2025-10-01",
+        "feature_groups": [
+          "wavelet_core",
+          "trend",
+          "mean_reversion",
+          "volatility",
+          "microstructure",
+          "intraday",
+          "fracdiff"
+        ],
+        "meta_train": "oof",
+        "model": {
+          "meta": "logit_l2",
+          "primary": "legacy"
+        },
+        "overrides": {
+          "FEATURE_SELECTION": "cmda",
+          "PWFO_DEFAULT": [
+            1512,
+            10
+          ],
+          "TEST": 10
+        },
+        "primary": {
+          "name": "ml_xgb",
+          "params": {}
+        },
+        "pwfo": {
+          "expanding": false,
+          "is_grid": [
+            1260,
+            1512
+          ],
+          "oos_grid": [
+            5,
+            10,
+            21,
+            63
+          ]
+        },
+        "risk_profile": "none",
+        "seed": 42,
+        "sizer": "ecdf",
+        "start": "2016-01-01",
+        "symbols": [
+          "NVDA"
+        ],
+        "timeframe": "1Day"
+      },
+      "stage": "C",
+      "u11": {
+        "n_obs": 752,
+        "n_trades": 1605,
+        "n_trials": 8,
+        "pbo": 0.6236208236208236,
+        "sharpe": 1.3895767296795283
+      },
+      "u11_cell_hash": "68878e5a62b3d84e",
+      "why": "NVDA 1Day ml_xgb logit_l2 cmda ecdf (OOF meta refit, 3-point grid)"
+    },
+    {
+      "label": "QQQ_1Hour_donchian_breakout_xgb_oof_ldp_sigmoid_none_pwfo",
+      "sha256": {
+        "daily_returns.csv": "937f068928bb2ddf4368c4b01ed22f847f7779f02bc0d5ea3ba7996b4ea1c8cf",
+        "returns_pwfo.csv": "8cff0b2be90e6f8b5f7baa1514f75b1d83c82c4dcc8109efab990b3566b99c50"
+      },
+      "spec": {
+        "end": "2025-10-01",
+        "feature_groups": [
+          "wavelet_core",
+          "trend",
+          "mean_reversion",
+          "volatility",
+          "microstructure",
+          "intraday",
+          "fracdiff"
+        ],
+        "meta_train": "oof",
+        "model": {
+          "meta": "xgb",
+          "primary": "legacy"
+        },
+        "overrides": {
+          "PWFO_DEFAULT": [
+            252,
+            10
+          ],
+          "TEST": 10
+        },
+        "primary": {
+          "name": "donchian_breakout",
+          "params": {}
+        },
+        "pwfo": {
+          "expanding": false,
+          "is_grid": [
+            252,
+            378,
+            504,
+            756
+          ],
+          "oos_grid": [
+            5,
+            10,
+            21,
+            63
+          ]
+        },
+        "risk_profile": "none",
+        "seed": 42,
+        "sizer": "ldp_sigmoid",
+        "start": "2016-01-01",
+        "symbols": [
+          "QQQ"
+        ],
+        "timeframe": "1Hour"
+      },
+      "stage": "C",
+      "u11": {
+        "n_obs": 1510,
+        "n_trades": 26492,
+        "n_trials": 16,
+        "pbo": 0.8242424242424242,
+        "sharpe": 0.42099847975627874
+      },
+      "u11_cell_hash": "70babc42461bd4e1",
+      "why": "QQQ 1Hour donchian_breakout xgb ldp_sigmoid (2-point grid, intraday)"
+    },
+    {
+      "label": "AMZN_1Hour_wavelet_trend_rf_ldp_fast_oof_ldp_sigmoid_none_pwfo",
+      "sha256": {
+        "daily_returns.csv": "19c4f3eef4efccfc787c691e5e87a90da35e2604b2fd27618faa5c982dcb892e",
+        "returns_pwfo.csv": "8b82311e59ef5003fc573bf235ce038eba9368d3bb6950a0c056556f432a7b18"
+      },
+      "spec": {
+        "end": "2025-10-01",
+        "feature_groups": [
+          "wavelet_core",
+          "trend",
+          "mean_reversion",
+          "volatility",
+          "microstructure",
+          "intraday",
+          "fracdiff"
+        ],
+        "meta_train": "oof",
+        "model": {
+          "meta": "rf_ldp_fast",
+          "primary": "legacy"
+        },
+        "overrides": {
+          "PWFO_DEFAULT": [
+            252,
+            10
+          ],
+          "TEST": 10
+        },
+        "primary": {
+          "name": "wavelet_trend",
+          "params": {}
+        },
+        "pwfo": {
+          "expanding": false,
+          "is_grid": [
+            252,
+            378,
+            504,
+            756
+          ],
+          "oos_grid": [
+            5,
+            10,
+            21,
+            63
+          ]
+        },
+        "risk_profile": "none",
+        "seed": 42,
+        "sizer": "ldp_sigmoid",
+        "start": "2016-01-01",
+        "symbols": [
+          "AMZN"
+        ],
+        "timeframe": "1Hour"
+      },
+      "stage": "C",
+      "u11": {
+        "n_obs": 1510,
+        "n_trades": 17531,
+        "n_trials": 16,
+        "pbo": 0.5116550116550117,
+        "sharpe": -0.40128272996140185
+      },
+      "u11_cell_hash": "2dfc205f85035126",
+      "why": "AMZN 1Hour wavelet_trend rf_ldp_fast ldp_sigmoid (1-point grid, forest)"
+    },
+    {
+      "label": "SPY_1Day_wavelet_trend_logit_l2_oof_fixed_none_pwfo",
+      "sha256": {
+        "daily_returns.csv": "cfe620d4f34be92df85229fd18293845875c88bf7db27b9209df97a4ab3e3b10",
+        "returns_pwfo.csv": "bd06e14d6b19f2cbe055bc342b98b7ab67db316bd1f9b9690abfeda37b3ba8ff"
+      },
+      "spec": {
+        "end": "2025-10-01",
+        "feature_groups": [
+          "wavelet_core",
+          "trend",
+          "mean_reversion",
+          "volatility",
+          "microstructure",
+          "intraday",
+          "fracdiff",
+          "wavelet_ext",
+          "structural",
+          "calendar"
+        ],
+        "meta_train": "oof",
+        "model": {
+          "meta": "logit_l2",
+          "primary": "legacy"
+        },
+        "overrides": {
+          "FEATURE_SELECTION": "none",
+          "PWFO_DEFAULT": [
+            1512,
+            10
+          ],
+          "TEST": 10
+        },
+        "primary": {
+          "name": "wavelet_trend",
+          "params": {}
+        },
+        "pwfo": {
+          "expanding": false,
+          "is_grid": [
+            1260,
+            1512
+          ],
+          "oos_grid": [
+            5,
+            10,
+            21,
+            63
+          ]
+        },
+        "risk_profile": "none",
+        "seed": 42,
+        "sizer": "fixed",
+        "start": "2016-01-01",
+        "symbols": [
+          "SPY"
+        ],
+        "timeframe": "1Day"
+      },
+      "stage": "C",
+      "u11": {
+        "n_obs": 752,
+        "n_trades": 1736,
+        "n_trials": 8,
+        "pbo": 0.7875679875679875,
+        "sharpe": 1.1266503263543117
+      },
+      "u11_cell_hash": "a52bf71cec3e9215",
+      "why": "SPY 1Day wavelet_trend logit_l2 fixed (full feature groups)"
+    }
+  ]
+}

@@ -15,6 +15,10 @@ Every zoo model except `legacy` does the same thing inside `fit`, using only the
 3. The winner is refit on all rows; the chosen calibrator is fit on all OOF predictions (a model never scores
    its own training rows) and maps the refit model's raw P(y=1).
 
+U12 (SPEC §11.2): `cfg.ZOO_FIXED_PARAMS[name]` replaces the grid by that one point (step 1 then only produces the
+OOF predictions); `make_model(..., calibration="none")` skips step 2 (identity calibrator), and with one grid point
+also step 1 (unless `need_oof`: a train-fit sizer reuses the OOF predictions): one fit, no OOF predictions. The walk-forward attaches the rolling calibrator (models/meta_model.py).
+
 Feature columns with no value in any fitting row (a rule primary's `clf_prob`) are dropped; any other NaN raises.
 
 `legacy` is the pre-U6 XGBoost (META_PARAMS for the meta role, CLF_PARAMS for the primary role): no search,
@@ -41,6 +45,7 @@ from validation.purged_cv import BoundSplitter, PurgedKFold, embargo_bars
 from validation.scoring import brier, purged_cv_predict, selection_score
 
 Role = Literal["meta", "primary"]
+Calibration = Literal["crossfit", "none"]  # per fit; cfg.CALIBRATION="rolling" is applied by the walk-forward
 CALIBRATIONS = ("sigmoid", "isotonic")  # tie order: sigmoid first
 PROB_CLIP = 1e-3  # calibrated probabilities are clipped to [PROB_CLIP, 1 − PROB_CLIP] (isotonic yields exact 0/1)
 
@@ -71,15 +76,22 @@ def zoo_model(name: str) -> Callable:
     return register
 
 
-def make_model(name: str, cfg: RunConfig, role: Role = "meta") -> ZooModel:
-    """A fresh, unfitted zoo model seeded with cfg.SEED."""
+def make_model(
+    name: str, cfg: RunConfig, role: Role = "meta", calibration: Calibration = "crossfit", need_oof: bool = False
+) -> ZooModel:
+    """
+    A fresh, unfitted zoo model seeded with cfg.SEED. For the grid-searched models: `calibration`, and `need_oof` =
+    always produce purged-CV OOF predictions (`oof_raw_`), even with one grid point and no calibration to choose.
+    """
     if role not in ("meta", "primary"):
         raise ValueError(f"role must be 'meta' or 'primary', got {role!r}")
+    if calibration not in ("crossfit", "none"):
+        raise ValueError(f"calibration must be 'crossfit' or 'none', got {calibration!r}")
     try:
         cls = REGISTRY[name]
     except KeyError:
         raise ValueError(f"unknown zoo model {name!r}; expected one of {sorted(REGISTRY)}") from None
-    return cls(cfg, role)
+    return cls(cfg, role, calibration, need_oof) if issubclass(cls, _Tuned) else cls(cfg, role)
 
 
 def inner_cv(labels: pd.DataFrame, cfg: RunConfig) -> BoundSplitter:
@@ -121,6 +133,16 @@ class _Isotonic:
         return self.iso.predict(p)
 
 
+class _Identity:
+    """No calibration: raw P(y=1)."""
+
+    def fit(self, p, y, w) -> "_Identity":
+        return self
+
+    def predict(self, p) -> np.ndarray:
+        return np.asarray(p, dtype=float)
+
+
 _CALIBRATORS = {"sigmoid": _Sigmoid, "isotonic": _Isotonic}
 
 
@@ -156,21 +178,42 @@ class _Tuned:
     name: str
     grid: ClassVar[dict[str, list]] = {}
 
-    def __init__(self, cfg: RunConfig, role: Role = "meta"):
-        self.cfg, self.role = cfg, role
+    def __init__(
+        self, cfg: RunConfig, role: Role = "meta", calibration: Calibration = "crossfit", need_oof: bool = False
+    ):
+        self.cfg, self.role, self.calibration, self.need_oof = cfg, role, calibration, need_oof
         self.est = self.cal = None
+
+    @classmethod
+    def param_grid(cls, cfg: RunConfig) -> list[dict]:
+        """The grid points searched: cfg.ZOO_FIXED_PARAMS[name] alone if set, else the class grid."""
+        fixed = cfg.ZOO_FIXED_PARAMS.get(cls.name)
+        return [dict(fixed)] if fixed is not None else list(ParameterGrid(cls.grid))
 
     def estimator(self, params: dict, w: np.ndarray):
         """A fresh scikit-learn classifier for one grid point (`w` = the fitting rows' weights)."""
         raise NotImplementedError
 
     def fit(self, X, y, sample_weight, cv: BoundSplitter) -> "_Tuned":
+        """
+        Module docstring steps 1–3. A single grid point with calibration "none" skips the purged CV unless need_oof:
+        one fit, no OOF predictions (`oof_raw_` None), identity calibrator.
+        """
         Xa, ya, w = _as_xyw(X, y, sample_weight)
         # Columns with no value in any fitting row carry nothing (e.g. a rule primary's clf_prob); any other NaN raises
         self.cols_ = ~np.isnan(Xa).all(axis=0)
         Xa = self._cols(Xa)
         if not isinstance(cv, BoundSplitter) or len(cv.t0) != len(ya):
             raise ValueError("cv must be a BoundSplitter bound to the fitting rows' spans")
+        grid = self.param_grid(self.cfg)
+        if len(grid) == 1 and self.calibration == "none" and not self.need_oof:
+            self.best_index_, self.best_params_ = 0, grid[0]
+            self.cv_results_ = pd.DataFrame([{"params": grid[0], "score": np.nan, "score_sd": np.nan}])
+            self.calibration_, self.calibration_brier_ = "none", {}
+            self.oof_raw_ = None
+            self.est = self.estimator(self.best_params_, w).fit(Xa, ya, sample_weight=w)
+            self.cal = _Identity()
+            return self
         splits = list(cv.splitter.split(cv.t0, cv.t1))
         for i, (train, _) in enumerate(splits):
             if np.unique(ya[train]).size < 2:
@@ -180,7 +223,7 @@ class _Tuned:
         metric = self.cfg.SELECTION_METRIC
 
         rows, oofs = [], []
-        for params in ParameterGrid(self.grid):
+        for params in grid:
             oof = np.full(len(ya), np.nan)
             scores = []
             for f in purged_cv_predict(self.estimator(params, w), Xa, ya, cv.splitter, cv.t0, cv.t1, w):
@@ -194,20 +237,23 @@ class _Tuned:
             raise RuntimeError(f"{self.name}: purged CV left {int(np.isnan(oof).sum())} rows without an OOF prediction")
 
         cal_brier = {}
-        for method in CALIBRATIONS:
-            b = []
-            for train, test in splits:
-                c = _CALIBRATORS[method]().fit(oof[train], ya[train], w[train])
-                b.append(brier(ya[test], _clip(c.predict(oof[test])), w[test]))
-            cal_brier[method] = float(np.mean(b))
-        method = min(CALIBRATIONS, key=lambda m: cal_brier[m])  # min returns the first on ties
+        if self.calibration == "crossfit":
+            for method in CALIBRATIONS:
+                b = []
+                for train, test in splits:
+                    c = _CALIBRATORS[method]().fit(oof[train], ya[train], w[train])
+                    b.append(brier(ya[test], _clip(c.predict(oof[test])), w[test]))
+                cal_brier[method] = float(np.mean(b))
+            method = min(CALIBRATIONS, key=lambda m: cal_brier[m])  # min returns the first on ties
+        else:
+            method = "none"
 
         self.best_index_, self.best_params_ = best, rows[best]["params"]
         self.cv_results_ = pd.DataFrame(rows)
         self.calibration_, self.calibration_brier_ = method, cal_brier
         self.oof_raw_ = oof
         self.est = self.estimator(self.best_params_, w).fit(Xa, ya, sample_weight=w)
-        self.cal = _CALIBRATORS[method]().fit(oof, ya, w)
+        self.cal = _Identity() if method == "none" else _CALIBRATORS[method]().fit(oof, ya, w)
         return self
 
     def _cols(self, Xa: np.ndarray) -> np.ndarray:
@@ -408,6 +454,8 @@ def describe(model: ZooModel) -> str:
     """One-line summary of a fitted model's selection (for logs)."""
     if isinstance(model, _Tuned):
         cb = model.calibration_brier_
+        if not cb:
+            return f"{model.name} {model.best_params_}  calibration={model.calibration_}"
         return (
             f"{model.name} {model.best_params_}  calibration={model.calibration_} "
             f"(cv Brier sigmoid={cb['sigmoid']:.4f} isotonic={cb['isotonic']:.4f})"

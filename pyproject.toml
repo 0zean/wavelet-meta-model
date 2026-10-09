@@ -20,6 +20,7 @@ dependencies = [
     "lightgbm>=4.7.0",
     "joblib>=1.4",
     "catboost>=1.2",
+    "numba>=0.60",
 ]
 
 [dependency-groups]

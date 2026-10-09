@@ -129,10 +129,15 @@ def test_legacy_folds_are_one_expanding_combo(daily, unit):
 
 
 def test_grid_defaults():
-    cfg = RunConfig.for_timeframe("1Hour")
+    cfg = RunConfig.for_timeframe("1Hour")  # SPEC §11.2 (U12)
     grid = make_grid(cfg)
-    assert [(c.is_len, c.oos_len) for c in grid] == [(i, o) for i in (63, 126, 252, 504) for o in (5, 10, 21, 63)]
-    assert {c.is_len: c.val_len for c in grid} == {63: 21, 126: 42, 252: 84, 504: 168}  # VAL/(TRAIN+VAL) = 1/3
+    assert [(c.is_len, c.oos_len) for c in grid] == [(504, 21), (756, 21)] and cfg.PWFO_DEFAULT == (504, 21)
+    assert {c.is_len: c.val_len for c in grid} == {504: 168, 756: 252}  # VAL/(TRAIN+VAL) = 1/3
+    daily = RunConfig.for_timeframe("1Day")
+    assert [(c.is_len, c.oos_len) for c in make_grid(daily)] == [(1260, 21), (1512, 21)]
+    assert daily.PWFO_DEFAULT == (1260, 21) and daily.PWFO_COMBINE == "average"
+    u11 = cfg.replace(PWFO_IS_GRID=(63, 126, 252, 504), PWFO_OOS_GRID=(5, 10, 21, 63))  # the U9–U11 grid
+    assert {c.is_len: c.val_len for c in make_grid(u11)} == {63: 21, 126: 42, 252: 84, 504: 168}
     with pytest.raises(ValueError):
         cfg.replace(PWFO_VAL_FRAC=1.0)
 

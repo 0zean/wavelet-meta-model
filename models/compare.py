@@ -9,7 +9,7 @@ Per model (one row, appended to `<out>/trials.jsonl` as a counted trial, stage "
   Brier, AUC, meta precision (approved success rate), approved share, backtest Sharpe (meta-filtered and primary-only),
   and the OOS reliability curve (`<out>/calibration_<tag>.csv`).
 - CPCV (CPCV_GROUPS, CPCV_TEST_GROUPS) over all development-window events: the model is fit (with its own inner
-  HP search + calibration) on each purged train split and predicts the test groups; the φ stitched paths give a
+  HP search unless ZOO_FIXED_PARAMS fixes it, + calibration) on each purged train split and predicts the test groups; the φ stitched paths give a
   distribution of annualized Sharpe ratios of per-event net returns (approved events only for the meta role; every
   event on its predicted side for the primary role, where the classifier is fit on every non-zero-label train event:
   no active-day filter, unlike ml_xgb in the WFO). Per-fold feature groups (fracdiff d) are fit once on the whole
@@ -185,6 +185,9 @@ def main() -> None:
             "meta_model": cfg.META_MODEL,
             "primary_model": cfg.PRIMARY_MODEL,
             "meta_train": a.meta_train,
+            "zoo_fixed_params": cfg.ZOO_FIXED_PARAMS,
+            "calibration": cfg.CALIBRATION,
+            "oof_meta": cfg.OOF_META,
             "seed": cfg.SEED,
         }
         row = {"stage": "U6", "status": "ok", "git_sha": _git_sha(), "started_at": datetime.now(UTC).isoformat()}
