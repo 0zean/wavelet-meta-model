@@ -1,0 +1,18 @@
+{
+  "columns": [
+    "value",
+    "open",
+    "high",
+    "low",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "2009-09-18",
+  "fetched_at": "2026-10-09T02:52:48.096934-04:00",
+  "n_rows": 4290,
+  "name": "VIX3M",
+  "schema_version": 1,
+  "sha256": "bcf43d2dd3ca7ffbd21c6fd71b2bfc546b8b6fcbe4b8888980c0b35c77467df9",
+  "source": "cboe",
+  "url": "https://cdn-api.cboe.com/api/global/us_indices/daily_prices/VIX3M_History.csv"
+}

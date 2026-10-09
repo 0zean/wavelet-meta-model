@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "1962-01-02",
+  "fetched_at": "2026-10-09T02:53:45.496488-04:00",
+  "n_rows": 16177,
+  "name": "DGS10",
+  "schema_version": 1,
+  "sha256": "845a26ba77be497014e20761b05d4fbc8b85783fd63e22baa14ff112cfe6a0c1",
+  "source": "fred",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10"
+}

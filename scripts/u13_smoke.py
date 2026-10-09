@@ -105,8 +105,72 @@ def smoke_quotes(symbols=("SPY", "QQQ", "IWM", "AAPL", "NVDA")) -> dict:
                         for y in cs.index}  # fmt: skip
     out["spy_quotes_median_bp_dev"] = float(spy[spy["year"] <= 2025]["half_spread_bp"].median())
     out["spy_cs_mean_bp_dev"] = float(cs.mean())
+    out["event_vs_base"] = event_vs_base(t)
     (OUT / "quotes_smoke.json").write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     return out
+
+
+# The bins each event kind's trades would fill in (SPEC §16 calendar primaries, F4 / F8)
+EVENT_BINS = {
+    "FOMC": [f"{h}:{m}" for h in ("14", "15") for m in ("00", "15", "30", "45")],
+    "NFP": ["open_auction", "09:30", "09:45"],
+    "OPEX": ["15:30", "15:45", "close_auction"],
+    "MONTH_END": ["15:30", "15:45", "close_auction"],
+    "STRESS": ["day"],
+}
+
+
+def event_vs_base(table) -> dict:
+    """
+    Event / stress sessions (data.quotes `events` plan) vs the base table: per kind and symbol, the median over the
+    event samples of half-spread / the base table's value for the same symbol, year and bin, in the kind's bins.
+    """
+    import pandas as pd
+
+    from data import quotes
+
+    plan = quotes.event_days(*_event_plan_inputs())
+    frames = []
+    for day, kind in plan.items():
+        s = quotes.load_samples(quotes.EVENT_SAMPLES_DIR, pd.Timestamp(day))
+        if s is not None:
+            frames.append(s.assign(kind=kind))
+    if not frames:
+        return {"note": "no event samples cached (python -m data.quotes fetch --plan events)"}
+    s = pd.concat(frames, ignore_index=True)
+    s["hs"] = quotes.half_spread_bp(s)
+    s["year"] = s["mark"].dt.tz_convert("America/New_York").dt.year
+    s["bin"] = [b if b in quotes.AUCTION_BINS else quotes.tod_bin(b) for b in s["label"]]
+    day = s[~s["label"].isin(quotes.AUCTION_BINS)].assign(bin="day")
+    s = pd.concat([s, day], ignore_index=True)
+    base = table.set_index(["symbol", "year", "bin"])["half_spread_bp"]
+    s["base"] = base.reindex(pd.MultiIndex.from_frame(s[["symbol", "year", "bin"]])).to_numpy()
+    s["ratio"] = s["hs"] / s["base"].clip(lower=quotes_floor())
+    out = {}
+    for kind, bins in EVENT_BINS.items():
+        k = s[(s["kind"] == kind) & s["bin"].isin(bins)].dropna(subset=["ratio"])
+        by_sym = k.groupby("symbol")["ratio"].median()
+        out[kind] = {
+            "sessions": int(k["mark"].dt.normalize().nunique()),
+            "median_ratio_all_symbols": round(float(by_sym.median()), 3) if len(by_sym) else None,
+            "max_symbol": [by_sym.idxmax(), round(float(by_sym.max()), 3)] if len(by_sym) else None,
+            "per_symbol": {sym: round(float(v), 3) for sym, v in by_sym.items()},
+        }
+    return out
+
+
+def quotes_floor() -> float:
+    from risk.costs import QUOTES_FLOOR_BP
+
+    return QUOTES_FLOOR_BP
+
+
+def _event_plan_inputs():
+    from data.alpaca_source import calendar_from_raw
+    from data.events import read_events
+
+    rows = json.loads((ROOT / "data" / "cache" / "calendar.json").read_text(encoding="utf-8"))["rows"]
+    return calendar_from_raw(rows).index, read_events(), 2016, "2026-10-01"
 
 
 def main() -> None:
