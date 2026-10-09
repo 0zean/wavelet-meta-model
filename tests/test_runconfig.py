@@ -284,9 +284,9 @@ def _fit_targets(d: pd.DataFrame, cfg: RunConfig, monkeypatch) -> dict[str, list
         rec["train"] = [y_tr.to_frame(), w_tr.to_frame()]
         return fit_clf(X_tr, y_tr, w_tr, *args)
 
-    def meta(X_vl, prim, lbl, w, cfg, spans=None):
+    def meta(X_vl, prim, lbl, w, cfg, spans=None, **kw):
         rec["val"] = [X_vl, prim, lbl.to_frame(), w.to_frame()]
-        return fit_meta(X_vl, prim, lbl, w, cfg, spans)
+        return fit_meta(X_vl, prim, lbl, w, cfg, spans, **kw)
 
     monkeypatch.setattr(ml, "fit_primary_classifier", clf)
     monkeypatch.setattr(eng, "fit_meta_model", meta)

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from features.triple_barrier_labels import barrier_exits
-from models.zoo import ZooFitError, ZooModel, describe, inner_cv, make_model
+from models.zoo import ZooFitError, ZooModel, _clip, _Sigmoid, _Tuned, describe, inner_cv, make_model
 from utils.config import RunConfig
 
 
@@ -51,6 +51,7 @@ def fit_meta_model(
     weights: pd.Series,
     cfg: RunConfig,
     spans: pd.DataFrame | None = None,
+    cal_pairs: pd.DataFrame | None = None,
 ) -> ZooModel | None:
     """
     Train the meta-label classifier (cfg.META_MODEL, models/zoo.py).
@@ -71,6 +72,11 @@ def fit_meta_model(
         cfg (RunConfig): Run configuration.
         spans (pd.DataFrame | None): Label rows (`entry_pos`, `exit_pos`) covering meta_labels' events,
             for the inner purged CV; required unless META_MODEL is "legacy".
+        cal_pairs (pd.DataFrame | None): CALIBRATION="rolling" only: earlier windows' OOS events resolved before
+            this fit (columns `raw` = the predicting window's uncalibrated meta P(y=1), `y` = meta-label, `w` =
+            average uniqueness). With >= MIN_VAL_EVENTS rows of both classes the model is fit uncalibrated and
+            a weighted Platt map on these pairs becomes its calibrator; otherwise (the first window, or a caller
+            without a walk-forward) the model cross-fits its own calibration.
 
     Returns:
         ZooModel | None: Trained meta-model, or None if the labels (or an inner purged train split) have a
@@ -82,7 +88,14 @@ def fit_meta_model(
         print("[META]  Warning: only one class in meta-labels — skipping fit")
         return None
 
-    meta = make_model(cfg.META_MODEL, cfg, role="meta")
+    rolling = (
+        cfg.CALIBRATION == "rolling"
+        and cal_pairs is not None
+        and len(cal_pairs) >= cfg.MIN_VAL_EVENTS
+        and cal_pairs["y"].nunique() == 2
+    )
+    calibration = "none" if rolling or cfg.CALIBRATION == "none" else "crossfit"
+    meta = make_model(cfg.META_MODEL, cfg, role="meta", calibration=calibration)
     if cfg.META_MODEL == "legacy":
         meta.fit(X_m, meta_labels, weights.loc[meta_labels.index])
     else:
@@ -93,6 +106,12 @@ def fit_meta_model(
         except ZooFitError as e:
             print(f"[META]  Warning: {e} — skipping fit")
             return None
+        if rolling:
+            meta.cal = _Sigmoid().fit(cal_pairs["raw"].to_numpy(), cal_pairs["y"].to_numpy(), cal_pairs["w"].to_numpy())
+            meta.calibration_ = f"rolling ({len(cal_pairs)} pairs)"
+        elif cfg.CALIBRATION == "rolling":
+            n = 0 if cal_pairs is None else len(cal_pairs)
+            print(f"[META]  rolling calibration: {n} resolved pair(s), need {cfg.MIN_VAL_EVENTS} of both classes")
         print(f"[META]  {describe(meta)}")
     print(f"[META]  Trained on {len(meta_labels)} events  (success rate={meta_labels.mean():.3f})")
     return meta
@@ -105,26 +124,47 @@ def oof_meta_prob(
     weights: pd.Series,
     cfg: RunConfig,
     spans: pd.DataFrame,
+    meta: ZooModel | None = None,
 ) -> pd.Series:
     """
     Out-of-fold meta-probabilities of the meta-model's own fitting events (the train-window inputs of the `ecdf`
-    and `kelly_capped` sizers, SPEC §7): over a purged k-fold of their spans (ZOO_CV_SPLITS, CV_EMBARGO_PCT) a fresh
-    cfg.META_MODEL (with its own inner HP search + calibration) is fit on each purged train split and predicts its
-    test split. Same rows and features as fit_meta_model. A single-class train split raises ZooFitError.
+    and `kelly_capped` sizers, SPEC §7).
+
+    OOF_META="reuse" with a zoo `meta` (the fitted fit_meta_model result): its purged-CV OOF raw predictions
+    (`oof_raw_`, same rows) through its calibrator — no fit. A meta-model without OOF predictions raises.
+    OOF_META="refit" (or a legacy meta-model): over a purged k-fold of their spans (ZOO_CV_SPLITS, CV_EMBARGO_PCT) a
+    fresh cfg.META_MODEL (with its own inner HP search, and its own calibration under CALIBRATION="crossfit") is fit
+    on each purged train split and predicts its test split; under "rolling" the raw predictions go through `meta`'s
+    calibrator, under "none" they stay raw. Same rows and features as fit_meta_model. A single-class train split
+    raises ZooFitError.
     """
+    if cfg.OOF_META == "reuse" and isinstance(meta, _Tuned):
+        if meta.oof_raw_ is None or len(meta.oof_raw_) != len(meta_labels):
+            raise RuntimeError(
+                f"OOF_META='reuse': the {meta.name} meta-model holds no OOF predictions for these "
+                f"{len(meta_labels)} events (one grid point fit without cross-fitting); use OOF_META='refit'"
+            )
+        return pd.Series(_clip(meta.cal.predict(meta.oof_raw_)), index=meta_labels.index, name="oof_meta_prob")
+    rolling = cfg.CALIBRATION == "rolling" and cfg.META_MODEL != "legacy"
+    if rolling and meta is None:
+        raise ValueError("CALIBRATION='rolling' maps the OOF predictions through the fitted meta-model's calibrator")
     X_m = pd.concat([X_fit, primary_fit], axis=1).loc[meta_labels.index]
     spans = spans.loc[meta_labels.index]
     y, w = meta_labels.to_numpy(), weights.loc[meta_labels.index].to_numpy()
     out = pd.Series(np.nan, index=meta_labels.index, name="oof_meta_prob")
+    calibration = "crossfit" if cfg.CALIBRATION == "crossfit" else "none"
     for i, (train, test) in enumerate(inner_cv(spans, cfg).split(X_m)):
         if np.unique(y[train]).size < 2:
             raise ZooFitError(f"OOF meta split {i}: single-class purged train set ({train.size} rows)")
-        m = make_model(cfg.META_MODEL, cfg, role="meta")
+        m = make_model(cfg.META_MODEL, cfg, role="meta", calibration=calibration)
         if cfg.META_MODEL == "legacy":
             m.fit(X_m.iloc[train], y[train], w[train])
         else:
             m.fit(X_m.iloc[train], y[train], w[train], inner_cv(spans.iloc[train], cfg))
-        out.iloc[test] = m.predict_proba(X_m.iloc[test])
+        if rolling:
+            out.iloc[test] = _clip(meta.cal.predict(m.predict_raw(X_m.iloc[test])))
+        else:
+            out.iloc[test] = m.predict_proba(X_m.iloc[test])
     if out.isna().any():
         raise RuntimeError(f"OOF meta: {int(out.isna().sum())} events without a prediction")
     return out

@@ -40,6 +40,13 @@ DEFAULT_FEATURE_GROUPS = (
     "intraday",
     "fracdiff",
 )
+# SPEC §11.2 (U12): the hyper-parameters U11's purged-CV searches chose most often, fixed (one fit per window)
+DEFAULT_ZOO_FIXED_PARAMS = {
+    "rf_ldp_fast": {"max_features": 1},
+    "logit_l2": {"C": 0.1},
+    "xgb": {"max_depth": 2},
+    "lightgbm": {"num_leaves": 7},
+}
 
 
 @dataclass(frozen=True)
@@ -53,6 +60,7 @@ class TimeframeDefaults:
     initial_train_days: int
     val_days: int
     test_days: int
+    pwfo_is_grid: tuple[int, ...] = (504, 756)  # SPEC §11.2: U11 Stage C found no cadence effect; OOS 21 for all
 
 
 # SPEC §2 table. Holding periods are fixed in clock time (1Min 30 min, 5Min 1 h, 15Min 2 h, 30Min 3 h,
@@ -64,7 +72,7 @@ TIMEFRAME_DEFAULTS: dict[str, TimeframeDefaults] = {
     "15Min": TimeframeDefaults(26, 8, 78, False, 126, 42, 21),
     "30Min": TimeframeDefaults(13, 6, 65, False, 189, 63, 21),
     "1Hour": TimeframeDefaults(7, 6, 70, False, 252, 126, 21),  # 6 full hours + the 15:30 stub bar
-    "1Day": TimeframeDefaults(1, 10, 50, True, 1008, 504, 63),
+    "1Day": TimeframeDefaults(1, 10, 50, True, 1008, 504, 63, (1260, 1512)),
 }
 
 
@@ -115,6 +123,17 @@ class RunConfig:
     # Meta-model training rows: "val" = the val split with the train-fit primary (pre-U6); "oof" = train+val
     # events with purged k-fold out-of-fold primary signals (primary refit on train+val for test).
     META_TRAIN: Literal["val", "oof"] = "val"
+    # SPEC §11.2 (U12). Zoo model name → fixed hyper-parameters (keys = the model's grid keys): a listed model skips
+    # its purged-CV grid search. {} = every model searches its grid (U6–U11).
+    ZOO_FIXED_PARAMS: dict = field(default_factory=lambda: {k: dict(v) for k, v in DEFAULT_ZOO_FIXED_PARAMS.items()})
+    # Meta-model probability calibration (zoo models; `legacy` is uncalibrated): "crossfit" = sigmoid vs isotonic
+    # cross-fitted on the purged-CV OOF predictions (U6–U11); "rolling" = Platt map fit on the previous windows' OOS
+    # (raw p, meta-label) pairs resolved inside the current fitting span, "crossfit" while fewer than MIN_VAL_EVENTS
+    # pairs (or one class) are available; "none" = raw probabilities.
+    CALIBRATION: Literal["crossfit", "rolling", "none"] = "rolling"
+    # Train-window OOF meta-probabilities for the ecdf / kelly_capped sizers: "refit" = a fresh meta-model per purged
+    # split (U7–U11); "reuse" = the fitted zoo meta-model's own OOF predictions through its calibrator.
+    OOF_META: Literal["refit", "reuse"] = "reuse"
 
     # Low-movement day filter (classifier training only)
     # Bars whose trading day has |VWAP_close − VWAP_open| in the bottom
@@ -173,14 +192,18 @@ class RunConfig:
     # Power Walk-Forward (SPEC §6, U9; wfo/pwfo.py). Windows in WINDOW_UNIT (exchange-calendar sessions in the
     # runner): IS ∈ PWFO_IS_GRID × OOS ∈ PWFO_OOS_GRID, retraining every OOS. Each IS window splits into train and a
     # final val of round(PWFO_VAL_FRAC · IS) units (None → VAL / (INITIAL_TRAIN + VAL), the WFO's own ratio).
-    PWFO_IS_GRID: tuple[int, ...] = (63, 126, 252, 504)
-    PWFO_OOS_GRID: tuple[int, ...] = (5, 10, 21, 63)
+    # Defaults SPEC §11.2 (for_timeframe: 1Day IS (1260, 1512)); U9–U11 ran (63, 126, 252, 504) × (5, 10, 21, 63)
+    PWFO_IS_GRID: tuple[int, ...] = (504, 756)
+    PWFO_OOS_GRID: tuple[int, ...] = (21,)
     PWFO_EXPANDING: bool = False  # True: every IS window starts at the first unit
     PWFO_PARTIAL_LAST: bool = False  # True: a last, shorter OOS window runs to the end of the data (U11 Stage E)
     PWFO_VAL_FRAC: float | None = None
-    PWFO_DEFAULT: tuple[int, int] = (252, 10)  # (IS, OOS) used during the nested-selection burn-in
+    PWFO_DEFAULT: tuple[int, int] = (504, 21)  # (IS, OOS) used during the nested-selection burn-in (U9–U11: (252, 10))
     PWFO_MIN_WINDOWS: int = 50  # fewer OOS windows flags a combo as statistically weak (Meyers)
     PWFO_WFE_MIN_T: float = 2.0  # WFE is reported only when the mean IS figure is > 0 with this t-statistic
+    # The PWFO stream (SPEC §11.2): "nested" = walk-forward selection of the combo (U9–U11); "average" = equal-weight
+    # mean of the run combos' daily OOS returns on their common span (no burn-in, no selection)
+    PWFO_COMBINE: Literal["nested", "average"] = "average"
     SELECT_EVERY: int = 10  # nested selection: re-pick the combo every SELECT_EVERY trading days ...
     SELECT_LOOKBACK: int = 126  # ... by its Sharpe over the prior SELECT_LOOKBACK days of OOS returns
 
@@ -237,10 +260,34 @@ class RunConfig:
             raise ValueError(f"PRIMARY_MODEL applies only to the ml_xgb primary (PRIMARY={self.PRIMARY!r})")
         if self.META_TRAIN not in ("val", "oof"):
             raise ValueError(f"META_TRAIN must be 'val' or 'oof', got {self.META_TRAIN!r}")
+        object.__setattr__(self, "ZOO_FIXED_PARAMS", {k: dict(v) for k, v in dict(self.ZOO_FIXED_PARAMS).items()})
+        for name, params in self.ZOO_FIXED_PARAMS.items():
+            grid = getattr(ZOO.get(name), "grid", None)
+            if grid is None:
+                raise ValueError(f"ZOO_FIXED_PARAMS: {name!r} is not a zoo model with a grid; expected one of "
+                                 f"{sorted(n for n, c in ZOO.items() if hasattr(c, 'grid'))}")  # fmt: skip
+            if set(params) != set(grid):
+                raise ValueError(f"ZOO_FIXED_PARAMS[{name!r}] must set exactly {sorted(grid)}, got {sorted(params)}")
+        for name, allowed in (("CALIBRATION", ("crossfit", "rolling", "none")), ("OOF_META", ("refit", "reuse")),
+                              ("PWFO_COMBINE", ("nested", "average"))):  # fmt: skip
+            if getattr(self, name) not in allowed:
+                raise ValueError(f"{name} must be one of {allowed}, got {getattr(self, name)!r}")
         from sizing import REGISTRY as SIZERS
 
         if self.SIZER not in SIZERS:
             raise ValueError(f"SIZER must be one of {sorted(SIZERS)}, got {self.SIZER!r}")
+        if (
+            SIZERS[self.SIZER].needs_train
+            and self.OOF_META == "reuse"
+            and self.META_MODEL != "legacy"
+            and self.CALIBRATION != "crossfit"
+            and len(ZOO[self.META_MODEL].param_grid(self)) < 2
+        ):
+            raise ValueError(
+                f"SIZER={self.SIZER!r} with OOF_META='reuse' needs the meta-model's purged-CV OOF predictions, which "
+                f"{self.META_MODEL!r} computes only with CALIBRATION='crossfit' or a grid of >= 2 points; "
+                "use CALIBRATION='crossfit' or OOF_META='refit'"
+            )
         if not (
             self.SIZE_STEP == 0
             or (0 < self.SIZE_STEP <= 1 and abs(1 / self.SIZE_STEP - round(1 / self.SIZE_STEP)) < 1e-9)
@@ -304,6 +351,8 @@ class RunConfig:
             INITIAL_TRAIN=d.initial_train_days,
             VAL=d.val_days,
             TEST=d.test_days,
+            PWFO_IS_GRID=d.pwfo_is_grid,
+            PWFO_DEFAULT=(d.pwfo_is_grid[0], 21),
         )
         return base.replace(**overrides)
 

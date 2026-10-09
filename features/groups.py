@@ -7,6 +7,7 @@ cyclical calendar encodings, and (per fold) fracdiff. Window lengths not taken f
 `cfg` are module constants below (they are part of the feature-cache code hash).
 """
 
+import numba
 import numpy as np
 import pandas as pd
 from pywddff.filters import scaling_filter, wavelet_filter
@@ -232,9 +233,16 @@ def microstructure(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
 def cusum_state(close: pd.Series, threshold: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     """The symmetric CUSUM filter's running S+ / S− (reset on crossing), in units of the threshold."""
     ret = np.log(close.astype(float)).diff().to_numpy()
-    h = threshold.to_numpy()
+    return _cusum_state_kernel(ret, threshold.to_numpy(dtype=float))
+
+
+@numba.njit(cache=True)
+def _cusum_state_kernel(ret: np.ndarray, h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """cusum_state's recursion, compiled (U12; the loop's float operations in the same order, checked in
+    tests/test_features.py). NaN on bars with a NaN return or a NaN / zero threshold, which leave the state as is."""
     pos, neg = np.full(len(ret), np.nan), np.full(len(ret), np.nan)
-    s_pos = s_neg = 0.0
+    s_pos = 0.0
+    s_neg = 0.0
     for t in range(1, len(ret)):
         if np.isnan(h[t]) or np.isnan(ret[t]) or h[t] == 0:
             continue

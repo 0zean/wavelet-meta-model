@@ -1,12 +1,14 @@
 """
-Power Walk-Forward Optimisation (SPEC §6, U9): choose the in-sample length and retraining cadence by running a
-full walk-forward for every (IS, OOS) combo, then walk forward the *choice itself* (nested selection).
+Power Walk-Forward Optimisation (SPEC §6, U9): run a full walk-forward for every (IS, OOS) combo, then combine the
+combos into one stream: PWFO_COMBINE="average" (SPEC §11.2, U12 default) = their equal-weight mean on the common OOS
+span; "nested" (U9–U11) = walk forward the *choice itself* (nested selection of the in-sample length and cadence).
 
     windows    = pwfo_windows(df.index, Combo(252, 10, 84), embargo=1, sessions=calendar_dates)
     run        = run_combo(df, cfg, prep, combo, sessions=...)          # one combo's WFO
     stats      = combo_stats(df, run, cfg)                               # WFE, OOS Sharpe, per-window table
     choice     = nested_select(daily_returns_by_combo, is_sharpe, cfg)   # no selection look-ahead
     result     = run_pwfo(df, cfg, sessions=...)                         # all of the above + PBO + DSR
+    outs       = [combo_job(df, cfg, c, ...) for c in grid]; assemble(cfg, grid, outs)   # the same, split up
 
 Window w of combo (IS, OOS), in units (trading sessions, or bars for the legacy regression):
     IS  = [a_w, b_w)  with b_w = IS + w·OOS, a_w = w·OOS (rolling) or 0 (expanding)
@@ -27,7 +29,7 @@ from utils.config import RunConfig
 from validation.pbo import pbo
 from validation.stats import dsr, psr, return_moments
 from wfo.backtest import run_backtest
-from wfo.wfo_engine import NoFitError, Prepared, WindowFit, fit_window, prepare
+from wfo.wfo_engine import CalHistory, NoFitError, Prepared, WindowFit, fit_window, prepare
 
 TRADING_DAYS = 252
 
@@ -153,6 +155,7 @@ def run_combo(
         raise ValueError(f"{combo.label}: the data holds no full window")
     frames, ins, rows = [], {}, []
     ix = df.index
+    hist = CalHistory() if cfg.CALIBRATION == "rolling" else None  # one per combo: its windows, in order
     for win in wins:
         print(
             f"\n[PWFO]  {combo.label} window {win.w}: IS[{win.is_start}:{win.val_end}]  OOS[{win.val_end}:{win.oos_end}]"
@@ -163,7 +166,7 @@ def run_combo(
             if empty
             else fit_window(
                 df, cfg, prep, win.w + 1, win.is_start, win.train_end, win.val_end, win.oos_end,
-                win.train_embargo, win.val_embargo, in_sample=True,
+                win.train_embargo, win.val_embargo, in_sample=True, cal_history=hist,
             )
         )  # fmt: skip
         rows.append(
@@ -405,18 +408,21 @@ class PWFOResult(NamedTuple):
     summary: pd.DataFrame  # one row per combo
     windows: pd.DataFrame  # every combo's per-window table
     returns: pd.DataFrame  # daily OOS returns, one column per run combo
-    choice: pd.DataFrame  # nested-selection decisions
-    pwfo: pd.DataFrame  # stitched PWFO daily returns
+    choice: pd.DataFrame  # nested-selection decisions (empty for PWFO_COMBINE="average")
+    pwfo: pd.DataFrame  # PWFO daily returns: `ret`, `combo` (chosen, or "average"), `burn_in`
     stats: dict  # headline PWFO statistics, PBO and DSR
     signals: dict[str, pd.DataFrame]  # combo label → OOS signals
 
 
-def _combo_job(df, cfg, combo, unit, sessions, prep_kw, spread_bars):
+def combo_job(df, cfg, combo, unit="days", sessions=None, spread_bars=None, **prep_kw):
+    """
+    One combo end to end: prepare → run_combo → combo_stats (None if no window could be fit). The returned run
+    drops its in-sample frames (combo_stats is their only reader), so it pickles small for a parent process.
+    """
     prep = prepare(df, cfg, **prep_kw)
     run = run_combo(df, cfg, prep, combo, unit=unit, sessions=sessions)
-    if run.signals.empty:
-        return run, None
-    return run, combo_stats(df, run, cfg, spread_bars)
+    st = None if run.signals.empty else combo_stats(df, run, cfg, spread_bars)
+    return run._replace(in_sample={}), st
 
 
 def run_pwfo(
@@ -432,26 +438,43 @@ def run_pwfo(
     **prep_kw,
 ) -> PWFOResult:
     """
-    Run every combo of `grid` (default make_grid(cfg)), then nested selection, PBO across combos and DSR.
-
-    A combo with no window that could be fit (e.g. IS too short for MIN_TRAIN_EVENTS) is reported with
-    n_ok_windows = 0 and left out of selection and PBO; it still counts as a trial for the DSR. jobs > 1 runs combos
-    in processes (pin BLAS to one thread, see risk/run.py); `log_dir` receives each combo's stdout.
+    Run every combo of `grid` (default make_grid(cfg)) through combo_job, then `assemble`. jobs > 1 runs combos in
+    processes (pin BLAS to one thread, see risk/run.py); `log_dir` receives each combo's stdout. The experiment
+    runner schedules combo_job itself (flat pool) and calls `assemble`.
     """
     from concurrent.futures import ProcessPoolExecutor
 
     grid = make_grid(cfg) if grid is None else grid
-    default = Combo(*cfg.PWFO_DEFAULT, 0).label
-    if default not in {c.label for c in grid}:
-        raise ValueError(f"PWFO_DEFAULT {cfg.PWFO_DEFAULT} is not in the grid")
-
+    check_grid(cfg, grid)
     if jobs > 1:
         with ProcessPoolExecutor(max_workers=min(jobs, len(grid))) as ex:
             futs = [ex.submit(_logged_job, log_dir, df, cfg, c, unit, sessions, prep_kw, spread_bars) for c in grid]
             outs = [f.result() for f in futs]
     else:
         outs = [_logged_job(log_dir, df, cfg, c, unit, sessions, prep_kw, spread_bars) for c in grid]
+    return assemble(cfg, grid, outs)
 
+
+def check_grid(cfg: RunConfig, grid: list[Combo]) -> None:
+    """Nested selection needs PWFO_DEFAULT in the grid (its burn-in combo)."""
+    if cfg.PWFO_COMBINE == "nested" and Combo(*cfg.PWFO_DEFAULT, 0).label not in {c.label for c in grid}:
+        raise ValueError(f"PWFO_DEFAULT {cfg.PWFO_DEFAULT} is not in the grid")
+
+
+def assemble(cfg: RunConfig, grid: list[Combo], outs: list) -> PWFOResult:
+    """
+    The PWFO stream from every combo's (ComboRun, ComboStats | None), in grid order, plus PBO across combos and DSR.
+
+    PWFO_COMBINE="nested": walk-forward selection of the combo (nested_select, stitch); the days before the first
+    decision with a full lookback are burn-in, left out of the live stream. "average": the equal-weight mean of the
+    run combos' daily OOS returns on the days every run combo has one (their common span: the latest first OOS day
+    to the earliest last one); every day is live.
+
+    A combo with no window that could be fit (e.g. IS too short for MIN_TRAIN_EVENTS) is reported with
+    n_ok_windows = 0 and left out of selection, the average and PBO; it still counts as a trial for the DSR.
+    """
+    check_grid(cfg, grid)
+    default = Combo(*cfg.PWFO_DEFAULT, 0).label
     summ, wins, rets, sigs, is_rows = [], [], {}, {}, []
     for combo, (run, st) in zip(grid, outs, strict=True):
         if st is None:
@@ -476,24 +499,36 @@ def run_pwfo(
         )  # fmt: skip
     summary = pd.DataFrame(summ)
     windows = pd.concat(wins, ignore_index=True)
-    if default not in rets:
-        raise NoFitError(f"the default combo {default} produced no OOS windows; nested selection needs it")
-    returns = pd.DataFrame(rets).sort_index()
-    is_sharpe = pd.concat(is_rows, ignore_index=True)
-    is_len = {c.label: c.is_len for c in grid}
-    choice = nested_select(returns, is_sharpe, is_len, default, cfg.SELECT_EVERY, cfg.SELECT_LOOKBACK)
-    pw = stitch(returns, choice)
+    if cfg.PWFO_COMBINE == "nested":
+        if default not in rets:
+            raise NoFitError(f"the default combo {default} produced no OOS windows; nested selection needs it")
+        returns = pd.DataFrame(rets).sort_index()
+        is_sharpe = pd.concat(is_rows, ignore_index=True)
+        is_len = {c.label: c.is_len for c in grid}
+        choice = nested_select(returns, is_sharpe, is_len, default, cfg.SELECT_EVERY, cfg.SELECT_LOOKBACK)
+        pw = stitch(returns, choice)
+    else:
+        if not rets:
+            raise NoFitError("no combo produced OOS windows; nothing to average")
+        returns = pd.DataFrame(rets).sort_index()
+        common = returns.dropna(axis=0, how="any")
+        if common.empty:
+            raise NoFitError(f"the run combos' OOS spans do not overlap ({list(returns.columns)})")
+        choice = pd.DataFrame(columns=["start", "end", "chosen", "burn_in", "score"])
+        pw = pd.DataFrame({"ret": common.mean(axis=1), "combo": "average", "burn_in": False}, index=common.index)
     live = pw.loc[~pw["burn_in"], "ret"]
 
     stats: dict = {
+        "combine": cfg.PWFO_COMBINE,
         "n_combos": len(grid),
         "n_run_combos": len(rets),
+        "n_windows": int(summary["n_oos_windows"].sum()),
         "n_decisions": len(choice),
         "n_burn_in_days": int(pw["burn_in"].sum()),
         "n_live_days": len(live),
         "live_start": str(live.index[0].date()) if len(live) else None,
         "live_end": str(live.index[-1].date()) if len(live) else None,
-        "picks": choice.loc[~choice["burn_in"], "chosen"].value_counts().to_dict(),
+        "picks": choice.loc[~choice["burn_in"].astype(bool), "chosen"].value_counts().to_dict(),
     }
     if len(live) > 1:
         curve = (1 + live).cumprod()
@@ -537,9 +572,9 @@ def _logged_job(log_dir, df, cfg, combo, unit, sessions, prep_kw, spread_bars):
     from pathlib import Path
 
     if log_dir is None:
-        return _combo_job(df, cfg, combo, unit, sessions, prep_kw, spread_bars)
+        return combo_job(df, cfg, combo, unit, sessions, spread_bars, **prep_kw)
     with (
         open(Path(log_dir) / f"{combo.label}.log", "w", buffering=1, encoding="utf-8") as f,
         contextlib.redirect_stdout(f),
     ):
-        return _combo_job(df, cfg, combo, unit, sessions, prep_kw, spread_bars)
+        return combo_job(df, cfg, combo, unit, sessions, spread_bars, **prep_kw)

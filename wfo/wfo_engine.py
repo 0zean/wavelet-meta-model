@@ -97,7 +97,7 @@ def fold_sizers(names, meta_mdl, df, events, X_fit, prim_fit, meta_lbl, w_fit, l
     p_oof = ret = None
     if any(sz.needs_train for sz in sizers.values()):
         try:
-            p_oof = oof_meta_prob(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit)
+            p_oof = oof_meta_prob(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit, meta=meta_mdl)
         except ZooFitError as e:
             print(f"[SIZE]  OOF meta-probabilities failed ({e}) — train-fit sizers skip this fold")
             return {n: (sz if not sz.needs_train else None) for n, sz in sizers.items()}
@@ -110,6 +110,33 @@ def fold_sizers(names, meta_mdl, df, events, X_fit, prim_fit, meta_lbl, w_fit, l
             print(f"[SIZE]  {e} — no trades for this sizer in the fold")
             out[n] = None
     return out
+
+
+class CalHistory:
+    """
+    CALIBRATION="rolling" (SPEC §11.2): the OOS (raw meta P(y=1), side-aware meta-label) pairs of the windows walked
+    so far, in order. `pairs` returns the ones a fit on [fit_start, end) may use: event bar >= fit_start and exit
+    before end − embargo — the purge rule of that fit's own events (wfo_engine.purged), so a pair's outcome is
+    known before the fit and the predicting model was fit strictly earlier.
+    """
+
+    def __init__(self):
+        self.raw, self.y = [], []
+
+    def add(self, raw: pd.Series, y: pd.Series) -> None:
+        both = raw.index.intersection(y.index)
+        self.raw.append(raw.loc[both])
+        self.y.append(y.loc[both])
+
+    def pairs(self, labels: pd.DataFrame, fit_start: int, end: int, embargo: int, n_bars: int) -> pd.DataFrame:
+        if not self.raw:
+            return pd.DataFrame(columns=["raw", "y", "w"], dtype=float)
+        raw, y = pd.concat(self.raw), pd.concat(self.y)
+        if raw.index.has_duplicates:
+            raise RuntimeError("rolling calibration: an OOS event was predicted by two windows")
+        lab = purged(labels, fit_start, end, embargo)
+        lab = lab.loc[lab.index.intersection(raw.index)]
+        return pd.DataFrame({"raw": raw.loc[lab.index], "y": y.loc[lab.index], "w": average_uniqueness(lab, n_bars)})
 
 
 class Fold(NamedTuple):
@@ -218,6 +245,7 @@ def fit_window(
     emb_vl: int,
     *,
     in_sample: bool = False,
+    cal_history: CalHistory | None = None,
 ) -> WindowFit:
     """
     One walk-forward step: fit on train = [fit_start, train_end) and val = [train_end, val_end), predict the test
@@ -227,6 +255,9 @@ def fit_window(
 
     in_sample=True also returns the fitted models' predictions on their own fitting events (train + val purged
     at val_end), the in-sample side of the walk-forward efficiency (SPEC §6).
+
+    cal_history (CALIBRATION="rolling", walked in window order): the meta-model is calibrated on its usable pairs
+    (fit_meta_model), and this window's test events' raw meta-probabilities and meta-labels are added to it.
     """
     events, labels, fset, base_feats, event_pos, size_names = prep
     N = len(df)
@@ -292,14 +323,19 @@ def fit_window(
 
     # ── Side-aware meta-labels → meta-model ──────────────────────────────
     meta_lbl = make_meta_labels(df, events.loc[X_fit.index], prim_fit, cfg)
-    meta_mdl = fit_meta_model(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit)
+    rolling = cfg.CALIBRATION == "rolling" and cfg.META_MODEL != "legacy" and cal_history is not None
+    cal_pairs = cal_history.pairs(labels, fit_start, val_end, emb_vl, N) if rolling else None
+    meta_mdl = fit_meta_model(X_fit, prim_fit, meta_lbl, w_fit, cfg, lab_fit, cal_pairs=cal_pairs)
 
     # ── Final prediction on OOS test fold ─────────────────────────────────
     fitted = fold_sizers(size_names, meta_mdl, df, events, X_fit, prim_fit, meta_lbl, w_fit, lab_fit, cfg)
+    raw_ts = []
 
-    def predict(X: pd.DataFrame, end: int) -> pd.DataFrame:
+    def predict(X: pd.DataFrame, end: int, keep_raw: bool = False) -> pd.DataFrame:
         prim_x = check_signal(prim.signal(df.iloc[:end], X, cfg), X, prim.name)
         res = meta_predict(meta_mdl, X, prim_x, cfg.META_THRESH)
+        if keep_raw and meta_mdl is not None:
+            raw_ts.append(pd.Series(meta_mdl.predict_raw(pd.concat([X, prim_x], axis=1)), index=X.index))
         res["width"] = events.loc[X.index, "width"]
         res["fold"] = fold
         res["primary"] = prim.name
@@ -308,7 +344,9 @@ def fit_window(
             res[col] = 0.0 if sz is None else np.where(res["trade_signal"] != 0, sz.size(res["meta_prob"]), 0.0)
         return res
 
-    result_ts = predict(X_ts, test_end)
+    result_ts = predict(X_ts, test_end, keep_raw=rolling)
+    if raw_ts:  # outcomes from future bars: CalHistory.pairs hands them out only once resolved
+        cal_history.add(raw_ts[0], make_meta_labels(df, events.loc[X_ts.index], result_ts, cfg))
     is_frame = None
     if in_sample:
         X_is = X_fit if cfg.META_TRAIN == "oof" else pd.concat([X_tr, X_vl]).sort_index()
@@ -356,6 +394,8 @@ def run_wfo(
          meta-labels → fit cfg.META_MODEL on val; "oof" = purged out-of-fold primary signals on train+val
          events → meta-model on all of them, primary refit on train+val. A zoo meta/primary model runs its
          HP search + calibration by purged CV inside its own fitting rows (models/zoo.py).
+         CALIBRATION="rolling": the meta-model's Platt map is fit on the earlier folds' resolved OOS pairs
+         (CalHistory; the first fold cross-fits).
       5. Bet sizers (cfg.SIZER, plus `sizers`) fit on the fitting events' OOF meta-probabilities (sizing/)
       6. Final trade signal and bet size on test (OOS) events → store
 
@@ -380,13 +420,14 @@ def run_wfo(
     size_names = prep.size_names
     all_results, meta_skipped, primary_skipped = [], [], []
     sizer_skipped = {n: [] for n in size_names}
+    hist = CalHistory() if cfg.CALIBRATION == "rolling" else None
     for fold, (train_end, val_end, test_end, emb_tr, emb_vl) in enumerate(wfo_folds(df.index, cfg), start=1):
         print(f"\n{'─' * 60}")
         print(f"  FOLD {fold}: train[0:{train_end}]  val[{train_end}:{val_end}]  test[{val_end}:{test_end}]")
         print(f"{'─' * 60}")
 
         t0 = time.time()
-        res = fit_window(df, cfg, prep, fold, 0, train_end, val_end, test_end, emb_tr, emb_vl)
+        res = fit_window(df, cfg, prep, fold, 0, train_end, val_end, test_end, emb_tr, emb_vl, cal_history=hist)
         if res.status == "primary_failed":
             primary_skipped.append(fold)
         if res.status != "ok":
