@@ -85,6 +85,7 @@ def synthetic_exo(index: pd.DatetimeIndex, seed: int = 0) -> dict[str, pd.DataFr
             v = 15 * np.exp(np.cumsum(rng.normal(0, 0.03, len(span))))
             out[name] = pd.DataFrame({"value": v, "available_at": available_at(src, series, span)}, index=span)
             continue
+        series = series.removesuffix("_SCHEDULE")  # the schedule of a kind = its rows (no cancellations here)
         step, offset, at = {"FOMC": (30, 3, "14:00"), "CPI": (21, 7, "08:30"), "NFP": (21, 12, "08:30"),
                             "OPEX": (21, 15, None), "TOM": (5, 1, None), "PRE_HOLIDAY": (37, 9, None)}[series]  # fmt: skip
         dates = span[offset::step]

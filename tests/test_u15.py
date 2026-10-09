@@ -195,7 +195,7 @@ def test_exo_groups_are_causal_under_exo_perturbation_daily(name):
 def test_unscheduled_statement_flips_fomc_day_at_its_instant():
     """2020-03-03: the unscheduled cut was announced 10:00 ET (data/events.py); not known on earlier bars."""
     d = intraday_bars(["2020-03-02", "2020-03-03"])
-    exo = {f"calendar/{k}": event_series("calendar", k) for k in ("FOMC", "CPI", "NFP", "OPEX", "TOM", "PRE_HOLIDAY")}
+    exo = {name: event_series("calendar", name.split("/")[1]) for name in S.CALENDAR_EXO}
     cal = group_frame("calendar_events", d, CFG5, None, exo=exo)
     day = cal.loc["2020-03-03"]
     assert list(day["calendar_events__fomc_day"]) == [0, 0, 1, 1, 1, 1]
@@ -237,6 +237,43 @@ def test_calendar_unknown_closure_is_not_counted_before_it_is_public(real_calend
     d = intraday_bars(["2025-01-03", "2025-01-06"], times=("09:30",))
     cal = group_frame("calendar_events", d, CFG5, None, exo=real_calendar)["calendar_events__to_cpi"]
     assert list(cal) == [8, 6]  # 01-03: 01-03 … 01-14 with 01-09 still a session = 8; 01-06: 01-06 … 01-14 − 01-09
+
+
+def test_withdrawn_schedule_rows_are_visible_only_before_their_instant():
+    f = frame(["2025-10-03", "2025-11-20"], [1.0, 1.0], [utc("2025-01-01 00:00"), utc("2025-11-20 00:00")],
+              withdrawn_at=pd.DatetimeIndex([utc("2025-10-03 08:30"), pd.NaT]))  # fmt: skip
+    exo = Exo({"calendar/NFP_SCHEDULE": f})
+    idx = bars_on("2025-09-30 10:00", "2025-10-03 00:00", "2025-10-03 09:30", "2025-11-19 10:00", "2025-11-20 09:30")
+    nxt = exo.next_date("calendar/NFP_SCHEDULE", idx)
+    assert [str(x) for x in nxt] == ["2025-10-03", "2025-10-03", "NaT", "NaT", "2025-11-20"]
+    with pytest.raises(ValueError, match="withdrawn"):
+        exo.known_dates("calendar/NFP_SCHEDULE", idx)
+
+
+@pytest.mark.parametrize(
+    "day, column, expected",
+    [
+        ("2020-03-13", "to_fomc", 3),  # the 03-18 meeting was scheduled until the 03-15 statement replaced it
+        ("2020-02-03", "to_fomc", 31),  # Presidents Day 02-17 closed
+        ("2025-09-10", "to_nfp", 17),  # Oct 3 NFP, postponed by the 2025-10-01 shutdown
+        ("2025-09-12", "to_cpi", 23),  # Oct 15 CPI, moved to Oct 24
+        ("2025-10-06", "to_nfp", 24),  # after Oct 3 passed: the scheduled Nov 7
+        ("2026-01-12", "to_nfp", 18),  # Feb 6 NFP (moved by the 2026-01-31 funding lapse); MLK 01-19 closed
+        ("2026-01-02", "to_cpi", 7),  # Jan 13 CPI, held on its scheduled date, public from 2026-01-01
+    ],
+)
+def test_to_star_uses_the_schedule_public_at_the_bar(real_calendar, day, column, expected):
+    """U15 review SEVERE: the table holds held releases only; a cancelled / moved release must still count as
+    scheduled until its scheduled instant (the cancellation is not public earlier in the data)."""
+    d = intraday_bars([day], times=("10:00",))
+    cal = group_frame("calendar_events", d, CFG5, None, exo=real_calendar)
+    assert cal[f"calendar_events__{column}"].iloc[0] == expected
+
+
+def test_withdrawn_dates_do_not_flag_event_days(real_calendar):
+    d = intraday_bars(["2025-10-03", "2025-10-15", "2020-03-18"], times=("10:00",))
+    cal = group_frame("calendar_events", d, CFG5, None, exo=real_calendar)
+    assert (cal["calendar_events__cpi_nfp_day"] == 0).all() and (cal["calendar_events__fomc_day"] == 0).all()
 
 
 def test_calendar_daily_has_no_minutes_column(real_calendar):
@@ -359,9 +396,7 @@ def test_context_needs_and_exo_range():
     a, b = exo_range("cboe/VIX", "2020-01-02", "2020-06-01", False)
     assert (a, b) == (pd.Timestamp("2019-09-04"), pd.Timestamp("2020-06-01"))
     _, b = exo_range("calendar/FOMC", "2020-01-02", "2026-09-01", False)
-    assert b == pd.Timestamp("2026-10-01")  # the lookahead never crosses HOLDOUT_START outside a final run
-    _, b = exo_range("calendar/FOMC", "2020-01-02", "2026-09-01", True)
-    assert b == pd.Timestamp("2026-12-30")
+    assert b == pd.Timestamp("2026-12-30")  # schedules (no outcomes) may extend past HOLDOUT_START (U15 review)
 
 
 def test_load_context_loads_only_what_the_groups_read():
@@ -374,6 +409,10 @@ def test_load_context_loads_only_what_the_groups_read():
     ctx = load_context("XLE", "1Day", "2014-01-01", "2015-01-01", ["wavelet_core", "cross_asset", "rates_credit"],
                        **kw)  # fmt: skip
     assert set(ctx) == {"market", "exo"} and set(ctx["exo"]) == set(S.RATES_EXO)  # an ETF has no sector
+    with pytest.raises(ValueError, match="other than the market"):  # degenerate beta 1 / residual 0 (U15 review)
+        load_context("SPY", "1Day", "2014-01-01", "2015-01-01", ["wavelet_core", "cross_asset"], **kw)
+    ctx = load_context("XLE", "1Day", "2025-06-02", "2026-09-28", ["wavelet_core", "calendar_events"], **kw)
+    assert src.exo_loads[-1][2] > pd.Timestamp("2026-10-01") and src.exo_loads[-1][3]  # calendar past HOLDOUT_START
 
 
 def test_runner_cell_with_state_groups_passes_context(tmp_path):

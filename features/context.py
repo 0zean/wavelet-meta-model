@@ -8,12 +8,13 @@ The context a symbol's feature groups read (SPEC §15, U15), loaded only when a 
 
 Exo rows are requested from EXO_LOOKBACK before the first bar (the as-of value on the first bars, multi-observation
 changes, `since_*`). Calendar rows, which are schedules known in advance, are also requested CALENDAR_LOOKAHEAD past
-the last bar (`to_*` near the end), but never past HOLDOUT_START unless the run may read the holdout.
+the last bar (`to_*` near the end), past HOLDOUT_START if need be: they carry no market outcome, and the Exo view
+still shows a row only from its `known_from` (U15 review: clipping them gave the dev window's last weeks an artificial
+"no release scheduled").
 """
 
 import pandas as pd
 
-from data.bars import HOLDOUT_START
 from data.sectors import MARKET, sector_of
 from features.registry import context_needs
 
@@ -26,8 +27,6 @@ def exo_range(name: str, start, end, allow_holdout: bool) -> tuple[pd.Timestamp,
     start, end = pd.Timestamp(start) - EXO_LOOKBACK, pd.Timestamp(end)
     if name.startswith("calendar/"):
         end = end + CALENDAR_LOOKAHEAD
-        if not allow_holdout:
-            end = min(end, HOLDOUT_START)
     return start.normalize(), end.normalize()
 
 
@@ -46,6 +45,8 @@ def load_context(
     keys, names = context_needs(groups, timeframe)
     ctx = {}
     if "market" in keys:
+        if symbol.upper() == market.upper():  # beta 1, residual 0: degenerate columns, not a feature
+            raise ValueError(f"'cross_asset' needs a symbol other than the market ({market}); drop the group for it")
         ctx["market"] = bars(market, timeframe, start, end, allow_holdout=allow_holdout)
     sector = sector_of(symbol)
     if "sector" in keys and sector is not None:
@@ -55,6 +56,6 @@ def load_context(
         for name in sorted(names):
             source, series = name.split("/", 1)
             a, b = exo_range(name, start, end, allow_holdout)
-            frames[name] = exo(source, series, a, b, allow_holdout=allow_holdout)
+            frames[name] = exo(source, series, a, b, allow_holdout=allow_holdout or source == "calendar")
         ctx["exo"] = frames
     return ctx

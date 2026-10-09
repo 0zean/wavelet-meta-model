@@ -15,7 +15,8 @@ so a value observed later the same day (the VIX close, available 16:20 ET) canno
     change(name, index, periods)   change over `periods` observations, computed on the observation series and
                                    available when its later row is (log=True: log change)
     next_date / last_date          the first visible row dated on or after / last dated on or before the bar's
-                                   NY date (calendar kinds: scheduled rows are visible long before their date)
+                                   NY date (calendar kinds: scheduled rows are visible long before their date; a row
+                                   with `withdrawn_at`, a cancelled schedule entry, is visible only before it)
     on_day(name, index, column)    the visible row dated on the bar's NY date
     known_dates(name, index)       (k, dates): rows ordered by available_at; row i is visible at bar j iff i < k[j]
 """
@@ -89,8 +90,10 @@ class Exo:
             for col in sorted(f.columns):
                 h.update(col.encode())
                 x = f[col]
-                arr = pd.DatetimeIndex(x).tz_convert("UTC").as_unit("ns").asi8 if col in ("available_at", "event_at") \
-                    else x.to_numpy(dtype=float)  # fmt: skip
+                if isinstance(x.dtype, pd.DatetimeTZDtype):  # available_at, event_at, withdrawn_at
+                    arr = pd.DatetimeIndex(x).tz_convert("UTC").as_unit("ns").asi8
+                else:
+                    arr = x.to_numpy(dtype=float)
                 h.update(np.ascontiguousarray(arr).tobytes())
         return h.hexdigest()
 
@@ -130,13 +133,19 @@ class Exo:
 
     # ── dated rows (calendar kinds) ──
 
-    def _rows(self, name: str) -> tuple[np.ndarray, np.ndarray]:
+    def _rows(self, name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """(dates, available_at, withdrawn_at) as datetime64[D] / UTC ns; a row is visible in [available_at,
+        withdrawn_at) (a schedule entry that was cancelled; int64 max = never withdrawn)."""
         f = self._get(name)
-        return f.index.to_numpy().astype("datetime64[D]"), _avail_ns(f)
+        until = np.full(len(f), np.iinfo(np.int64).max, dtype=np.int64)
+        if "withdrawn_at" in f:
+            w = pd.DatetimeIndex(f["withdrawn_at"]).tz_convert("UTC").as_unit("ns")
+            until = np.where(w.isna(), until, w.asi8)
+        return f.index.to_numpy().astype("datetime64[D]"), _avail_ns(f), until
 
     def next_date(self, name: str, index: pd.DatetimeIndex) -> np.ndarray:
         """The first visible row dated on or after each bar's NY date (NaT where none is visible)."""
-        dates, avail = self._rows(name)
+        dates, avail, until = self._rows(name)
         day, stamp = bar_days(index), bar_stamps_utc(index)
         pos = np.searchsorted(dates, day, side="left")
         out = np.full(len(day), np.datetime64("NaT"), dtype="datetime64[D]")
@@ -145,7 +154,7 @@ class Exo:
             p = pos[todo]
             inside = p < len(dates)
             todo, p = todo[inside], p[inside]
-            seen = avail[p] <= stamp[todo]
+            seen = (avail[p] <= stamp[todo]) & (stamp[todo] < until[p])
             out[todo[seen]] = dates[p[seen]]
             todo = todo[~seen]
             pos[todo] += 1
@@ -153,7 +162,7 @@ class Exo:
 
     def last_date(self, name: str, index: pd.DatetimeIndex) -> np.ndarray:
         """The last visible row dated on or before each bar's NY date (NaT where none is visible)."""
-        dates, avail = self._rows(name)
+        dates, avail, until = self._rows(name)
         day, stamp = bar_days(index), bar_stamps_utc(index)
         pos = np.searchsorted(dates, day, side="right") - 1
         out = np.full(len(day), np.datetime64("NaT"), dtype="datetime64[D]")
@@ -162,7 +171,7 @@ class Exo:
             p = pos[todo]
             inside = p >= 0
             todo, p = todo[inside], p[inside]
-            seen = avail[p] <= stamp[todo]
+            seen = (avail[p] <= stamp[todo]) & (stamp[todo] < until[p])
             out[todo[seen]] = dates[p[seen]]
             todo = todo[~seen]
             pos[todo] -= 1
@@ -172,12 +181,12 @@ class Exo:
         """`column` of the visible row dated on each bar's NY date: float (NaN) or, for event_at, UTC int64 ns
         (np.iinfo(int64).min where there is none)."""
         f = self._get(name)
-        dates, avail = self._rows(name)
+        dates, avail, until = self._rows(name)
         day, stamp = bar_days(index), bar_stamps_utc(index)
         pos = np.searchsorted(dates, day, side="left")
         hit = pos < len(dates)
         hit[hit] = dates[pos[hit]] == day[hit]
-        hit[hit] = avail[pos[hit]] <= stamp[hit]
+        hit[hit] = (avail[pos[hit]] <= stamp[hit]) & (stamp[hit] < until[pos[hit]])
         if column == "event_at":
             vals = pd.DatetimeIndex(f["event_at"]).tz_convert("UTC").as_unit("ns").asi8
             out = np.full(len(day), np.iinfo(np.int64).min, dtype=np.int64)
@@ -189,7 +198,9 @@ class Exo:
 
     def known_dates(self, name: str, index: pd.DatetimeIndex) -> tuple[np.ndarray, np.ndarray]:
         """(k, dates): the rows' dates ordered by available_at (ties: date); row i is visible at bar j iff i < k[j]."""
-        dates, avail = self._rows(name)
+        dates, avail, until = self._rows(name)
+        if (until < np.iinfo(np.int64).max).any():
+            raise ValueError(f"known_dates: {name!r} has withdrawn rows (not an only-growing set)")
         order = np.lexsort((dates, avail))
         k = np.searchsorted(avail[order], bar_stamps_utc(index), side="right")
         return k, dates[order]

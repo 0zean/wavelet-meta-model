@@ -17,10 +17,13 @@ vol_state (per fold; needs exo):
     is skipped, as for fracdiff).
 
 calendar_events (static; needs exo; deterministic encodings, so no level check):
-    to_fomc, to_cpi, to_nfp           sessions from the bar's session to the next visible event day (0 on the day);
-                                      TO_CAP where none is visible yet (scheduled rows are public from 1 January of
-                                      their year, so the next year's first CPI / NFP / FOMC is unknown in late
-                                      December) and clipped at TO_CAP
+    to_fomc, to_cpi, to_nfp           sessions from the bar's session to the next scheduled release day visible at
+                                      the bar (0 on the day), from the `*_SCHEDULE` series: the actual releases plus
+                                      the originally published dates later cancelled or moved (data/events.py
+                                      ORIGINAL_SCHEDULE), each visible until its own scheduled instant; TO_CAP where
+                                      none is visible yet (scheduled rows are public from 1 January of their year, so
+                                      the next year's first CPI / NFP / FOMC is unknown in late December), clipped at
+                                      TO_CAP
     since_fomc, since_cpi, since_nfp  sessions since the last visible event day (0 on the day); NaN before the table
     fomc_day, cpi_nfp_day             the bar's day is an (already announced) FOMC / CPI or NFP day
     opex_week                         the bar's Mon–Fri week holds a monthly options expiry
@@ -55,7 +58,8 @@ RELEASE_CAP = 480  # minutes; > 08:30 → 16:00
 
 VOL_STATE_EXO = ("cboe/VIX", "cboe/VIX9D", "cboe/VIX3M", "cboe/VX1_VIX", "cboe/VX2_VX1")
 CALENDAR_EXO = ("calendar/FOMC", "calendar/CPI", "calendar/NFP", "calendar/OPEX", "calendar/TOM",
-                "calendar/PRE_HOLIDAY")  # fmt: skip
+                "calendar/PRE_HOLIDAY", "calendar/FOMC_SCHEDULE", "calendar/CPI_SCHEDULE",
+                "calendar/NFP_SCHEDULE")  # fmt: skip
 RATES_EXO = ("fred/DGS10", "fred/T10Y2Y", "fred/BAA10Y", "fred/DTWEXBGS")
 RELEASE_KINDS = ("calendar/FOMC", "calendar/CPI", "calendar/NFP")
 
@@ -189,7 +193,7 @@ def calendar_events_frame(df: pd.DataFrame, cfg, exo) -> dict[str, np.ndarray]:
     cols = {}
     for kind in ("FOMC", "CPI", "NFP"):
         name = f"calendar/{kind}"
-        to = _sessions_between(day, exo.next_date(name, idx), k_hol, pre_hol)
+        to = _sessions_between(day, exo.next_date(f"{name}_SCHEDULE", idx), k_hol, pre_hol)
         cols[f"to_{kind.lower()}"] = np.minimum(np.where(np.isnan(to), TO_CAP, to), TO_CAP)
         cols[f"since_{kind.lower()}"] = _sessions_between(exo.last_date(name, idx) + one, day + one, k_hol, pre_hol)
     on = {kind: ~np.isnan(exo.on_day(f"calendar/{kind}", idx)) for kind in ("FOMC", "CPI", "NFP", "PRE_HOLIDAY")}

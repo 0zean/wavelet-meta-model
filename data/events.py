@@ -83,6 +83,21 @@ EARNINGS_CONVENTION = {**dict.fromkeys(["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL",
 FOMC_UNSCHEDULED = {"2020-03-02": ("2020-03-03", "10:00"), "2020-03-15": ("2020-03-15", "17:00"), "2019-10-04": None}
 UNSCHEDULED_CLOSURES = {"2018-12-05": "2018-12-03", "2025-01-09": "2025-01-06"}  # closure → conservative known_from
 SHUTDOWN_RESCHEDULED = ("2025-10-01", "2026-02-28")
+# Originally published release dates that the table's actual rows do not (or only conservatively) carry (U15 review):
+# the `*_SCHEDULE` series add them, public from 1 January of their year until their own scheduled instant, so a
+# cancellation or postponement is never visible before the release time it replaced (the announcement was earlier;
+# stale, never leaked). Sources: the Fed's 2020 meeting calendar (March 17–18, replaced by the 2020-03-15 statement);
+# BLS release schedules as archived by the Wayback Machine: cpi.htm 2025-09-10 (Oct 15, Nov 13, Dec 10 2025),
+# empsit.htm 2025-09-17 (Oct 3, Nov 7, Dec 5 2025), cpi.htm / empsit.htm 2025-12-19 (Jan 13 / Jan 9 2026) and
+# 2026/02_sched.htm 2026-01-19 (Employment Situation Feb 6, CPI Feb 11 2026; moved by the 2026-01-31 funding lapse).
+ORIGINAL_SCHEDULE = {
+    "FOMC": (("2020-03-18", "14:00"),),
+    "CPI": (("2025-10-15", "08:30"), ("2025-11-13", "08:30"), ("2025-12-10", "08:30"), ("2026-01-13", "08:30"),
+            ("2026-02-11", "08:30")),
+    "NFP": (("2025-10-03", "08:30"), ("2025-11-07", "08:30"), ("2025-12-05", "08:30"), ("2026-01-09", "08:30"),
+            ("2026-02-06", "08:30")),
+}  # fmt: skip
+SCHEDULE_SUFFIX = "_SCHEDULE"
 MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
                                       "dec"], start=1)}  # fmt: skip
 
@@ -120,6 +135,8 @@ def event_series(source: str, name: str) -> pd.DataFrame:
     One kind (calendar) or one symbol (earnings) as an exo series: index = date, `value`, `event_at` (UTC, NaT when
     the event has no time), for earnings `timing` (−1 bmo, 0 dmh, +1 amc), and `available_at` (UTC).
     """
+    if source == "calendar" and name.endswith(SCHEDULE_SUFFIX):
+        return schedule_series(name.removesuffix(SCHEDULE_SUFFIX))
     if source == "calendar":
         if name not in EVENT_KINDS:
             raise ValueError(f"unknown calendar kind {name!r}; expected one of {EVENT_KINDS}")
@@ -146,6 +163,29 @@ def event_series(source: str, name: str) -> pd.DataFrame:
         raise ValueError(f"event_series serves 'calendar' and 'earnings', not {source!r}")
     out["event_at"] = event_at
     out["available_at"] = avail
+    return out.sort_index()
+
+
+def schedule_series(kind: str) -> pd.DataFrame:
+    """
+    The release schedule of `kind` (FOMC, CPI, NFP) as it was public: the actual rows of event_series plus the
+    ORIGINAL_SCHEDULE dates, with a `withdrawn_at` column (UTC; NaT = never withdrawn). An original date that was held
+    takes the earlier of the two `available_at`s; one that was not is withdrawn at its own scheduled instant. Read by
+    `to_*` (sessions to the next scheduled release); the event-day flags use the actual rows.
+    """
+    if kind not in ORIGINAL_SCHEDULE:
+        raise ValueError(f"no schedule series for {kind!r}; kinds: {sorted(ORIGINAL_SCHEDULE)}")
+    out = event_series("calendar", kind)
+    out["withdrawn_at"] = pd.DatetimeIndex([pd.NaT] * len(out), tz="UTC")
+    for day, at in ORIGINAL_SCHEDULE[kind]:
+        d = pd.Timestamp(day)
+        inst = pd.Timestamp(f"{day} {at}", tz=NY_TZ).tz_convert("UTC")
+        public = _midnight_utc([f"{d.year}-01-01"])[0]
+        if d in out.index:
+            out.loc[d, "available_at"] = min(out.loc[d, "available_at"], public)
+        else:
+            row = {"value": 1.0, "event_at": inst, "available_at": public, "withdrawn_at": inst}
+            out = pd.concat([out, pd.DataFrame([row], index=pd.DatetimeIndex([d], name="date"))])
     return out.sort_index()
 
 

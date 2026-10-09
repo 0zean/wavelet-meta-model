@@ -837,6 +837,65 @@ Runner: `experiments/runner.load_cell_data` supplies `context["market"]` (SPY at
 `context["sector"]` (mapping in `data/sectors.py`) and `context["exo"]` (the series the cell's groups
 need, loaded through §12). The feature cache key already includes each context frame's data hash.
 
+Implementation (U15, as built):
+- Point-in-time access (`features/exo_align.py`): a group declaring `needs=("exo",)` lists its series in
+  `FeatureGroup.exo` ("source/name") and receives an `Exo` view restricted to them, never the raw frames. Every
+  accessor uses a row on a bar only when `available_at` ≤ the bar's stamp (its open; a naive index is NY time):
+  `asof` (the visible row with the greatest `available_at`, ties → latest date), `ratio` (built on the two series'
+  common observation dates, available when both are, so a 2022+ VIX holiday row is not paired with the previous
+  session's VIX3M), `change` (over N observations, available from the cumulative maximum `available_at`), and for
+  calendar kinds `next_date` / `last_date` / `on_day` / `known_dates`. 1Day bars are stamped at NY midnight, so a
+  daily bar sees the previous session's VIX and the FRED value released the session before (conservative: the
+  decision is at the close). Optional context keys (`FeatureGroup.optional`, e.g. "sector") are passed when present.
+  Per-fold groups with `needs` get their context as `transform(df, state, cfg, context)`.
+- `vol_state` is per fold (GARCH): exo columns as specified; `vix9d_vix` / `vix3m_vix` are VIX9D / VIX and VIX3M /
+  VIX; `rv21_vix` = σ of the last 21 completed sessions' close-to-close log returns × √252 / (VIX / 100) (an intraday
+  bar's own session is excluded; a 1Day bar includes itself). GARCH(1,1), Gaussian, zero mean, variance targeting
+  (ω = v̄(1 − α − β), v̄ = mean z² on train), fit by L-BFGS-B on persistence ∈ [0.01, 0.998] and α share ∈
+  [0.001, 0.999], numpy/scipy (no `arch`). Intraday it runs on bar returns deseasonalized by a VolProfile fit on the
+  same train bars (Andersen–Bollerslev): 5Min WFO folds start with 42 sessions, too few for a daily GARCH.
+  `garch_sigma` = √h(t+1) × √Σ s(b)² (the next bar's conditional σ in session units; 1Day: the next day's σ);
+  `ret_std_garch` = z_t / √h_t. Fewer than 500 train returns or a failed fit raise RuntimeWarning: the fold is skipped
+  (`WindowFit` status `feature_fit_failed`, formerly `fracdiff_failed`). SPY 5Min first fold (3,197 bars): α 0.044,
+  β 0.951; 1Day first fold (1,007): α 0.193, β 0.743.
+- `calendar_events` (static, `level_check=False`): `to_/since_{fomc,cpi,nfp}` (since_cpi, since_nfp added), flags
+  as specified, `tom` = the TOM value (−1, +1 … +3; 0 otherwise) rather than a 0/1 flag, `mins_since_release`
+  intraday only (minutes from the day's FOMC / CPI / NFP release to the bar's close, negative before a later release
+  that day, RELEASE_CAP = 480 on days without one, so no NaN drops ordinary days). Sessions = weekdays minus the
+  closures known at the bar (the weekday after each visible PRE_HOLIDAY row; no closure in 2016–2027 spans two
+  weekdays). Scheduled rows are public from 1 January of their year (§12), so in late December (and after an
+  early-December NFP) the next CPI / NFP / FOMC is not yet known: `to_*` = TO_CAP = 63 then (and is clipped at 63),
+  not NaN. `to_*` reads `calendar/{FOMC,CPI,NFP}_SCHEDULE` (`data/events.schedule_series`): the held releases plus
+  `ORIGINAL_SCHEDULE`, the originally published dates that were cancelled or moved (FOMC 2020-03-18; CPI 2025-10-15,
+  11-13, 12-10, 2026-02-11; NFP 2025-10-03, 11-07, 12-05, 2026-02-06; from the Fed's 2020 calendar and Wayback
+  snapshots of BLS's schedule pages), public from 1 January of their year and withdrawn (`withdrawn_at`, honoured by
+  the Exo view) at their own scheduled instant. A cancellation is thus never visible before the release time it
+  replaced; between its announcement and that time the feature is stale (the announcement dates are not recorded),
+  never early. Held 2026-01-09 / 01-13 releases, conservatively public only on the day in the U13 table, are public
+  from 2026-01-01 in the schedule series. The event-day flags, `since_*` and `mins_since_release` read the held
+  releases only. A release on a non-session day (the Sunday 2020-03-15 statement, Good Friday CPI / NFP) flags no
+  session; `since_*` = 1 on the next one.
+- `rates_credit`: `d_dgs10` (1 observation), `t10y2y` (level), `d_credit` = change of FRED `BAA10Y` (Moody's Baa −
+  10-year; daily from 1986, H.15 `available_at` rule; added to `data/exo.py`) instead of HY OAS, which FRED has only
+  from 2023-10-09; `d_dollar` = log change over 5 DTWEXBGS observations (one H.10 week).
+- `gamma_proxy`: not built. No historical chain or open interest exists (U13: Alpaca serves the current chain only;
+  `data/options.py` collects forward from 2026-10), so the group would be NaN over the whole development window.
+  Revisit once a year of forward snapshots exists (U19 / U20).
+- `cross_asset`: + `mkt_ret_lag{1,3,6}` (the market's 1-bar return k bars ago); with "sector": `sector_ret_lag{1,3,6}`,
+  `sector_resid_ret` (beta to the sector over BETA_WINDOW) and `rel_strength_h`. `data/sectors.py`: AAPL MSFT NVDA →
+  XLK, JPM → XLF, XOM → XLE, UNH → XLV, AMZN GOOGL META → QQQ (no cached XLY / XLC covering 2016 →); ETFs, sector ETFs
+  included, get the market only.
+- Context loading (`features/context.py: load_context`): only the keys and series the cell's groups read
+  (`registry.context_needs`), so cells without them keep their data hash. Exo rows from start − 120 days; calendar
+  rows to end + 120 days, past HOLDOUT_START if need be (schedules carry no outcome; the Exo view still applies
+  `known_from`; clipping gave the dev window's last weeks a false "nothing scheduled"). `cross_asset` on the market
+  symbol itself (beta 1, residual 0) is refused. The runner puts the per-symbol context
+  in `data["context"]`, in the data hash, the signals key, `run_wfo` and every PWFO combo; the CLI loads it for an
+  Alpaca `--symbol`. Exo frames are hashed in full (`cache.context_hash`: values, `available_at`, `event_at`).
+- Warm-ups (SPY 5Min 2016-01-04 → 2025-09-30, `results/u15/state_features.json`): `since_*` NaN until the table's
+  first event (2016-01-07 NFP, 01-19 CPI, 01-26 FOMC); `rv21_vix` 22 sessions; `ret_std_garch` the first bar; every
+  other new column is never NaN. Largest |corr with close|: `t10y2y` 0.39.
+
 ---
 
 ## §16 Mechanism primaries (U16)
