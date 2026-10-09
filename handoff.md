@@ -1,58 +1,62 @@
-# Session Handoff — U12 harness speed (complete)
+# Session Handoff — U13 exogenous data + quotes cost model (complete)
 
 ## Where it started
-The user asked me to review `handoff.md`, commit the PLAN2/REVIEW/SPEC doc changes to `main`, and start U12 on a new
-branch. The docs went to `main` as 632867b (not pushed). U12 was then built, reviewed and verified on
-`unit/12-harness-speed`.
+U12 had been merged into `main` (PR #14, 0116b75). The user asked me to review this file and begin U13. U13 was built,
+reviewed and verified on `unit/13-exo-data-costs` (branched off `main`).
 
-## Decisions locked + what shipped
-- U12 per PLAN2 / SPEC §11.2. The full status note, with the cost table, is in `PLAN2.md` under U12; the as-built
-  choices are in SPEC §11.2 "Implementation". Commits on `unit/12-harness-speed`: 7906389 (implementation), 02c4fca
-  (review fixes), plus the docs / status commit.
-- Switches, now defaulting to the SPEC §11.2 values:
-  - `ZOO_FIXED_PARAMS`, `CALIBRATION` (crossfit | rolling | none), `OOF_META` (refit | reuse), `PWFO_COMBINE`
-    (nested | average).
-  - Grids: IS (504, 756) intraday, (1260, 1512) on 1Day, each × OOS 21.
-  - Flat loky pool in the runner; `--inner-jobs` removed; `run_specs.ps1 -Jobs` defaults to 24.
-  - numba CUSUM kernels; numba 0.68 added (numpy unchanged).
-- Parity criterion = the SPEC invariant (old switches pinned), not PLAN2's "≥ 95 % chosen params" wording. Result:
-  PASS on all four fixture cells, before and after the review fixes. A baseline of unchanged `main` code also
-  reproduces U11 on this PC.
-- Legacy CSV regression: byte-identical to `main` on Windows (sha1 `551d8074…`). The `402ef202…` reference is the Mac
-  value.
-- Review fixes: OOF on demand (`need_oof`) instead of refusing train-fit sizers; calibration mode recorded per window.
-- Not met: "≥ 10× fewer fits per window" for xgb (9×) and rf_ldp_fast (5×); "≥ 8× fewer windows" on 1Day (7.7×).
-  Accepted by the user; tuning deferred.
+## What shipped (commits on `unit/13-exo-data-costs`)
+- 8c5770e — exogenous data layer, event tables, quotes sampler, per-fill cost model.
+- 7a21cfb — `HOLDOUT_START` moves to 2026-10-01 (SPEC §11.1; separate so it can be reverted alone).
+- 44a59b7 — review fixes.
+- a1df672 — data: quotes half-spread table, exo series cache, smoke results, new-ETF quality report.
+- ec706e8 — PLAN2 status note, SPEC notes, event-session cost comparison.
 
-## Key files for next session
-- `PLAN2.md` — U12 status note; U13 / U14 are next (parallel).
-- `SPEC.md` §11.2 — switch semantics as built.
-- `scripts/u12_parity.py`, `tests/fixtures/u12_parity.json` — parity re-check (add the U13 / U14 switches to
-  `OLD_SWITCHES`).
-- `scripts/u12_cost.py` — cost table.
-- `tests/test_harness_speed.py`, `tests/test_u12_review.py` — U12 tests.
+## Decisions locked
+- **One cost knob.** `RunConfig.COST_MODEL` ∈ {slippage, cs, quotes}, default `quotes`.
+  - `RiskProfile.spread` was removed. The old U8–U11 `standard` = `RISK_PROFILE="standard"` + `COST_MODEL="cs"`.
+  - Any non-slippage model backtests through `simulate_portfolio` and needs `POSITION_MODE="single"`.
+  - Tests on synthetic data pin `COST_MODEL="slippage"`.
+- **Auction fills.** They pay the auction proxy only: the 09:31 / 15:59 quoted half-spread, which is conservative for stocks' open.
+- **Quotes table.**
+  - It is the cost of an ordinary session. Event sessions were measured at about 1.0× the table and stress sessions at 2–4×.
+  - Not adjusted. Whether to scale by volatility is a U17 family-spec decision.
+- **Earnings acceptance times** come from EDGAR filing index pages. The submissions JSON is wrong by one NY offset for AAPL, AMZN, META, JPM and UNH.
+- **Calendar.** The CSVs are checked in and rebuilt with `uv run python -m data.events` (network: Fed, BLS via curl, SEC).
+- **Parity.** The U12 parity re-run with `COST_MODEL=slippage` passes (`scripts/u12_parity.py` OLD_SWITCHES updated).
+
+## Key files
+- `data/exo.py`, `data/events.py`, `data/quotes.py`, `data/options.py`, `risk/costs.py` (`fill_costs`, `auction_flags`).
+- `data/calendar/{events,earnings}.csv`, `data/costs/quotes_half_spread.{csv,json}`.
+- `scripts/u13_smoke.py exo|quotes` → `results/u13/`.
+- `tests/test_exo.py`, `tests/test_costs.py`, `tests/test_u13_review.py`.
+- PLAN2 U13 status note; SPEC §12 / §19 "Implementation (U13, as built)".
 
 ## Running state
 - Background processes: none.
-- Worktrees: the main checkout on `unit/12-harness-speed`; `wavelet-meta-model-stage-b` (carried over, untouched).
-  The U12 baseline / parity worktrees were removed.
-- Nothing pushed; `main` is 1 commit ahead of origin (the docs commit).
+- Worktrees: the main checkout is on `unit/13-exo-data-costs`. `wavelet-meta-model-stage-b` is carried over, untouched.
+- Nothing pushed.
+- **Uncommitted, the user's call:**
+  - The 11 new ETFs' bar caches (`data/cache/sip/all/5Min/{IEF,…,SVXY}.{npz,json}`, 141 MB). The earlier bar cache was committed once "for continuity between runs". Add them, or leave them local: `python -m data.fetch` re-creates them in ~10 min.
+  - The raw quote samples (`data/cache/exo/quotes/`, git-ignored). Re-fetching takes about 3 h at Alpaca's 200 req/min; the table is the committed product.
 
 ## Verification
-- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 uv run pytest -q` — 463 passed. `uvx ruff check . && uvx ruff format --check .` — clean.
-- Parity: `uv run python scripts/u12_parity.py spec P.yaml`, then
-  `python -m experiments --root R --ledger R/ledger.jsonl run P.yaml --jobs 24`, then
-  `scripts/u12_parity.py check R R/ledger.jsonl` → `parity: PASS` (about 17 min).
+- Tests: `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 uv run pytest -q` → 508 passed.
+- Lint: `uvx ruff check . && uvx ruff format --check .` → clean.
+- Exo smoke: `uv run python scripts/u13_smoke.py exo`. VIX vs VIXCLS max |Δ| 0.00; VX1/VIX median 1.043.
+- Quotes smoke: `uv run python scripts/u13_smoke.py quotes`. SPY 0.155 bp vs CS 1.53 bp; `event_vs_base` ratios.
+- Parity: `uv run python scripts/u12_parity.py spec P.yaml`, then `python -m experiments --root R --ledger R/ledger.jsonl run P.yaml --jobs 24` (with `LOKY_MAX_CPU_COUNT=1`), then `scripts/u12_parity.py check R R/ledger.jsonl` → PASS.
 
 ## Deferred + open questions
-- Deferred: tuning the partly met cost targets (accepted by the user 2026-10-09).
-- Open: at 1Day about a third of windows fall back to cross-fit calibration (`MIN_VAL_EVENTS = 100` resolved
-  pairs) — revisit in the family specs (U17 / U18).
-- Deferred MINORs: `ZOO_FIXED_PARAMS` value validation; a minimum length for the averaged stream; serial batch
-  completion after a dead worker.
-- Carried over: `HOLDOUT_START` move (U13 / U20); the VIX URLs and Alpaca open interest (U13); the extended ETF
-  universe and F9; removing the stage-b worktree; pushing / merging branches (user's call).
+- **Stress-session costs (2–4× the table):** whether to scale with volatility (U17).
+- **No usable HY OAS** (FRED from 2023-10 only): the credit state needs e.g. HYG vs IEF (U15).
+- **VIX holiday rows from 2022:** build ratios on common dates (U15).
+- **Exo `coverage_end` = fetch day:** a same-day morning fetch isn't refreshed (U20).
+- **Option chain:** forward-only (`python -m data.options`). The U15 gamma proxy needs the VIX/skew fallback; a daily collection job could start with U20.
+- **SVXY regime break 2018-02-28** (`data.fetch.REGIME_BREAKS`): F9/U21 must start after it or model it.
+- **Carried over:**
+  - Removing the stage-b worktree, and pushing / merging branches (the user's call).
+  - The U12 cost-target tuning.
+  - The 1Day `MIN_VAL_EVENTS` calibration question (U17/U18).
 
 ## Pick up here
-Merge or PR `unit/12-harness-speed` (user's call), then start U13 (exogenous data + quotes cost model) and/or U14
-(samplers, exits, ISOM vol profile) on their own branches off `main`.
+Review, then PR / merge `unit/13-exo-data-costs` (the user's call), and decide whether to commit the new ETF bar caches. Next: U14 (samplers, exits, ISOM vol profile), on its own branch off `main`. U15 (state features) needs U13 and can follow.
