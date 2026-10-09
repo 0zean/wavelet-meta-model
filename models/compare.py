@@ -78,7 +78,9 @@ def wfo_row(df: pd.DataFrame, cfg: RunConfig, symbol: str) -> tuple[dict, pd.Dat
 
 def _events_frame(df: pd.DataFrame, cfg: RunConfig, symbol: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
     """Development-window events with complete features: (X, labels, uniqueness weights)."""
-    events = sample_events(df, cfg)
+    if cfg.VOL_PROFILE != "none":  # one whole-window CPCV has no fold to fit a profile on
+        raise ValueError("models.compare samples events once for the whole window: VOL_PROFILE must be 'none'")
+    events = sample_events(df, cfg, symbol=symbol)
     labels = triple_barrier_labels(df, events, cfg)
     fset = FeatureSet(cfg, symbol=symbol, cache_dir=feature_cache.DEFAULT_ROOT)
     X_all = fset.build(df).join(fset.transform(df, fset.fit(df)))

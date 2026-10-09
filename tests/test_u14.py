@@ -106,8 +106,30 @@ def test_hold_scale_covers_the_held_slots():
     assert hold_scale(idx[[70]], prof, 12, True)[0] == pytest.approx(np.sqrt(11 + 81))
     # an event at 09:30 (slot 0) holds slots 1..12: its width ignores the gap slot's s(0)
     assert hold_scale(idx[[0]], prof, 12, False)[0] == pytest.approx(np.sqrt(12))
-    # an event on the last bar enters the next session's first bar
-    assert hold_scale(idx[[77]], prof, 3, False)[0] == pytest.approx(np.sqrt(81 + 2))
+    # an event on the last bar enters at the next session's opening print: its first slot counts s_open, not the gap
+    assert hold_scale(idx[[77]], prof, 3, False)[0] == pytest.approx(np.sqrt(1 + 2))
+    gap = VolProfile(s, 5, s_open=2.0)
+    assert hold_scale(idx[[77]], gap, 3, False)[0] == pytest.approx(np.sqrt(4 + 2))
+    assert hold_scale(idx[[77]], gap, 80, True)[0] == pytest.approx(np.sqrt(4 + 77 + 81 + 1))  # wraps: the gap again
+
+
+def test_profile_s_open_excludes_the_overnight_gap():
+    rng = np.random.default_rng(19)
+    n = 120
+    idx = intraday(n).index
+    gaps = np.exp(rng.normal(0, 0.02, n))  # large overnight gaps, ordinary 5-minute moves
+    c, o, prev = [], [], 100.0
+    for k in range(n):
+        start = prev * gaps[k]
+        path = start * np.exp(np.cumsum(rng.normal(0, 1e-3, 78)))
+        o += [start, *path[:-1]]
+        c += list(path)
+        prev = path[-1]
+    o, c = np.array(o), np.array(c)
+    df = pd.DataFrame({"open": o, "high": np.maximum(o, c), "low": np.minimum(o, c), "close": c, "volume": 1.0},
+                      index=idx)  # fmt: skip
+    prof = VolProfile.fit(df, 5)
+    assert prof.s[0] > 5 and 0.6 < prof.s_open < 1.6
 
 
 def test_tod_widths_use_the_held_slots_and_flat_tod_widths_match_plain_ones_mid_session():
@@ -195,7 +217,7 @@ def test_schedule_1530_decides_at_the_1525_close_and_fills_at_the_1530_open():
 
 def test_schedule_open_entries_decide_at_the_previous_close():
     df = intraday(3, seed=9)
-    ev = schedule_events(df, sched(["09:30", "10:00"]))
+    ev = schedule_events(df, sched(["09:30", "10:00"], EXIT_MODEL="time", EXIT_PARAMS={"exit_time": "close"}))
     assert hhmm(ev) == ["09:55", "15:55", "09:55", "15:55", "09:55"]  # session 1 has no 09:30 entry (no prior close)
 
 
@@ -206,6 +228,10 @@ def test_schedule_early_close_maps_to_the_last_bar_and_a_hole_gives_no_event():
     df = pd.concat([session_5min("2024-07-02"), early, regular, full])
     ev = schedule_events(df, sched(["15:30"]))
     assert [str(t) for t in ev.strftime("%m-%d %H:%M")] == ["07-02 15:25", "07-03 12:50", "07-08 15:25"]
+    # a regular session missing its 15:55 bar is not an early close: a 15:55 entry gets no event that day
+    cut = session_5min("2024-07-09").drop(pd.Timestamp("2024-07-09 15:55", tz=NY))
+    ev2 = schedule_events(pd.concat([full, cut]), sched(["15:55"]))
+    assert [str(t) for t in ev2.strftime("%m-%d %H:%M")] == ["07-08 15:50"]
 
 
 def test_schedule_days_use_only_events_known_at_the_decision():
@@ -221,6 +247,21 @@ def test_schedule_days_use_only_events_known_at_the_decision():
     assert [str(t) for t in schedule_events(df2, sched(["09:35"], days="cpi_nfp")).date] == ["2024-01-11"]
     with pytest.raises(ValueError, match="needs the cell's symbol"):
         schedule_events(df2, sched(["09:35"], days="earnings"))
+
+
+def test_amc_earnings_react_next_session_and_never_on_the_release_day():
+    """AAPL files after the close (amc): the reaction session is the next one. When the data ends on the release day
+    the reaction session is unknown and the release day itself is not an earnings day."""
+    from data.events import read_earnings
+
+    ea = read_earnings()
+    row = ea[(ea["symbol"] == "AAPL") & (ea["timing"] == "amc") & (ea["date"] >= "2024-01-01")].iloc[0]
+    d = pd.Timestamp(row["date"])
+    nxt = d + pd.offsets.BDay(1)
+    both = pd.concat([session_5min(str(d.date())), session_5min(str(nxt.date()))])
+    cfg = sched(["09:35"], days="earnings")
+    assert [t.date() for t in schedule_events(both, cfg, symbol="AAPL")] == [nxt.date()]
+    assert len(schedule_events(session_5min(str(d.date())), cfg, symbol="AAPL")) == 0
 
 
 def test_schedule_gate_is_evaluated_on_the_session_frame_at_the_event_bar():
@@ -473,6 +514,7 @@ def test_session_group_is_per_fold_and_causal_with_a_profile():
         ({"EXIT_MODEL": "time", "EXIT_PARAMS": {"hold_bars": 0}}, "hold_bars"),
         ({"EXIT_MODEL": "hysteresis", "EXIT_PARAMS": {"beta": 0.5}}, "max_bars"),
         ({"EXIT_MODEL": "stop", "EXIT_PARAMS": {}}, "EXIT_MODEL"),
+        ({"EVENT_SAMPLER": "schedule", "EVENT_PARAMS": {"entry_times": ["09:30"]}}, "previous session's close"),
     ],
 )
 def test_runconfig_validates_the_u14_switches(kw, match):
@@ -485,6 +527,30 @@ def test_new_switches_keep_static_feature_cache_keys():
     base = feature_cache.cfg_hash(CFG5)
     other = CFG5.replace(VOL_PROFILE="tod", EVENT_SAMPLER="dc", EXIT_MODEL="time", EXIT_PARAMS={"hold_bars": 3})
     assert feature_cache.cfg_hash(other) == base
+
+
+def test_cal_history_purges_on_the_predicting_windows_own_spans():
+    """Under tod a later window re-samples its events: a pair must be purged on the label span it was scored with,
+    not on the later window's labels (which may lack the event or resolve it earlier)."""
+    idx = pd.date_range("2020-01-01", periods=3, freq="D")
+    own = pd.DataFrame({"entry_pos": [11, 21, 31], "exit_pos": [15, 90, 35]}, index=idx)  # bar 20 resolves at 90
+    later = pd.DataFrame({"entry_pos": [11, 21], "exit_pos": [15, 25]}, index=idx[:2])  # ... at 25 in a later window
+    h = engine.CalHistory()
+    h.add(pd.Series([0.4, 0.5, 0.6], index=idx), pd.Series([0, 1, 1], index=idx), spans=own)
+    p = h.pairs(later, fit_start=0, end=80, embargo=0, n_bars=200)
+    assert list(p.index) == [idx[0], idx[2]]  # bar 20's outcome is not known before 80; bar 30 is kept
+    with pytest.raises(RuntimeError, match="with and without"):
+        h.add(
+            pd.Series([0.5], index=idx[:1] + pd.Timedelta(days=9)), pd.Series([1], index=idx[:1] + pd.Timedelta(days=9))
+        )
+        h.pairs(later, 0, 80, 0, 200)
+
+
+def test_compare_refuses_a_profile():
+    from models.compare import _events_frame
+
+    with pytest.raises(ValueError, match="VOL_PROFILE"):
+        _events_frame(intraday(3), CFG5.replace(VOL_PROFILE="tod"), "SPY")
 
 
 def test_hysteresis_needs_a_rule_primary():

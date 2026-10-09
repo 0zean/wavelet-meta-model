@@ -344,8 +344,12 @@ class RunConfig:
         from features.events import event_params
         from features.exits import exit_params
 
-        event_params(self)
+        ev = event_params(self)
         exit_params(self)
+        if (self.EVENT_SAMPLER == "schedule" and self.TIMEFRAME != "1Day" and not self.HOLD_OVERNIGHT
+                and self.EXIT_MODEL != "time" and any(t in ("open", "09:30") for t in ev["entry_times"])):  # fmt: skip
+            raise ValueError(f"a 09:30 schedule entry decides at the previous session's close: EXIT_MODEL="
+                             f"{self.EXIT_MODEL!r} drops cross-session entries unless HOLD_OVERNIGHT (use 'time')")  # fmt: skip
 
     @property
     def bars_per_year(self) -> int:

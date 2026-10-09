@@ -121,13 +121,21 @@ class CalHistory:
     so far, in order. `pairs` returns the ones a fit on [fit_start, end) may use: event bar >= fit_start and exit
     before end − embargo — the purge rule of that fit's own events (wfo_engine.purged), so a pair's outcome is
     known before the fit and the predicting model was fit strictly earlier.
+
+    `add(..., spans=labels)` records each pair's own label span (entry_pos, exit_pos) from the window that predicted
+    it, and `pairs` then purges on those spans instead of `labels`: under VOL_PROFILE="tod" every window re-samples its
+    events (other widths, other exits), so a later window's labels need not contain the pair or may resolve it
+    earlier than the meta-label did. Without a profile the spans are the run's labels, so the result is the same.
     """
 
     def __init__(self):
-        self.raw, self.y = [], []
+        self.raw, self.y, self.spans = [], [], []
 
-    def add(self, raw: pd.Series, y: pd.Series) -> None:
+    def add(self, raw: pd.Series, y: pd.Series, spans: pd.DataFrame | None = None) -> None:
         both = raw.index.intersection(y.index)
+        if spans is not None:
+            both = both.intersection(spans.index)
+            self.spans.append(spans.loc[both, ["entry_pos", "exit_pos"]])
         self.raw.append(raw.loc[both])
         self.y.append(y.loc[both])
 
@@ -137,6 +145,10 @@ class CalHistory:
         raw, y = pd.concat(self.raw), pd.concat(self.y)
         if raw.index.has_duplicates:
             raise RuntimeError("rolling calibration: an OOS event was predicted by two windows")
+        if self.spans:
+            if len(self.spans) != len(self.raw):
+                raise RuntimeError("rolling calibration: pairs added both with and without their label spans")
+            labels = pd.concat(self.spans).sort_index()
         lab = purged(labels, fit_start, end, embargo)
         lab = lab.loc[lab.index.intersection(raw.index)]
         return pd.DataFrame({"raw": raw.loc[lab.index], "y": y.loc[lab.index], "w": average_uniqueness(lab, n_bars)})
@@ -410,7 +422,7 @@ def fit_window(
 
     result_ts = predict(X_ts, test_end, keep_raw=rolling)
     if raw_ts:  # outcomes from future bars: CalHistory.pairs hands them out only once resolved
-        cal_history.add(raw_ts[0], make_meta_labels(df, events.loc[X_ts.index], result_ts, cfg))
+        cal_history.add(raw_ts[0], make_meta_labels(df, events.loc[X_ts.index], result_ts, cfg), spans=labels)
     is_frame = None
     if in_sample:
         X_is = X_fit if cfg.META_TRAIN == "oof" else pd.concat([X_tr, X_vl]).sort_index()

@@ -37,6 +37,8 @@ EVENT_SAMPLERS = ("cusum", "dc", "schedule")
 DAY_PREDICATES = ("all", "fomc", "cpi_nfp", "tom", "non_macro", "earnings")
 DEFAULT_DC_MULT = 2.0
 CLOSE_MINUTE = 16 * 60
+EARLY_CLOSE_MINUTE = 13 * 60
+AMC_NEXT_MAX_DAYS = 4
 _DEFAULTS = {"cusum": {}, "dc": {"dc_mult": DEFAULT_DC_MULT}, "schedule": {"entry_times": None, "days": "all",
              "gate": None}}  # fmt: skip
 
@@ -214,7 +216,10 @@ def _known_days(kinds, decided: np.ndarray, entry_day: np.ndarray, sessions: np.
         if amc is not None:
             pos = np.searchsorted(sess, days, side="right")
             nxt = sess[np.minimum(pos, len(sess) - 1)]
-            days = np.where(amc & (pos < len(sess)), nxt, days)
+            # amc: the next session of the data, if it is the next exchange session (within AMC_NEXT_MAX_DAYS: a
+            # weekend plus a holiday). Otherwise (the data ends there, or starts after it) it matches nothing.
+            ok = (pos < len(sess)) & (nxt - days <= AMC_NEXT_MAX_DAYS)
+            days = np.where(amc, np.where(ok, nxt, np.iinfo(np.int64).min), days)
         avail = ev["available_at"].dt.tz_convert("UTC").dt.as_unit("ns").astype("int64").to_numpy()
         for dd, av in zip(days, avail):  # a handful of rows per year
             m = q == dd
@@ -238,7 +243,7 @@ def schedule_events(
     """
     Scheduled event bars (SPEC §13): for each entry time T the entry bar is the bar stamped T in its session and the
     event bar is the bar before it in the data (T = 09:30: the previous session's last bar; T later: a bar of the same
-    session, else no event that day). On an early close (the session's bars end before 16:00) a T at or past the
+    session, else no event that day). On an early close (the session's last bar spans 13:00) a T at or past the
     close maps to the session's last bar. `days` keeps sessions whose calendar event is known (available_at) by the
     decision time; `gate` is evaluated on the session frame at the event bar (a NaN comparison is False).
     """
@@ -256,7 +261,9 @@ def schedule_events(
         last = np.r_[day[1:] != day[:-1], True] if n else np.zeros(0, bool)
         sess = np.cumsum(first) - 1
         last_pos = np.flatnonzero(last)  # session k's last bar
-        early = (mins[last_pos] + minutes) < CLOSE_MINUTE  # the session's bars stop before 16:00
+        # an early close: the session's last bar spans 13:00 (risk.costs.auction_flags' rule), so a hole at the end
+        # of a regular session is not read as one
+        early = (mins[last_pos] < EARLY_CLOSE_MINUTE) & (mins[last_pos] + minutes >= EARLY_CLOSE_MINUTE)
         parts = []
         for t in p["entry_times"]:
             T = parse_time(t)

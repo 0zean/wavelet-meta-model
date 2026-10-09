@@ -54,10 +54,15 @@ def _moving_median3(x: np.ndarray) -> np.ndarray:
 
 @dataclass(frozen=True)
 class VolProfile:
-    """Multiplicative time-of-day volatility factor s(b) per slot (see module docstring)."""
+    """
+    Multiplicative time-of-day volatility factor s(b) per slot (see module docstring). `s_open` is the first bar's
+    factor without the overnight gap (median |log(close / open)| of slot-0 bars on the same normalisation, floored):
+    the move a position entered at the session's opening print holds through that bar (hold_scale).
+    """
 
     s: np.ndarray
     bar_minutes: int
+    s_open: float = 1.0
 
     @classmethod
     def flat(cls, bar_minutes: int) -> "VolProfile":
@@ -75,7 +80,10 @@ class VolProfile:
             missing = np.flatnonzero(np.isnan(med)).tolist()
             raise ValueError(f"VolProfile.fit: train bars cover no return in slots {missing} (or all moves are 0)")
         s = _moving_median3(med / np.median(med))
-        return cls(np.maximum(s, PROFILE_FLOOR), bar_minutes)
+        first = slot == 0
+        intra = np.abs(np.log(train_df["close"].to_numpy(float)[first] / train_df["open"].to_numpy(float)[first]))
+        s_open = max(float(np.nanmedian(intra)) / float(np.median(med)), PROFILE_FLOOR)
+        return cls(np.maximum(s, PROFILE_FLOOR), bar_minutes, s_open)
 
     def factor(self, index: pd.DatetimeIndex) -> np.ndarray:
         """s(b_t) for each bar of `index`."""
@@ -90,7 +98,8 @@ class VolProfile:
         return float(np.sqrt(np.sum(self.s**2)))
 
     def to_dict(self) -> dict:
-        return {"bar_minutes": self.bar_minutes, "s": [round(float(v), 6) for v in self.s]}
+        return {"bar_minutes": self.bar_minutes, "s": [round(float(v), 6) for v in self.s],
+                "s_open": round(self.s_open, 6)}  # fmt: skip
 
 
 def bar_volatility(close: pd.Series, span: int, profile: VolProfile | None = None) -> pd.Series:
@@ -127,15 +136,20 @@ def hold_scale(index: pd.DatetimeIndex, profile: VolProfile, horizon: int, hold_
     √Σ s(b)² over the slots a position entered after bar t holds: the `horizon` slots from the slot after b_t (the
     next session's first slot when t is the last slot). Without hold_overnight they stop at the session's last slot
     (16:00; early closes are not known from the stamps), as the vertical barrier does; with it they wrap into the
-    next session (slot 0, which carries the overnight gap). Flat profile, full hold: √horizon.
+    next session (slot 0, which carries the overnight gap). A position entered at the opening print (the first held
+    slot is 0) does not bear that gap: its first slot counts `s_open`. Flat profile, full hold: √horizon.
     """
     k = len(profile.s)
     start = (bar_slots(index, profile.bar_minutes) + 1) % k
     slots = start[:, None] + np.arange(horizon)
-    s2 = profile.s**2
+    s2 = np.broadcast_to(profile.s**2, (len(start), k)).copy()
+    s2[start == 0, 0] = profile.s_open**2
+    rows = np.arange(len(start))[:, None]
     if hold_overnight:
-        return np.sqrt(s2[slots % k].sum(axis=1))
-    return np.sqrt(np.where(slots < k, s2[np.minimum(slots, k - 1)], 0.0).sum(axis=1))
+        held = s2[rows, slots % k]
+        held[:, 1:] = np.where(slots[:, 1:] % k == 0, profile.s[0] ** 2, held[:, 1:])  # a wrapped slot 0: the gap
+        return np.sqrt(held.sum(axis=1))
+    return np.sqrt(np.where(slots < k, s2[rows, np.minimum(slots, k - 1)], 0.0).sum(axis=1))
 
 
 def isom_counts(events: pd.DatetimeIndex, bar_minutes: int) -> np.ndarray:

@@ -57,6 +57,7 @@ def main() -> None:
         "n_sessions": n_sess,
         "profile_s": [round(float(v), 4) for v in prof.s],
         "profile_s_open_over_lunch": round(float(prof.s[0] / prof.s[30:36].mean()), 3),
+        "profile_s_open (first bar, gap-free)": round(prof.s_open, 4),
         "median_abs_ret_30min_bp": {SLOT30[k]: round(float(v) * 1e4, 3) for k, v in med30.items()},
         "open_slot_over_lunch_slot": {
             "09:30 vs 12:30 (incl. the overnight gap bar)": round(float(med30[0] / med30[6]), 3),
