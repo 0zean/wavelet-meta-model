@@ -46,6 +46,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from features.exits import exit_phase
 from risk.profiles import RiskProfile
 from utils.config import RunConfig
 from wfo.backtest import _candidates, _exits
@@ -73,9 +74,9 @@ def _bets(bars, signals, cfg, side_col, size_col) -> pd.DataFrame:
         ex["size"] = cand.loc[ex.index, "size"]
         ex["sym"] = sym
         open_ = df["open"].to_numpy()
-        vertical = (ex["barrier"] == "vertical").to_numpy()
-        gap = ex["exit_px"].to_numpy() == open_[ex["exit_pos"].to_numpy()]
-        ex["exit_phase"] = np.where(vertical, 2, np.where(gap, 0, 1))
+        ex["exit_phase"] = exit_phase(
+            ex["barrier"].to_numpy(), ex["exit_px"].to_numpy(), open_[ex["exit_pos"].to_numpy()]
+        )
         frames.append(ex.rename_axis("event").reset_index())
     cols = ["event", "sym", "side", "size", "width", "entry_pos", "exit_pos", "entry_px", "exit_px", "barrier"]
     if not frames:

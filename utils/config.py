@@ -9,6 +9,7 @@ there is no module-level config instance. Build one with:
     RunConfig.legacy_5min()                   # pre-U2 behaviour (bar windows, no embargo, legacy features)
 """
 
+import copy
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
@@ -89,6 +90,17 @@ class RunConfig:
     BARRIER_MULT: float = 1.0  # horizontal barriers = ±N × σ_bar × √VERTICAL_BARS
     VOL_SPAN: int = 100  # EWM span (bars) for σ_bar
     CUSUM_MULT: float = 1.5  # CUSUM event threshold = N × σ_bar
+
+    # Event samplers, exit models, intraday volatility structure (SPEC §13–§14, U14; features/events.py, exits.py,
+    # vol_profile.py). VOL_PROFILE "tod": σ_bar is time-of-day aware (a VolProfile fit per fold on train bars), so
+    # CUSUM / DC thresholds and barrier widths in slot b scale with s(b); intraday only. EVENT_SAMPLER: "cusum" (§3),
+    # "dc" (directional change, EVENT_PARAMS dc_mult), "schedule" (EVENT_PARAMS entry_times, days, gate).
+    # EXIT_MODEL: "triple_barrier" (§3), "time" (EXIT_PARAMS exit_time | hold_bars), "hysteresis" (beta, max_bars).
+    VOL_PROFILE: Literal["none", "tod"] = "none"
+    EVENT_SAMPLER: Literal["cusum", "dc", "schedule"] = "cusum"
+    EVENT_PARAMS: dict = field(default_factory=dict)
+    EXIT_MODEL: Literal["triple_barrier", "time", "hysteresis"] = "triple_barrier"
+    EXIT_PARAMS: dict = field(default_factory=dict)
 
     # Wavelet (db1 = Haar)
     WAVELET_J: int = 4  # decomposition levels → S4 smoothing
@@ -242,6 +254,8 @@ class RunConfig:
         for name in _PARAM_FIELDS:
             object.__setattr__(self, name, {**getattr(self, name), "random_state": self.SEED})
         object.__setattr__(self, "PRIMARY_PARAMS", dict(self.PRIMARY_PARAMS))
+        for name in ("EVENT_PARAMS", "EXIT_PARAMS"):
+            object.__setattr__(self, name, copy.deepcopy(dict(getattr(self, name))))
         if self.FEATURE_GROUPS is not None:
             object.__setattr__(self, "FEATURE_GROUPS", tuple(self.FEATURE_GROUPS))
         if self.FEATURE_SELECTION not in ("none", "cmda"):
@@ -323,6 +337,19 @@ class RunConfig:
                 raise ValueError(f"{name} must be >= 1")
         if self.TIMEFRAME == "1Day" and not self.HOLD_OVERNIGHT:
             raise ValueError("1Day bars are one per session: HOLD_OVERNIGHT must be True")
+        if self.VOL_PROFILE not in ("none", "tod"):
+            raise ValueError(f"VOL_PROFILE must be 'none' or 'tod', got {self.VOL_PROFILE!r}")
+        if self.VOL_PROFILE == "tod" and self.TIMEFRAME == "1Day":
+            raise ValueError("VOL_PROFILE='tod' is a time-of-day profile: intraday timeframes only")
+        from features.events import event_params
+        from features.exits import exit_params
+
+        ev = event_params(self)
+        exit_params(self)
+        if (self.EVENT_SAMPLER == "schedule" and self.TIMEFRAME != "1Day" and not self.HOLD_OVERNIGHT
+                and self.EXIT_MODEL != "time" and any(t in ("open", "09:30") for t in ev["entry_times"])):  # fmt: skip
+            raise ValueError(f"a 09:30 schedule entry decides at the previous session's close: EXIT_MODEL="
+                             f"{self.EXIT_MODEL!r} drops cross-session entries unless HOLD_OVERNIGHT (use 'time')")  # fmt: skip
 
     @property
     def bars_per_year(self) -> int:

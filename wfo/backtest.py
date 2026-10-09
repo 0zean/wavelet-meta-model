@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from features.triple_barrier_labels import barrier_exits
+from features.exits import exit_frame, exit_phase
 from sizing import discretize
 from utils.config import RunConfig
 
@@ -17,14 +17,7 @@ def _candidates(signals: pd.DataFrame, side_col: str, size_col: str | None, step
 
 
 def _exits(df: pd.DataFrame, cand: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
-    return barrier_exits(
-        df,
-        cand.index,
-        cand["width"],
-        side=cand["side"],
-        vertical_bars=cfg.VERTICAL_BARS,
-        hold_overnight=cfg.HOLD_OVERNIGHT,
-    )
+    return exit_frame(df, cand.index, cand["width"], cfg, side=cand["side"])
 
 
 def _unit_pnl(trades: pd.DataFrame, cand: pd.DataFrame, slippage: float) -> pd.DataFrame:
@@ -160,9 +153,9 @@ def simulate_positions(
         g = changes.setdefault(e, {}).setdefault((0, open_[e]), [0.0, 0])
         g[0] += s
         g[1] += 1
-    vertical = (bets["barrier"] == "vertical").to_numpy()
-    for x, px, s, v in zip(bets["exit_pos"].to_numpy(), bets["exit_px"].to_numpy(), sm, vertical):
-        phase = 2 if v else (0 if px == open_[x] else 1)
+    x_pos, x_px = bets["exit_pos"].to_numpy(), bets["exit_px"].to_numpy()
+    phases = exit_phase(bets["barrier"].to_numpy(), x_px, open_[x_pos])
+    for x, px, s, phase in zip(x_pos, x_px, sm, phases):
         g = changes.setdefault(x, {}).setdefault((phase, px), [0.0, 0])
         g[0] -= s
         g[1] -= 1

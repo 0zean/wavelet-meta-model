@@ -17,7 +17,8 @@ import wfo.wfo_engine as eng
 from experiments import ledger as L
 from experiments.spec import expand, load_spec
 from features.groups import cusum_state
-from features.triple_barrier_labels import bar_volatility, cusum_events
+from features.triple_barrier_labels import cusum_events
+from features.vol_profile import bar_volatility
 from models import zoo
 from models.meta_model import fit_meta_model, oof_meta_prob
 from models.zoo import PROB_CLIP, REGISTRY, make_model
@@ -33,7 +34,7 @@ from wfo.wfo_engine import CalHistory, prepare
 
 ROOT = Path(__file__).resolve().parent.parent
 OLD = {"ZOO_FIXED_PARAMS": {}, "CALIBRATION": "crossfit", "OOF_META": "refit", "PWFO_COMBINE": "nested",
-       "COST_MODEL": "slippage"}  # fmt: skip
+       "COST_MODEL": "slippage", "VOL_PROFILE": "none", "EVENT_SAMPLER": "cusum", "EXIT_MODEL": "triple_barrier"}  # fmt: skip
 FIXED = {"logit_l2": {"C": 0.1}}
 SMALL_XGB = {k: {**getattr(RunConfig(), k), "n_estimators": 50} for k in ("CLF_PARAMS", "REG_PARAMS", "META_PARAMS")}
 # 1Day walk-forward small enough for synthetic data; a tuned meta-model on OOF rows

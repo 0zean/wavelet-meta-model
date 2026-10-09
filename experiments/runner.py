@@ -82,6 +82,9 @@ def code_hash() -> str:
                 continue
             h.update(rel.encode())
             h.update(path.read_bytes().replace(b"\r\n", b"\n"))  # a CRLF checkout is the same code
+    for path in sorted((ROOT / "data" / "calendar").glob("*.csv")):  # the schedule sampler's `days` tables (U14)
+        h.update(path.relative_to(ROOT).as_posix().encode())
+        h.update(path.read_bytes().replace(b"\r\n", b"\n"))
     return h.hexdigest()
 
 

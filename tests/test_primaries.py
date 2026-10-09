@@ -7,8 +7,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from features.events import sample_events
 from features.feature_builder import build_features
-from features.triple_barrier_labels import average_uniqueness, barrier_exits, sample_events, triple_barrier_labels
+from features.triple_barrier_labels import average_uniqueness, barrier_exits, triple_barrier_labels
 from primaries import PRIMARY_COLUMNS, REGISTRY, base, check_signal, make_primary, side
 from primaries.diagnostics import primary_diagnostics
 from primaries.rules import RulePrimary

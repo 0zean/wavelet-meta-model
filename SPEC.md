@@ -735,6 +735,89 @@ Kablan (2009) ISOM/IAOM counts are the event-rate view of the same seasonality.
 - Invariant: barrier widths and CUSUM thresholds in slot b scale with `s(b)`; the event share in the
   first hour drops relative to `none` (reported, not gated).
 
+Implementation (U14, as built; §13 and §14):
+- Modules: `features/vol_profile.py` (VolProfile, `bar_volatility` moved here from `triple_barrier_labels`, slots,
+  `hold_scale`, `isom_counts`), `features/events.py` (samplers; `sample_events` moved here), `features/exits.py`
+  (exit models, the `exit_frame` dispatcher, `exit_phase`), `features/session.py` (the session frame). Every caller
+  of `barrier_exits` (labels, meta-labels and side returns, both backtests, the portfolio simulator, `meta_outcomes`,
+  the primary diagnostics, `models/compare`) now calls `exit_frame(df, events, width, cfg, side)`, which is
+  `barrier_exits` itself under `triple_barrier`.
+- Execution model kept: decision at the close of event bar t, fill at the open of the next bar in the data
+  (`entry_pos = t + 1`, which `purged` relies on). The schedule sampler picks t as the bar before its entry bar, so
+  the frame has no separate `entry_pos` column. Bar timestamps are treated as the calendar (known in advance), the
+  convention of the §3 last-bar filter and `barrier_exits`' session truncation.
+- Switches: `VOL_PROFILE` ("none"), `EVENT_SAMPLER` ("cusum"), `EVENT_PARAMS` ({}), `EXIT_MODEL` ("triple_barrier"),
+  `EXIT_PARAMS` ({}); parameters are validated in `RunConfig` (`events.event_params`, `exits.exit_params`). The
+  five are `_NON_FEATURE_FIELDS` of the static feature cache: no static group reads them (the `session` group is
+  per fold and so uncached), and existing cache keys are unchanged. They are not `BACKTEST_ONLY` (they change the
+  WFO signals). CLI: `--vol-profile --event-sampler --event-params --exit-model --exit-params`.
+- `dc`: δ_t = `dc_mult` · σ_t, the profile-aware bar σ (the same scale as the CUSUM threshold). "σ_session" above is
+  read this way: δ = 2 · σ_day would give about 0.1 events per session. SPY 5Min 2016–2025: 5.6 events / session
+  (7.2 with `tod`). Before the first confirmation the run direction is unknown and the first δ move either way
+  confirms it. The overshoot is exposed in δ units of its confirmation bar, signed by the run.
+- `schedule`: entry times must be bar opens of the timeframe between 09:30 and 16:00 (1Day: `open` only). T = 09:30
+  decides at the previous session's last bar; a later T needs the bar before the entry bar in the same session (a
+  hole there gives no event that day); an early close (the session's last bar spans 13:00, the `auction_flags` rule,
+  so a regular session missing its last bar is not one) maps a T at or past the close to the session's last bar.
+  A 09:30 entry needs `EXIT_MODEL="time"` (or HOLD_OVERNIGHT): the other exits drop cross-session entries, and
+  RunConfig refuses the combination rather than yield zero labels. `days`: the entry session must be a day of the kind (FOMC; CPI or NFP; TOM;
+  non_macro = none of FOMC/CPI/NFP; earnings: the release date for bmo/dmh, the next session of the data for amc
+  if it is at most 4 calendar days later, else no session) whose
+  `available_at` is at or before the decision time (the event bar's close, 16:00 for 1Day). The unscheduled FOMC
+  cut of 2020-03-03 10:00 is not an FOMC day for a 09:35 entry but is for a 15:30 entry; a Sunday FOMC date matches
+  no session. `gate`: `DataFrame.eval` over `session_frame` at the event bar (columns of the module docstring
+  incl. `sigma_day`, `sigma_bar`, `sigma_overnight`; `activity` is not available there); a NaN comparison is False.
+- `time`: exactly one of `exit_time` / `hold_bars`. `"close"` fills at the entry session's last bar close and
+  `"open"` at the next session's first bar open, each only if that bar is the auction bar (`auction_flags`): a
+  session whose last bar (MOC) or next session whose first bar (MOO) is missing drops the event. `"HH:MM"` fills at
+  the open of the first bar of the entry session stamped at or after it (a bar open after 09:30, before 16:00);
+  when the session ends first (early close) it fills MOC; when the entry bar is not before it the event is dropped.
+  Time exits keep cross-session entries (scheduled 09:30 entries); `triple_barrier` and `hysteresis` still drop
+  them unless HOLD_OVERNIGHT.
+- `hysteresis`: the bar-level signal is the rule primary's `score` (a primary without one is refused at
+  `prepare`). Deviation: a trigger at bar k fills at the OPEN of k + 1, not the close of k, so the decision bar
+  strictly precedes the fill (the §13 invariant); a trigger on the last held bar is moot (the position closes there
+  at the close anyway). Labels without a side take the sign of the score at the event (>= 0 long, as `rule_frame`).
+- Barrier names and fills: `vertical` = a close fill (vertical barrier, MOC, `hold_bars`, hysteresis max hold);
+  `time` / `hysteresis` = an open fill. `exit_phase` books open fills at the bar's open (phase 0, cost kind `open`:
+  the opening-auction proxy at 09:30, else slippage + the bin's half-spread) and close fills at the close (phase 2,
+  `close`: the closing-auction proxy on the session's last bar). Old barrier names keep their phases.
+  `width` stays the sampler's barrier width under every exit model: under `time` / `hysteresis` it is not the σ of
+  the actual hold (an `exit_time: "close"` from 10:00 holds ~70 bars), so the risk layer's vol target
+  (σ_hold = width / BARRIER_MULT) misstates σ_hold by about √(hold / VERTICAL_BARS). Deferred to U16, where each
+  primary fixes its own hold and sizing.
+- Profile: `r` = 1-bar close-to-close log return, so slot 0 carries the overnight gap; edge slots of the 3-slot
+  moving median keep their own value. SPY 5Min 2016-01-04 → 2025-09-30 (`scripts/u14_isom.py`,
+  `results/u14/isom_spy_5min.json`): s(0) = 8.7 (the gap bar), s(1) = 1.8, lunch ≈ 0.85, close ≈ 1.6–1.8; median
+  |r| by 30-minute slot 6.5 bp at 09:30 vs 2.9 bp at 12:30 (2.2×; 1.8× without the gap bar).
+- Barrier widths under a profile (deviation): `BARRIER_MULT · σ_base_t · √Σ s(b)²` over the slots the position
+  holds (`hold_scale`: the VERTICAL_BARS slots after b_t, stopping at the 16:00 slot unless HOLD_OVERNIGHT; the next
+  session's first slots for an event on the last bar), instead of `σ_t · √VERTICAL_BARS`. With slot 0 at 8.7 the
+  literal rule would make every event on the 09:30 bar about 6× too wide for the hour it holds. A position entered
+  at the opening print does not bear the gap: its first slot counts `s_open` (median |log(close / open)| of the
+  first bar on the same normalisation; SPY 2.2), and only a wrapped overnight hold counts s(0). With a flat profile
+  and a full hold it equals the §3 width; near the close it is narrower (fewer held slots). CUSUM / DC thresholds use
+  σ_t of the event slot as specified. `VOL_PROFILE="none"` is the §3 code path, bit for bit.
+- Per window (`wfo_engine.window_events`): with `tod` the profile is fit on [fit_start, train_end − embargo) and the
+  events, widths and labels are re-sampled on the full series for that window (≈ 0.2 s on SPY 5Min); the latest
+  window is cached by (fit_start, fit_end). `prepare` then samples nothing. Rolling calibration (`CalHistory`)
+  purges each OOS pair on the label span of the window that scored it (`add(..., spans=labels)`), not on the later
+  window's re-sampled labels (U14 review: those may lack the event, ~10 % of pairs, or resolve it earlier than the
+  meta-label, a leak once a hold can exceed the embargo); without a profile the spans are the run's labels. Each fold's train-window ISOM
+  (`isom`, `n_sessions`, and `s` under `tod`) goes to `signals.attrs["isom_folds"]` → `wfo_run.json` (intraday).
+- Hashing: `experiments.runner.code_hash` also hashes `data/calendar/*.csv` (the `days` tables); the feature
+  cache's code hash covers `features/*.py`, so this unit's files invalidate every cached static feature once.
+  `models/compare` (one whole-window CPCV, no fold) refuses `VOL_PROFILE="tod"`.
+- `session` group: per fold (the fold's profile for `dc_overshoot`, and `activity` = IAOM of DC events with the
+  plain σ over the train window, so the raw seasonality shows; with the profile the rate flattens by design).
+  Deviations: `first30` before 10:00 is the return so far (a NaN there would drop every event before 10:00 and
+  every 1Hour event, since `fit_window` drops events with a NaN feature); `mins_to_close` assumes 16:00 (as the
+  `intraday` group); `gap_sigma` divides by the σ of earlier gaps (EWM over VOL_SPAN sessions, min 20). It costs
+  ≈ 0.7 s per window on SPY 5Min (not cached).
+- ISOM (SPY 5Min, CUSUM_MULT 1.5, dc_mult 2, profile fit on the whole window): CUSUM 15.7 events / session, 21.8 % in
+  the first hour; with `tod` 20.1 / session, 16.9 %. DC 5.6 / session, 23.4 %; with `tod` 7.2, 17.5 %. With `tod`
+  the IAOM is flat from 10:00 to 15:00 and lowest in the last 30 minutes.
+
 ---
 
 ## §15 State feature groups (U15)

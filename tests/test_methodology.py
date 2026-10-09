@@ -12,10 +12,11 @@ import pywddff.pywddff as pyw
 from scipy.stats import siegelslopes
 
 from features.causal_modwt import wavelet_ar_features
+from features.events import sample_events
 from features.feature_builder import build_features
 from features.fractional_diff import fit_fracdiff_d, fracdiff_transform
 from features.indicators import compute_siegel_slope
-from features.triple_barrier_labels import average_uniqueness, barrier_exits, sample_events, triple_barrier_labels
+from features.triple_barrier_labels import average_uniqueness, barrier_exits, triple_barrier_labels
 from utils.config import RunConfig
 from utils.data_loader import load_ohlcv
 from wfo.backtest import equity_curve, simulate_trades

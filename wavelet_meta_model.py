@@ -106,6 +106,8 @@ def main(
     print(f"[CFG]   models: meta={cfg.META_MODEL} primary={cfg.PRIMARY_MODEL}  meta_train={cfg.META_TRAIN}")
     print(f"[CFG]   sizing: {cfg.SIZER} step={cfg.SIZE_STEP} positions={cfg.POSITION_MODE}  risk={cfg.RISK_PROFILE}")
     print(f"[CFG]   costs: {cfg.COST_MODEL}")
+    print(f"[CFG]   events: {cfg.EVENT_SAMPLER} {cfg.EVENT_PARAMS or ''}  exits: {cfg.EXIT_MODEL} {cfg.EXIT_PARAMS or ''}  "
+          f"vol profile: {cfg.VOL_PROFILE}")  # fmt: skip
     if cfg.COST_MODEL == "quotes" and (not symbol or data_path):  # fail before the WFO, not after it
         raise ValueError("COST_MODEL='quotes' needs an Alpaca symbol (its quotes-table rows); pass --cost-model")
 
@@ -190,6 +192,13 @@ if __name__ == "__main__":
     ap.add_argument("--position-mode", choices=["single", "average"], help="one position or active-bet averaging")
     ap.add_argument("--risk-profile", choices=sorted(PROFILES), help="risk layer (risk/profiles.py; default none)")
     ap.add_argument("--cost-model", choices=["slippage", "cs", "quotes"], help="costs (SPEC §19; default quotes)")
+    ap.add_argument(
+        "--vol-profile", choices=["none", "tod"], help="time-of-day volatility profile (SPEC §14; default none)"
+    )
+    ap.add_argument("--event-sampler", choices=["cusum", "dc", "schedule"], help="event sampler (SPEC §13)")
+    ap.add_argument("--event-params", help='sampler parameters as JSON, e.g. {"entry_times": ["15:30"]}')
+    ap.add_argument("--exit-model", choices=["triple_barrier", "time", "hysteresis"], help="exit model (SPEC §13)")
+    ap.add_argument("--exit-params", help='exit parameters as JSON, e.g. {"exit_time": "close"}')
     a = ap.parse_args()
     overrides = {}
     if a.features:
@@ -200,6 +209,10 @@ if __name__ == "__main__":
         overrides["PRIMARY"] = a.primary
     if a.primary_params:
         overrides["PRIMARY_PARAMS"] = json.loads(a.primary_params)
+    if a.event_params:
+        overrides["EVENT_PARAMS"] = json.loads(a.event_params)
+    if a.exit_params:
+        overrides["EXIT_PARAMS"] = json.loads(a.exit_params)
     for arg, name in (
         ("meta_model", "META_MODEL"),
         ("primary_model", "PRIMARY_MODEL"),
@@ -209,6 +222,9 @@ if __name__ == "__main__":
         ("position_mode", "POSITION_MODE"),
         ("risk_profile", "RISK_PROFILE"),
         ("cost_model", "COST_MODEL"),
+        ("vol_profile", "VOL_PROFILE"),
+        ("event_sampler", "EVENT_SAMPLER"),
+        ("exit_model", "EXIT_MODEL"),
     ):
         if getattr(a, arg) is not None:
             overrides[name] = getattr(a, arg)

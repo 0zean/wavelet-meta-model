@@ -5,23 +5,6 @@ import pandas as pd
 from utils.config import RunConfig
 
 
-def bar_volatility(close: pd.Series, span: int) -> pd.Series:
-    """
-    Causal EWM standard deviation of 1-bar log returns (σ per bar).
-
-    σ[t] uses returns up to and including bar t, so it is known at the close of t.
-
-    Args:
-        close (pd.Series): Close prices.
-        span (int): EWM span in bars (cfg.VOL_SPAN).
-
-    Returns:
-        pd.Series: Per-bar volatility, NaN during the warm-up period.
-    """
-    log_ret = np.log(close).diff()
-    return log_ret.ewm(span=span, min_periods=span).std().rename("bar_vol")
-
-
 def barrier_width(vol: pd.Series, mult: float, horizon: int) -> pd.Series:
     """
     Horizontal barrier half-width as a fraction of the entry price.
@@ -216,49 +199,25 @@ def barrier_exits(
     )
 
 
-def sample_events(df: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
-    """
-    Tradeable events and their barrier widths, using only data up to each event.
-
-    σ per bar = causal EWM std of log returns; events come from a symmetric CUSUM
-    filter with threshold CUSUM_MULT x σ; barriers are ±BARRIER_MULT x σ x √VERTICAL_BARS.
-    Unless HOLD_OVERNIGHT, events on a session's last bar are skipped: their entry
-    would be next session.
-
-    Args:
-        df (pd.DataFrame): OHLC data with a DatetimeIndex.
-        cfg (RunConfig): Run configuration.
-
-    Returns:
-        pd.DataFrame: Indexed by event time with column `width`.
-    """
-    vol = bar_volatility(df["close"], cfg.VOL_SPAN)
-    events = cusum_events(df["close"], cfg.CUSUM_MULT * vol)
-    if not cfg.HOLD_OVERNIGHT:
-        session_end = pd.Series(df.index.normalize(), index=df.index).shift(-1) != df.index.normalize()
-        events = events[~session_end.loc[events].to_numpy()]
-    return barrier_width(vol, cfg.BARRIER_MULT, cfg.VERTICAL_BARS).loc[events].to_frame()
-
-
 def triple_barrier_labels(df: pd.DataFrame, events: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
     """
-    López de Prado (2018) triple-barrier labels: first-touch outcome of each
-    event without a side (see barrier_exits), label = sign(return).
+    Labels of the events without a side, label = sign(return): López de Prado (2018) first-touch triple-barrier
+    outcomes (see barrier_exits), or the outcome of cfg.EXIT_MODEL (features.exits.exit_frame, SPEC §13).
 
     These are TARGETS — they use prices after the event and must only be read
     for samples whose exit falls inside the split they are fitted on.
 
     Args:
         df (pd.DataFrame): OHLC data with a DatetimeIndex.
-        events (pd.DataFrame): Output of sample_events.
+        events (pd.DataFrame): Output of features.events.sample_events.
         cfg (RunConfig): Run configuration.
 
     Returns:
         pd.DataFrame: One row per event with a complete outcome (see barrier_exits for columns).
     """
-    labels = barrier_exits(
-        df, events.index, events["width"], vertical_bars=cfg.VERTICAL_BARS, hold_overnight=cfg.HOLD_OVERNIGHT
-    )
+    from features.exits import exit_frame
+
+    labels = exit_frame(df, events.index, events["width"], cfg)
 
     counts = labels["barrier"].value_counts().to_dict()
     print(

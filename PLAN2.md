@@ -565,6 +565,56 @@ rather than at the confirmation bar.
 
 **Cost.** 2 sessions. Depends on U12 (engine structure).
 
+**Status (2026-10-09).** ✅ Complete (adversarial review done: no BREAKING; the SEVERE and five MINORs fixed, the rest
+deferred below). 564 tests pass (55 in `tests/test_u14.py`); ruff clean. Branch `unit/14-samplers-exits-isom`.
+As-built notes and deviations in SPEC §14 "Implementation (U14, as built)".
+- **Causality — met.** `VolProfile` σ, `dc` (events and lagged overshoot) and `schedule` (with `days` and `gate`)
+  samplers, every exit model (labels resolved by bar c unchanged when bars after c change) and the `session` group
+  (random-walk and truncation variants, with and without a profile; also in the registry-wide §8 test). Mutation
+  checks fail as required: a profile fit one bar past the cut, and a `time` exit filled one bar late.
+- **Hand tests — met.** Scheduled 15:30 → MOC: decision at the 15:25 close, entry at the 15:30 open (slippage + the
+  15:30 bin's half-spread), exit at the 15:55 close (closing-auction proxy only), label = fill-to-fill return.
+  Hysteresis on a synthetic signal (long, short, max hold, side-less). DC on a sawtooth: events at the
+  confirmation bars 3, 13, 23, ..., overshoot ±2.8 δ known from the next confirmation. The profile recovers a planted
+  3× U-shape (2.4–3.6). `tod` σ with a flat profile is bit-identical to plain σ.
+- **Regression — met.** With `VOL_PROFILE=none`, `EVENT_SAMPLER=cusum`, `EXIT_MODEL=triple_barrier` (the defaults):
+  the legacy CSV run's `wfo_signals.csv` is sha1 `551d8074…` (this PC's value of `402ef202…`) and
+  `meta_calibration.csv` is byte-identical to `main`; `wfo_run.json` only gains `isom_folds`. U12 parity with the
+  three switches added to `OLD_SWITCHES`: PASS (all 8 hashes) at 5ddd962 and again at 6d66c02 (after the review fixes).
+- **Diagnostic — recorded** (`scripts/u14_isom.py` → `results/u14/isom_spy_5min.{json,png}`; SPY 5Min 2016-01-04 →
+  2025-09-30, 2,450 sessions). Median |r| by 30-minute slot: 6.5 bp at 09:30 vs 2.9 bp at 12:30 (2.2×; 1.8×
+  without the gap bar). Fitted s(b): 8.7 at slot 0 (the overnight gap bar; its gap-free `s_open` is 2.2), 1.8 at
+  09:35, ≈ 0.85 at lunch, 1.6–1.8 into the close. First-hour share of events: CUSUM 21.8 % → 16.9 % with `tod`
+  (15.7 → 20.1 events / session); DC (dc_mult 2) 23.4 % → 17.5 % (5.6 → 7.2 / session). With `tod` the IAOM is flat
+  from 10:00 to 15:00.
+- **Deviations (SPEC §14 as built):** DC δ = dc_mult · σ_t, not σ_day (which gives ~0.1 events / session); barrier
+  widths under `tod` use σ over the held slots, not the event slot's σ_t (slot 0 carries the gap), and an
+  opening-print entry counts `s_open`; hysteresis exits fill at the next bar's open (decision strictly before
+  fill); `first30` is the return so far before 10:00 (a NaN would drop every pre-10:00 and every 1Hour event);
+  `activity` = IAOM of DC events with plain σ; schedule events carry no `entry_pos` column (it is t + 1 by
+  construction).
+- **Review fixes:**
+  - S1: the held-slot width still counted the gap slot s(0) for positions entered at the 09:30 open (about 2× too
+    wide on SPY; 10 % vs 44 % barrier hits). The profile now has a gap-free first-bar factor `s_open`.
+  - M1: under `tod` rolling calibration purged a pair on a later window's re-sampled labels (≈ 10 % of pairs lost;
+    a leak once a hold can exceed the embargo). `CalHistory` now keeps each pair's own label span.
+  - M3: a regular session missing its last bar looked like an early close. Early close = last bar spans 13:00.
+  - M4: an amc release with no next session in the data counted its own day; now the next session must be within
+    4 calendar days, else no day.
+  - M5: a 09:30 schedule entry with a non-`time` exit (zero labels) is refused by RunConfig.
+  - M6: `models/compare` refuses `tod` and passes the symbol.
+  - M7: `data/calendar/*.csv` is in the runner's code hash.
+- **Deferred:**
+  - M2: `width` is the sampler's barrier width under `time` / `hysteresis` exits, not the σ of the actual hold; only
+    the risk layer's vol target reads it. U16 (each primary fixes its hold and sizing).
+  - Event times use the bar stamps as the calendar (as the §3 last-bar filter does): a session truncated mid-day
+    in the data can gain or lose a scheduled event near its end. Matters only for the live loop (U20), which must
+    use the exchange calendar.
+  - MOC *entries* (the `overnight` primary: buy at the close, sell at the next open) are not modelled: every entry
+    fills at a bar's open. U16 decides between a 15:55-open entry and an entry-at-close fill model.
+  - The `session` group is per fold and uncached: ≈ 0.7 s per window on SPY 5Min (≈ 3 min per 5Min WFO cell).
+  - `mins_to_close` assumes 16:00 (early closes are not known from the bars), as the `intraday` group does.
+
 ### U15 — State and context feature groups
 
 **Goal.** Give primaries and the overlay the market-state inputs the review found missing.
@@ -806,7 +856,8 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
 - U12 — ✅ complete 2026-10-09 (branch `unit/12-harness-speed`; parity PASS, cost table in the U12 status note).
 - U13 — ✅ complete 2026-10-09 (branch `unit/13-exo-data-costs`; quotes table, event tables, `COST_MODEL=quotes`
   default, `HOLDOUT_START` 2026-10-01; status note under U13).
-- U14 — not started.
+- U14 — ✅ complete 2026-10-09 (branch `unit/14-samplers-exits-isom`; samplers, exits, `tod` profile, `session` group;
+  status note under U14).
 - U15 — not started.
 - U16 — not started.
 - U17 — not started.

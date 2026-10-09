@@ -29,8 +29,10 @@ import pandas as pd
 
 from data.bars import load_bars
 from features import cache as feature_cache
+from features.events import sample_events
+from features.exits import exit_frame
 from features.feature_builder import FeatureSet
-from features.triple_barrier_labels import average_uniqueness, barrier_exits, sample_events, triple_barrier_labels
+from features.triple_barrier_labels import average_uniqueness, triple_barrier_labels
 from models.zoo import REGISTRY, inner_cv, make_model
 from primaries import check_signal, make_primary
 from utils.config import RunConfig
@@ -76,7 +78,9 @@ def wfo_row(df: pd.DataFrame, cfg: RunConfig, symbol: str) -> tuple[dict, pd.Dat
 
 def _events_frame(df: pd.DataFrame, cfg: RunConfig, symbol: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
     """Development-window events with complete features: (X, labels, uniqueness weights)."""
-    events = sample_events(df, cfg)
+    if cfg.VOL_PROFILE != "none":  # one whole-window CPCV has no fold to fit a profile on
+        raise ValueError("models.compare samples events once for the whole window: VOL_PROFILE must be 'none'")
+    events = sample_events(df, cfg, symbol=symbol)
     labels = triple_barrier_labels(df, events, cfg)
     fset = FeatureSet(cfg, symbol=symbol, cache_dir=feature_cache.DEFAULT_ROOT)
     X_all = fset.build(df).join(fset.transform(df, fset.fit(df)))
@@ -91,14 +95,7 @@ def _side_returns(df: pd.DataFrame, labels: pd.DataFrame, cfg: RunConfig) -> pd.
     out = {}
     for name, s in (("long", 1), ("short", -1)):
         side = pd.Series(s, index=labels.index)
-        ex = barrier_exits(
-            df,
-            labels.index,
-            labels["width"],
-            side=side,
-            vertical_bars=cfg.VERTICAL_BARS,
-            hold_overnight=cfg.HOLD_OVERNIGHT,
-        )
+        ex = exit_frame(df, labels.index, labels["width"], cfg, side=side)
         out[name] = s * ex["ret"].reindex(labels.index)
     r = pd.DataFrame(out)
     if r.isna().any().any():

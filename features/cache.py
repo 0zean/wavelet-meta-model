@@ -75,6 +75,12 @@ _NON_FEATURE_FIELDS = {
     "CPCV_TEST_GROUPS",
     "PBO_BLOCKS",
     "SELECTION_METRIC",
+    # U14: no static group reads them (the session group is per fold, so uncached; labels are not features)
+    "VOL_PROFILE",
+    "EVENT_SAMPLER",
+    "EVENT_PARAMS",
+    "EXIT_MODEL",
+    "EXIT_PARAMS",
 }
 
 
