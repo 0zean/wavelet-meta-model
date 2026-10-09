@@ -1,0 +1,18 @@
+{
+  "columns": [
+    "value",
+    "open",
+    "high",
+    "low",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "2011-01-04",
+  "fetched_at": "2026-10-09T02:52:47.869739-04:00",
+  "n_rows": 3964,
+  "name": "VIX9D",
+  "schema_version": 1,
+  "sha256": "36c46826f1d5aa2c9bdb324b19310d74dfcb5b1c8534600e7aa4c22c52dfcaaf",
+  "source": "cboe",
+  "url": "https://cdn-api.cboe.com/api/global/us_indices/daily_prices/VIX9D_History.csv"
+}

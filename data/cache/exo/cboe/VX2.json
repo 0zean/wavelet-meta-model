@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "2015-01-21",
+  "fetched_at": "2026-10-09T03:29:53.331553-04:00",
+  "n_rows": 2950,
+  "name": "VX2",
+  "schema_version": 1,
+  "sha256": "8ae453b95fac03cf79658c953398fd9445549ff39278f30bbc6f1aaf6cccd3c6",
+  "source": "cboe",
+  "url": "https://www.cboe.com/us/futures/market_statistics/historical_data/product/list/VX/"
+}

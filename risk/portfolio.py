@@ -8,7 +8,7 @@ equity curve.
 
 Timing. Every decision that fills at open[b] (all of them computed before any fill at that open) is taken at the close of the previous union bar b−1 with information up to
 that close only: the equity E, drawdown and session P&L, the marks (each symbol's last close) of held positions, the
-barrier width at the event and the half-spread estimate. Per union bar b:
+barrier width at the event and the cost estimate. Per union bar b:
   open   1. barrier exits that gap through a barrier at the open        (scheduled, not decisions)
          2. daily-loss-gate flattening                                  (decided at close[b−1])
          3. drift trims back to the caps                                (decided at close[b−1])
@@ -33,9 +33,10 @@ Risk layer on a new entry (profile = risk.profiles.RiskProfile), fraction of equ
 Daily loss gate: session P&L = equity[close b] / equity at the previous session's last close − 1. At ≤ −daily_loss
 every position is flattened at its symbol's next open and entries are blocked for the rest of that session (for
 daily bars, the next session: its open is the next decision). Drawdown tiers use the close-marked equity high-water mark.
-Costs: every fill (entry, exit, trim, flatten) pays c = SLIPPAGE_PCT + half-spread (profile.spread = "cs", the
-estimate for that bar from risk.costs.half_spread) adversely on the fill price; short borrow at profile.borrow_bps
-(annual) is charged at exit on the entry notional for the union bars held.
+Costs: every fill (entry, exit, trim, flatten) pays its one-way cost c adversely on the fill price: SLIPPAGE_PCT
+without `costs`, else the symbol's per-bar cost for the kind of fill (risk.costs.fill_costs, cfg.COST_MODEL): `open`
+for entries, gap exits, gate flattening and trims, `intra` for intrabar barrier exits, `close` for vertical exits.
+Short borrow at profile.borrow_bps (annual) is charged at exit on the entry notional for the union bars held.
 
 With profile "none" on one symbol this is bit-identical to wfo.backtest.simulate_trades + equity_curve.
 """
@@ -90,7 +91,7 @@ def simulate_portfolio(
     *,
     side_col: str = "trade_signal",
     size_col: str | None = "bet_size",
-    half_spreads: dict[str, pd.Series] | None = None,
+    costs: dict[str, pd.DataFrame] | None = None,
 ) -> tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
     """
     Portfolio backtest (see the module docstring).
@@ -101,13 +102,14 @@ def simulate_portfolio(
         cfg: Run configuration (barrier rules, SIZE, SIZE_STEP, SLIPPAGE_PCT, INIT_CASH, BARRIER_MULT).
         profile: Risk profile.
         side_col / size_col: Side {-1, 0, 1} and raw bet-size columns (size_col None → m = 1).
-        half_spreads: symbol → half-spread per bar of bars[symbol] (risk.costs.half_spread); needed when
-            profile.spread == "cs".
+        costs: symbol → one-way cost fraction per bar of bars[symbol] by fill kind (columns open / intra / close,
+            risk.costs.fill_costs); None = SLIPPAGE_PCT on every fill.
 
     Returns:
         (equity, trades, log): close-marked equity on the union timeline (attrs "turnover", "exposure" = share of
         bars with a position at any point, "avg_position" = mean Σ committed fraction of the held positions over the
-        closes with a position — m·SIZE per position without the risk layer, as the single-mode backtest); one row per executed position (entry / exit union positions, fills, `size` = m,
+        closes with a position — m·SIZE per position without the risk layer, as the single-mode backtest); one row per executed position (entry / exit union positions, fills, one-way `entry_cost_bp` /
+        `exit_cost_bp` and round-trip `cost_bp` (the final exit's cost for a trimmed position), `size` = m,
         `frac` = committed fraction of equity, `pnl` in cash, per-unit `pnl_pct`, `exit_reason`); a per-bar log
         (gross / net / count / max |position| on decision-time marks after the open's decisions, the drawdown
         multiplier, gate state).
@@ -116,8 +118,8 @@ def simulate_portfolio(
         raise ValueError("the portfolio simulator holds one position per symbol (POSITION_MODE='single')")
     if set(bars) != set(signals):
         raise ValueError("bars and signals must have the same symbols")
-    if profile.spread == "cs" and (half_spreads is None or set(half_spreads) != set(bars)):
-        raise ValueError("profile.spread='cs' needs a half-spread series for every symbol")
+    if costs is not None and set(costs) != set(bars):
+        raise ValueError("costs must hold a cost frame for every symbol")
 
     syms = sorted(bars)
     union = bars[syms[0]].index
@@ -131,16 +133,17 @@ def simulate_portfolio(
     # Per-symbol arrays on the union timeline (NaN where the symbol has no bar)
     loc = {s: union.get_indexer(bars[s].index) for s in syms}
     has = {s: np.zeros(n, dtype=bool) for s in syms}
-    opn, cls, hs = {}, {}, {}
+    opn, cls, fc = {}, {}, {}
     for s in syms:
         has[s][loc[s]] = True
         opn[s], cls[s] = np.full(n, np.nan), np.full(n, np.nan)
         opn[s][loc[s]] = bars[s]["open"].to_numpy()
         cls[s][loc[s]] = bars[s]["close"].to_numpy()
-        hs[s] = np.zeros(n)
-        if profile.spread == "cs":
-            h = half_spreads[s].reindex(bars[s].index).to_numpy()
-            hs[s][loc[s]] = h
+        if costs is not None:
+            c = costs[s].reindex(bars[s].index)
+            fc[s] = {k: np.full(n, np.nan) for k in ("open", "intra", "close")}
+            for k in fc[s]:
+                fc[s][k][loc[s]] = c[k].to_numpy()
     slip = cfg.SLIPPAGE_PCT
 
     bets = _bets(bars, signals, cfg, side_col, size_col)
@@ -151,14 +154,14 @@ def simulate_portfolio(
     entries_at: dict[int, list[int]] = {}
     for i, b in enumerate(bets["entry_b"].to_numpy() if len(bets) else []):
         entries_at.setdefault(int(b), []).append(i)
-    if profile.spread == "cs":
+    if costs is not None and len(bets):
         for s in syms:
             need = bets.loc[bets["sym"] == s, ["entry_b", "exit_b"]].to_numpy().ravel()
-            if len(need) and np.isnan(hs[s][need]).any():
-                raise ValueError(f"{s}: no half-spread estimate at some fill bars (supply more 5Min history)")
+            if len(need) and any(np.isnan(fc[s][k][need]).any() for k in fc[s]):
+                raise ValueError(f"{s}: no cost estimate at some fill bars (supply more 5Min history / quotes rows)")
 
-    def cost(s: str, b: int) -> float:
-        return slip + hs[s][b] if profile.spread == "cs" else slip
+    def cost(s: str, b: int, kind: str) -> float:
+        return slip if costs is None else fc[s][kind][b]
 
     b_side = bets["side"].to_numpy() if len(bets) else np.array([], int)
     b_size = bets["size"].to_numpy(dtype=float) if len(bets) else np.array([])
@@ -188,15 +191,16 @@ def simulate_portfolio(
     def unrealized(sym_px: dict[str, float]) -> float:
         return sum(lt.side * lt.qty * (sym_px[s] - lt.entry_fill) for s, lt in lots.items())
 
-    def close_lot(s: str, b: int, px: float, reason: str, frac_of_lot: float = 1.0) -> None:
-        """Sell (part of) a lot at reference price px with adverse costs; realize P&L into cash."""
+    def close_lot(s: str, b: int, px: float, reason: str, kind: str, frac_of_lot: float = 1.0) -> None:
+        """Sell (part of) a lot at reference price px with adverse costs (fill kind `kind`); realize P&L into cash."""
         nonlocal cash, turnover
         lt = lots[s]
         q = lt.qty if frac_of_lot == 1.0 else lt.qty * frac_of_lot
         # equity with this lot marked at px (the others at their marks), before the fill's cost
         marks = {k: (px if k == s else mark[k]) for k in lots}
         E = cash + unrealized(marks)
-        fill = px * (1.0 - lt.side * cost(s, b))
+        c = cost(s, b, kind)
+        fill = px * (1.0 - lt.side * c)
         pnl = lt.side * q * (fill - lt.entry_fill)
         if profile.borrow_bps and lt.side < 0:
             pnl -= q * lt.entry_fill * profile.borrow_bps * 1e-4 * (b - lt.entry_b + 1) / cfg.bars_per_year
@@ -215,6 +219,7 @@ def simulate_portfolio(
                     "exit_b": b,
                     "exit_px": px,
                     "exit_fill": fill,
+                    "exit_cost_bp": c * 1e4,
                     "exit_reason": reason if reason != "barrier" else bets.at[i, "barrier"],
                 }
             )
@@ -290,28 +295,29 @@ def simulate_portfolio(
         for s in here:
             lt = lots.get(s)
             if lt is not None and b_exit_b[lt.bet] == b and b_phase[lt.bet] == 0:
-                close_lot(s, b, b_exit_px[lt.bet], "barrier")
+                close_lot(s, b, b_exit_px[lt.bet], "barrier", "open")
         # (2) gate flattening at this symbol's next open
         for s in here:
             if s in flatten:
                 flatten.discard(s)
                 if s in lots:
-                    close_lot(s, b, opn[s][b], "gate")
+                    close_lot(s, b, opn[s][b], "gate", "open")
                     busy_until[s] = int(np.searchsorted(loc[s], b))
         # (3) drift trims (a position that already gapped out at this open has nothing left to trim)
         for s in [s for s in scale if scale[s] < 1.0 and s in lots]:
             if scale[s] <= 0:
-                close_lot(s, b, opn[s][b], "trim")
+                close_lot(s, b, opn[s][b], "trim", "open")
                 busy_until[s] = int(np.searchsorted(loc[s], b))
             else:
-                close_lot(s, b, opn[s][b], "trim", frac_of_lot=1.0 - scale[s])
+                close_lot(s, b, opn[s][b], "trim", "open", frac_of_lot=1.0 - scale[s])
         # (4) entries
         if cand:
             for f, s, i in cand:
                 if f <= 0:
                     continue
                 side = int(b_side[i])
-                fill = opn[s][b] * (1.0 + side * cost(s, b))
+                c_in = cost(s, b, "open")
+                fill = opn[s][b] * (1.0 + side * c_in)
                 qty = f * E_dec / fill
                 turnover += qty * fill / E_dec
                 lots[s] = _Lot(s, i, side, qty, fill, b)
@@ -326,6 +332,7 @@ def simulate_portfolio(
                     "entry_b": b,
                     "entry_px": opn[s][b],
                     "entry_fill": fill,
+                    "entry_cost_bp": c_in * 1e4,
                     "qty": qty,
                     "pnl": 0.0,
                     "exit_notional": 0.0,
@@ -346,7 +353,7 @@ def simulate_portfolio(
             for s in sorted((s for s in here if s in lots), key=lambda s: lots[s].bet):
                 lt = lots[s]
                 if b_exit_b[lt.bet] == b and b_phase[lt.bet] == phase:
-                    close_lot(s, b, b_exit_px[lt.bet], "barrier")
+                    close_lot(s, b, b_exit_px[lt.bet], "barrier", "intra" if phase == 1 else "close")
         # ── close: marks, equity, drawdown, gate ────────────────────────────────────────────────────
         for s in here:
             mark[s] = cls[s][b]
@@ -380,7 +387,8 @@ def simulate_portfolio(
         whole = tr["trimmed"] | ((tr["side"] < 0) & (profile.borrow_bps > 0))
         tr.loc[whole, "pnl_pct"] = tr["pnl"] / (tr["qty"] * tr["entry_fill"])
         tr["bars_held"] = tr["exit_b"] - tr["entry_b"] + 1
+        tr["cost_bp"] = tr["entry_cost_bp"] + tr["exit_cost_bp"]  # round trip, one-way costs at the two fills
         tr = tr.set_index("event").sort_values(["entry_b", "sym"], kind="stable")
     else:
-        tr = pd.DataFrame(columns=["sym", "side", "size", "frac", "pnl", "pnl_pct", "bars_held"])
+        tr = pd.DataFrame(columns=["sym", "side", "size", "frac", "pnl", "pnl_pct", "bars_held", "cost_bp"])
     return out, tr, pd.DataFrame(log, index=union)

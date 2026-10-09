@@ -39,6 +39,12 @@ def const_spread(df: pd.DataFrame, h: float) -> pd.Series:
     return pd.Series(h, index=df.index)
 
 
+def const_costs(df: pd.DataFrame, c) -> pd.DataFrame:
+    """One-way cost c (a scalar or per-bar array) on every kind of fill (risk.costs.fill_costs layout)."""
+    return pd.DataFrame({k: np.broadcast_to(np.asarray(c, float), len(df)) for k in ("open", "intra", "close")},
+                        index=df.index)  # fmt: skip
+
+
 # ── Profiles and config ──────────────────────────────────────────────────────
 
 
@@ -52,7 +58,7 @@ def test_profiles_and_config():
     with pytest.raises(ValueError, match="unknown risk profile"):
         get_profile("nope")
     for bad in ({"vol_target": 0}, {"max_gross": 0}, {"max_concurrent": 0}, {"daily_loss": 1.0},
-                {"dd_tiers": ((0.2, 0.5), (0.1, 0.0))}, {"spread": "quoted"}):  # fmt: skip
+                {"dd_tiers": ((0.2, 0.5), (0.1, 0.0))}, {"spread_window_days": 0}):  # fmt: skip
         with pytest.raises(ValueError):
             RiskProfile("x", **bad)
     with pytest.raises(ValueError, match="unknown risk profile"):
@@ -60,8 +66,12 @@ def test_profiles_and_config():
     with pytest.raises(ValueError, match="POSITION_MODE"):
         CFG.replace(RISK_PROFILE="standard", POSITION_MODE="average")
     df = synthetic_daily(80)
-    with pytest.raises(ValueError, match="spread_bars"):
-        run_backtest(df, rand_signals(df, 10, np.random.default_rng(0)), CFG.replace(RISK_PROFILE="standard"))
+    with pytest.raises(ValueError, match="cost data"):
+        run_backtest(df, rand_signals(df, 10, np.random.default_rng(0)), CFG.replace(COST_MODEL="cs"))
+    with pytest.raises(ValueError, match="COST_MODEL"):
+        CFG.replace(COST_MODEL="spread")
+    with pytest.raises(ValueError, match="POSITION_MODE"):
+        CFG.replace(COST_MODEL="quotes", POSITION_MODE="average")
 
 
 # ── Regression: profile "none" == U7 single-mode backtest ─────────────────────
@@ -267,8 +277,8 @@ def test_costs_on_every_notional_change_including_trims():
     cfg = RunConfig.for_timeframe("1Hour", VERTICAL_BARS=4, SLIPPAGE_PCT=1e-4, SIZE_STEP=0.1)
     sig = sig_at(df, [0], [1], [0.5], width=0.9)
     h = 2e-4
-    prof = RiskProfile("c", max_position=0.5, drift_tol=0.1, spread="cs")
-    eq, tr, _ = simulate_portfolio({"X": df}, {"X": sig}, cfg, prof, half_spreads={"X": const_spread(df, h)})
+    prof = RiskProfile("c", max_position=0.5, drift_tol=0.1)
+    eq, tr, _ = simulate_portfolio({"X": df}, {"X": sig}, cfg, prof, costs={"X": const_costs(df, 1e-4 + h)})
     c = 1e-4 + h
     E0 = 10_000.0
     fill = 100 * (1 + c)
@@ -298,13 +308,13 @@ def test_costs_on_every_notional_change_including_trims():
 def test_spread_needs_estimates_at_every_fill():
     df = synthetic_daily(100)
     sig = rand_signals(df, 20, np.random.default_rng(1))
-    prof = RiskProfile("c", spread="cs")
+    prof = RiskProfile("c")
     hs = const_spread(df, 1e-4)
     hs.iloc[:50] = np.nan
-    with pytest.raises(ValueError, match="half-spread"):
-        simulate_portfolio({"X": df}, {"X": sig}, CFG, prof, half_spreads={"X": hs})
-    with pytest.raises(ValueError, match="half-spread series"):
-        simulate_portfolio({"X": df}, {"X": sig}, CFG, prof)
+    with pytest.raises(ValueError, match="no cost estimate"):
+        simulate_portfolio({"X": df}, {"X": sig}, CFG, prof, costs={"X": const_costs(df, hs.to_numpy())})
+    with pytest.raises(ValueError, match="cost frame for every symbol"):
+        simulate_portfolio({"X": df}, {"X": sig}, CFG, prof, costs={})
 
 
 # ── Causality ────────────────────────────────────────────────────────────────
@@ -314,7 +324,7 @@ def test_portfolio_backtest_is_causal():
     """Perturbing every symbol's bars and signals after bar c leaves equity (and risk decisions) up to c unchanged."""
     bars, sigs = universe(4, 500, 11)
     prof = RiskProfile("all", vol_target=0.02, max_position=0.4, max_gross=1.0, max_net=0.6, max_concurrent=3,
-                       dd_tiers=((0.05, 0.5), (0.3, 0.0)), daily_loss=0.01, spread="cs")  # fmt: skip
+                       dd_tiers=((0.05, 0.5), (0.3, 0.0)), daily_loss=0.01)  # fmt: skip
     cfg = CFG.replace(SIZE_STEP=0.1)
     rng = np.random.default_rng(5)
     for c in (150, 300, 420):
@@ -326,10 +336,10 @@ def test_portfolio_backtest_is_causal():
             sg.loc[late, "bet_size"] = rng.uniform(0, 1, late.sum())
             sg.loc[late, "trade_signal"] = -sg.loc[late, "trade_signal"]
             sigs2[s] = sg
-        hs = {s: const_spread(b, 1e-4).where(np.arange(len(b)) <= c, 9e-4) for s, b in bars.items()}
-        hs1 = {s: const_spread(b, 1e-4) for s, b in bars.items()}
-        e1, _, l1 = simulate_portfolio(bars, sigs, cfg, prof, half_spreads=hs1)
-        e2, _, l2 = simulate_portfolio(bars2, sigs2, cfg, prof, half_spreads=hs)
+        hs = {s: const_costs(b, const_spread(b, 1e-4).where(np.arange(len(b)) <= c, 9e-4)) for s, b in bars.items()}
+        hs1 = {s: const_costs(b, 1e-4) for s, b in bars.items()}
+        e1, _, l1 = simulate_portfolio(bars, sigs, cfg, prof, costs=hs1)
+        e2, _, l2 = simulate_portfolio(bars2, sigs2, cfg, prof, costs=hs)
         np.testing.assert_array_equal(e1.iloc[: c + 1].to_numpy(), e2.iloc[: c + 1].to_numpy())
         pd.testing.assert_frame_equal(l1.iloc[: c + 1], l2.iloc[: c + 1])
         assert (l1["gate"] > 0).any() and (l1["dd_mult"] < 1).any()
@@ -416,10 +426,10 @@ def test_run_backtest_routes_through_the_risk_layer():
     rng = np.random.default_rng(2)
     df = synthetic_daily(300)
     sig = rand_signals(df, 60, rng)
-    cfg = CFG.replace(RISK_PROFILE="standard")
+    cfg = CFG.replace(RISK_PROFILE="standard", COST_MODEL="cs")
     m5 = five_min(300, 3, start="2012-01-03")  # same business-day calendar as synthetic_daily
     d = df.iloc[100:]
-    res = run_backtest(d, sig, cfg, spread_bars=m5)
+    res = run_backtest(d, sig, cfg, cost_data=m5)
     tr = res["Meta-filtered"][1]
     assert len(tr) > 10 and (tr["frac"] <= 0.2 + 1e-12).all()
     hs = half_spread(d.index, m5, 21, 0.5e-4).to_numpy()[tr["entry_b"].to_numpy()]

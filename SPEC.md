@@ -412,6 +412,8 @@ traded timeframe: per session the mean pair estimate (pairs straddling sessions 
 negative estimates 0), and a fill uses the trailing 21-session mean of the sessions **before** its own (causal). No
 quoted-spread fallback (no quote data cached); a fill without an estimate raises. Optional short borrow (annual bps,
 0 default) is charged at exit on the entry notional for the bars held. There is no internal crossing between symbols.
+*(Amended by §19, U13: costs are chosen by `RunConfig.COST_MODEL`, not by the profile; `standard` + `COST_MODEL="cs"`
+is this paragraph.)*
 
 **Metrics** (all over the OOS span): the U7 table plus Sortino (RMS of negative per-bar returns), max drawdown duration
 (longest run of closes below the running peak, trading days), PSR(0) of the per-bar returns, profit factor (Σ winning /
@@ -592,9 +594,9 @@ top-ups with a 30-day overlap (re-fetch all on any revision). `end > HOLDOUT_STA
 
 | source | names | `available_at` | notes |
 |---|---|---|---|
-| `cboe` | VIX, VIX9D, VIX3M, VIX6M (daily OHLC) | session date 16:20 ET | `https://cdn.cboe.com/api/global/us_indices/daily_prices/{NAME}_History.csv` (confirmed for VIX3M; U13 verifies the others and records the final URLs here) |
+| `cboe` | VIX, VIX9D, VIX3M, VIX6M (daily OHLC) | session date 16:20 ET | `https://cdn-api.cboe.com/api/global/us_indices/daily_prices/{NAME}_History.csv` for all four (the `cdn.cboe.com` URL answers 307 to it); `value` = close, plus `open`/`high`/`low` |
 | `cboe` | VX1, VX2 (continuous front/second VIX futures settlements), `VX1/VIX`, `VX2/VX1` | settlement date 16:20 ET | built from Cboe CFE per-expiry files; roll on the expiry date; the expiry row's settle is the final price |
-| `fred` | VIXCLS, DGS2, DGS10, T10Y2Y, BAMLH0A0HYM2, DTWEXBGS | next business day 09:00 ET (posting lag) | VIXCLS is a cross-check of the CBOE file only |
+| `fred` | VIXCLS, DGS2, DGS10, T10Y2Y, BAMLH0A0HYM2, DTWEXBGS | VIXCLS: next federal business day 09:00 ET; DGS2, DGS10, T10Y2Y, BAMLH0A0HYM2: next federal business day 16:30 ET (H.15 daily update 16:15 ET); DTWEXBGS: the Monday after the observation's week 16:30 ET, next business day if a holiday (H.10 is weekly) | VIXCLS is a cross-check of the CBOE file only; BAMLH0A0HYM2 starts 2023-10-09 on FRED (ICE licence: last 3 years) |
 | `calendar` | FOMC statement days (14:00 ET), CPI days, NFP days (08:30 ET), OPEX (third Friday), month-end, turn-of-month (−1 … +3), pre-holiday | known in advance | checked-in CSV `data/calendar/events.csv` with a provenance column; 2016 → 2027 |
 | `earnings` | per cached stock: date, `timing ∈ {bmo, amc}` | known in advance once announced; stored with the announcement date | Alpaca corporate actions / news first; checked-in CSV where missing |
 | `alpaca_options` | daily SPY/QQQ chain snapshot: strike, expiry, bid/ask, IV, Greeks | snapshot time | 2024-02 → ; free indicative feed; open interest only if the schema has it (U13 confirms) |
@@ -603,6 +605,76 @@ top-ups with a 30-day overlap (re-fetch all on any revision). `end > HOLDOUT_STA
 **Invariants.** No value enters a feature on a bar stamped before its `available_at` (enforced in the
 feature builder, tested with a planted same-day value). Daily exo values align to intraday bars by the
 last `available_at` ≤ bar stamp. Revisions overwrite (no vintages kept); the sidecar records the fetch time.
+
+Implementation (U13, as built):
+- Fetches always download the whole published history (the files are small) and replace the cache; changed or
+  removed observations on dates already cached are counted in a log line (this replaces the 30-day overlap).
+  `coverage_end` = the NY date of the fetch; a request ending after it re-fetches. Index unit ns, `available_at` UTC.
+- VX1 / VX2 / ratios are named `VX1`, `VX2`, `VX1_VIX`, `VX2_VX1` (file-safe). CFE list
+  `https://www.cboe.com/us/futures/market_statistics/historical_data/product/list/VX/`, files
+  `https://cdn.cboe.com/data/us/futures/market_statistics/historical_data/VX/VX_{expiry}.csv`; monthly contracts only
+  (weeklies ignored), `Settle` column, rows with settle ≤ 0 dropped; VX1 on date d = earliest expiry ≥ d (the expiry
+  row is its final settlement), VX2 the next; only dates on or after the first loaded expiry (2015-01-21) are kept,
+  since before it the true front month was not loaded (U13 review); expired contract files are cached raw under
+  `cboe/vx_contracts/`.
+- CBOE has VIX (not VIX3M etc.) values on exchange holidays from 2022-05-30 on (Cboe global trading hours), and so does
+  VIXCLS; the as-of alignment puts them on the next session. A cross-series ratio (VIX/VIX3M) must be built on common
+  observation dates before alignment, or it pairs a holiday VIX with the previous session's VIX3M (U15).
+- Live smoke (`scripts/u13_smoke.py exo`, `results/u13/exo_smoke.{json,png}`): CBOE VIX vs FRED VIXCLS max |Δ| =
+  0.00 on 2,734 common days; VX1/VIX median 1.043 over 2016-01-04 → 2025-09-30 (> 1 on 76 % of days), VX2/VX1
+  median 1.068. Coverage 2016-01-04 → 2026-09-30 for every series except BAMLH0A0HYM2 (from 2023-10-09): HY OAS
+  cannot serve the development window; the credit-spread state needs another source (e.g. HYG vs IEF, U15).
+- `calendar` / `earnings` (`data/events.py`, rebuilt by `uv run python -m data.events`; not cached in `exo/`):
+  `data/calendar/events.csv` (kind, date, event_time, value, known_from, scheduled, source) 2016 → 2027 — FOMC from
+  the Fed's historical pages (2016–2020) and `fomccalendars.htm` (2021–2027), 8 scheduled per year, 7 in 2020 (March
+  17–18 cancelled) plus the unscheduled 2020-03-03 10:00 and 2020-03-15 (Sunday) 17:00 statements (the 2019-10-04
+  meeting issued none); CPI and NFP from BLS's release archives (`/bls/news-release/{cpi,empsit}.htm`) and
+  schedules (`/schedule/news_release/…`; bls.gov refuses python-requests, so the builder uses curl), 131 each to
+  2026-12 (October 2025 CPI cancelled, October/November 2025 NFP merged); BLS releases on Good Friday (5 times since
+  2016), so a release day is not always a session. OPEX = third Friday or the session before; TOM = −1, +1 … +3;
+  PRE_HOLIDAY = a session followed by a weekday closure. `known_from` (→ `available_at` at its NY midnight): 1 January
+  of the event year for scheduled kinds; the release date for CPI/NFP moved by the 2025 shutdown (2025-10-01 …
+  2026-02-28, including the January 2026 CPI / NFP moved by the early-February 2026 funding lapse); the Monday of the
+  closure week for PRE_HOLIDAY before the unscheduled closures 2018-12-05 and
+  2025-01-09; the statement instant for unscheduled FOMC. `event_at` = the release instant (NaT for day flags).
+- `earnings`: `data/calendar/earnings.csv` from SEC EDGAR (Form 8-K with Item 2.02), 395 filings 2016-01 → 2026-08
+  for the 9 stocks. The acceptance time is the "Accepted" field (ET) of each filing's index page: the submissions
+  JSON's `acceptanceDateTime` carries a second NY offset for AAPL, AMZN, META, JPM and UNH (AAPL's 16:30:26 ET
+  filing of 2024-08-01 appears as 2024-08-02T00:30:26Z; found by the U13 review). Date = the acceptance's NY date;
+  timing: < 09:30 ET `bmo`, ≥ 16:00 `amc`, otherwise `dmh` (JPM files about 06:46, UNH about 06:01 ET). Announcement
+  dates are not in EDGAR: a filing with the company's usual timing (amc: AAPL MSFT NVDA AMZN GOOGL META; bmo: JPM UNH
+  XOM) is available from its day's midnight, any other (NVDA's two pre-open preliminary results, XOM's mid-quarter
+  "earnings considerations", one late AAPL filing) from its acceptance time. Series columns: `value` = 1, `timing`
+  (−1 bmo, 0 dmh, +1 amc), `event_at` = acceptance time (an upper bound on the release time).
+- `alpaca_options` (checked 2026-10-09, free plan): the snapshots endpoint serves the current chain only (IV and
+  Greeks on contracts with a usable quote, indicative feed); open interest is on the trading API's option contracts
+  (`open_interest` as of `open_interest_date`, the previous session), also current only; historical option daily
+  bars exist from 2024-02. No historical chain or open interest can be built: `data/options.py` collects the SPY/QQQ
+  chain forward (`uv run python -m data.options`), and the U15 gamma proxy uses the VIX/skew fallback for the
+  development window.
+- `quotes` (`data/quotes.py`; not a `load_series` source): sessions 6–10 of Feb/May/Aug/Nov 2016Q1 → 2026Q3 (215
+  sessions), 30 symbols, marks open + 5 min … close − 5 min plus `open_auction` (open + 1 min) and `close_auction`
+  (close − 1 min); prevailing quote = last in [m − 5 s, m), then 60 s, then 15 min (windows clipped at the open).
+  Table `data/costs/quotes_half_spread.csv` (+ `.json`): median half-spread per symbol × year × {26 15-minute bins,
+  open_auction, close_auction, day}, 9,570 rows from 509,550 samples (82 missing: Alpaca's 2019-08-12 SIP hole; 49
+  crossed / one-sided; 3 pre-open). The raw samples are cached under `data/cache/exo/quotes/` (git-ignored; about 3 h
+  to re-fetch at 200 requests / min). SPY 10:00–15:30 median 0.155 bp over 2016–2025 vs Corwin–Schultz 1.53 bp
+  (`results/u13/quotes_smoke.json`); the 0.25 bp floor binds for SPY in every year and for QQQ (2020–2026 except 2022) and IWM (2021, 2024–2026). Stocks' open
+  proxy (the 09:31 quote) is wide (UNH 8.9 bp, XOM 3.9 bp median): conservative for a single-price auction fill.
+  Sampling bias (U13 review): the base week holds almost no FOMC / NFP / OPEX / month-end session and no stress
+  session. A separate sample (`fetch --plan events`: one FOMC, NFP, OPEX, month-end session per year + 7 stress
+  sessions, 50 sessions, `data/cache/exo/quotes/event_samples/`, not in the table) measures the gap in each kind's
+  trade bins (event half-spread / table value, median across symbols): FOMC 14:00–16:00 1.03 (max UNH 1.48), NFP
+  open 1.01, OPEX close 1.01, month-end close 0.99, stress sessions (2018-02-06, 2020-03-16 … 20, 2024-08-05, all
+  bins) 2.10 (IWM 2.9, AAPL 3.5, TLT 4.0, USO 4.7). Scheduled events cost about what the table says; crisis sessions
+  cost 2–4× more, which the table does not model (a volatility-scaled cost is a family-spec decision, U17).
+- Universe: `DEFAULT_UNIVERSE` += IEF, LQD, HYG, DBC, USO, UUP, EFA, EEM, VNQ, SLV, SVXY (5Min from 2016-01-04; all
+  listed before 2016). SVXY changed from −1× to −0.5× the VIX short-term futures index on 2018-02-28 after the
+  2018-02-05 loss: its history is two products, and it is the survivor of that event (XIV was terminated);
+  `data.fetch.REGIME_BREAKS` records the date. USO's 1:8 reverse split (2020-04-29) is in the adjusted bars.
+  Quality (`results/data_quality_u13_etfs.csv`, 2016-01-04 → 2026-09-30): 2,701 sessions each, none missing, no OHLC
+  violation; UUP misses 5.0 % of 5Min bars (no-trade bars), DBC 0.7 %, the rest ≤ 0.13 %. Largest moves are real:
+  SVXY −84 % on 2018-02-06, USO 2020-03/04, SLV −29 % on 2026-01-30.
 
 ---
 
@@ -803,3 +875,32 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   entries and exits) pay the auction proxy half-spread only. Short borrow `borrow_bps` as in §7.
 - Every fill records its modelled cost in the trade frame (`cost_bp`); the family report shows cost as a
   share of gross P&L. Invariant: the magnitude floor of §17.2 uses the same table.
+
+Implementation (U13, as built):
+- `RunConfig.COST_MODEL` (default `"quotes"`); `RiskProfile.spread` is gone (the profile no longer chooses costs; it
+  keeps `spread_floor` / `spread_window_days` for `cs`). The U8–U11 `standard` profile = `RISK_PROFILE="standard"` +
+  `COST_MODEL="cs"`. `legacy_5min()` pins `"slippage"`. `COST_MODEL` is backtest-only (WFO signals cache key) and not
+  a feature field.
+- `risk.costs.fill_costs(index, cfg, cost_data)` returns the one-way cost fraction of a fill at each bar by kind:
+  `open` (entries, gap exits through a barrier at the open, gate flattening, drift trims), `intra` (intrabar
+  barrier exits), `close` (vertical exits at the close); None for `"slippage"`. `cs`: the same SLIPPAGE_PCT + CS
+  half-spread on every kind (bit-identical to U8). `quotes`: an open fill is an opening-auction fill when the bar
+  starts at 09:30 (every daily bar), a close fill a closing-auction fill when the bar ends at or after 16:00 (every
+  daily bar, session-anchored stubs included) or is the session's last bar in the data and spans 13:00 (early
+  close); auction fills pay the `open_auction` / `close_auction` half-spread only, others SLIPPAGE_PCT + the
+  half-spread of the 15-minute bin of the fill time (open: bar start, close: bar end, intrabar: bar start; daily
+  intrabar: `day`). Year = the bar's year, else the nearest earlier year in the table; a year before the table's
+  first, or a bin missing in every earlier year, raises.
+- Any `COST_MODEL` other than `"slippage"` routes `run_backtest` through `simulate_portfolio` (one symbol; with profile
+  `none` it applies no risk layer and, with SLIPPAGE_PCT cost frames, equals `simulate_trades` bit for bit), so it
+  needs `POSITION_MODE="single"` (RunConfig raises otherwise). Portfolio trades carry `entry_cost_bp`,
+  `exit_cost_bp` and `cost_bp` (round trip; a trimmed position's is its final exit's).
+- `cost_data` replaces `spread_bars` in `run_backtest`, `wfo.pwfo` and the runner: `cs` the symbol's 5Min bars,
+  `quotes` its rows of `data/costs/quotes_half_spread.csv` (the runner's data source exposes `quotes_table(symbols)`;
+  a symbol without rows raises). The data hash covers each symbol's cost inputs (`cost:{symbol}`).
+- Not converted (diagnostics only): `META_MIN_RET = 2 × SLIPPAGE_PCT`, `models/compare.py` and
+  `primaries/diagnostics.py` net-of-cost figures.
+- The per-year medians use the whole year's sample, so a fill early in a year is priced with that year's later
+  sessions too: cost-model look-ahead within a year (not a signal input).
+- Parity: with `COST_MODEL="slippage"` added to the old switches (`scripts/u12_parity.py`), the four U11 Stage C
+  parity cells reproduce their `daily_returns.csv` and `returns_pwfo.csv` exactly (`parity: PASS`, U13 code).

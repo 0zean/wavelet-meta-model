@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "2023-10-09",
+  "fetched_at": "2026-10-09T02:53:46.152028-04:00",
+  "n_rows": 786,
+  "name": "BAMLH0A0HYM2",
+  "schema_version": 1,
+  "sha256": "1111c40e4e49861116fe7051bd31473a92d651e7898bd5452d52e1d80eaf2789",
+  "source": "fred",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2"
+}

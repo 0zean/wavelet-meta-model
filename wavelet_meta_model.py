@@ -28,7 +28,7 @@ from features import cache as feature_cache
 from models.zoo import REGISTRY as ZOO
 from primaries import REGISTRY as PRIMARIES
 from primaries.diagnostics import primary_diagnostics
-from risk.profiles import PROFILES, get_profile
+from risk.profiles import PROFILES
 from sizing import REGISTRY as SIZERS
 from utils.config import RunConfig
 from utils.data_loader import load_ohlcv, make_synthetic_spy
@@ -105,6 +105,9 @@ def main(
     print(f"[CFG]   primary={cfg.PRIMARY} {cfg.PRIMARY_PARAMS or ''}")
     print(f"[CFG]   models: meta={cfg.META_MODEL} primary={cfg.PRIMARY_MODEL}  meta_train={cfg.META_TRAIN}")
     print(f"[CFG]   sizing: {cfg.SIZER} step={cfg.SIZE_STEP} positions={cfg.POSITION_MODE}  risk={cfg.RISK_PROFILE}")
+    print(f"[CFG]   costs: {cfg.COST_MODEL}")
+    if cfg.COST_MODEL == "quotes" and (not symbol or data_path):  # fail before the WFO, not after it
+        raise ValueError("COST_MODEL='quotes' needs an Alpaca symbol (its quotes-table rows); pass --cost-model")
 
     # Feature context (cross-asset market bars) and cache (Alpaca data only: the key needs a symbol)
     context = {}
@@ -134,15 +137,20 @@ def main(
 
     # Backtest, metrics and plots cover only the OOS span
     df_oos = df.loc[signals.index[0] :]
-    spread_bars = None
-    if get_profile(cfg.RISK_PROFILE).spread == "cs":  # the half-spread is estimated from 5Min bars (risk/costs.py)
+    cost_data = None
+    if cfg.COST_MODEL == "cs":  # the Corwin–Schultz half-spread is estimated from 5Min bars (risk/costs.py)
         if cfg.TIMEFRAME == "5Min":
-            spread_bars = df
+            cost_data = df
         elif symbol and not data_path:
-            spread_bars = load_bars(symbol, "5Min", start, end)
+            cost_data = load_bars(symbol, "5Min", start, end)
         else:
-            raise ValueError(f"risk profile {cfg.RISK_PROFILE!r} needs 5Min bars for the spread estimate")
-    results = run_backtest(df_oos, signals, cfg, spread_bars=spread_bars)
+            raise ValueError("COST_MODEL='cs' needs 5Min bars for the spread estimate")
+    elif cfg.COST_MODEL == "quotes":  # SPEC §19: the symbol's rows of the quotes half-spread table
+        from data.quotes import read_table
+
+        table = read_table()
+        cost_data = table[table["symbol"] == symbol.upper()].reset_index(drop=True)
+    results = run_backtest(df_oos, signals, cfg, cost_data=cost_data)
     metrics = compute_metrics(df_oos, results, cfg)
     signal_diagnostics(df, signals, cfg)
     o = meta_outcomes(df, signals, cfg)
@@ -181,6 +189,7 @@ if __name__ == "__main__":
     ap.add_argument("--size-step", type=float, help="bet-size discretization step (default 0.1, 0 = off)")
     ap.add_argument("--position-mode", choices=["single", "average"], help="one position or active-bet averaging")
     ap.add_argument("--risk-profile", choices=sorted(PROFILES), help="risk layer (risk/profiles.py; default none)")
+    ap.add_argument("--cost-model", choices=["slippage", "cs", "quotes"], help="costs (SPEC §19; default quotes)")
     a = ap.parse_args()
     overrides = {}
     if a.features:
@@ -199,6 +208,7 @@ if __name__ == "__main__":
         ("size_step", "SIZE_STEP"),
         ("position_mode", "POSITION_MODE"),
         ("risk_profile", "RISK_PROFILE"),
+        ("cost_model", "COST_MODEL"),
     ):
         if getattr(a, arg) is not None:
             overrides[name] = getattr(a, arg)

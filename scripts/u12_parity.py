@@ -31,7 +31,8 @@ CELLS = {
     "2dfc205f85035126": "AMZN 1Hour wavelet_trend rf_ldp_fast ldp_sigmoid (1-point grid, forest)",
     "a52bf71cec3e9215": "SPY 1Day wavelet_trend logit_l2 fixed (full feature groups)",
 }
-OLD_SWITCHES = {"ZOO_FIXED_PARAMS": {}, "CALIBRATION": "crossfit", "OOF_META": "refit", "PWFO_COMBINE": "nested"}
+OLD_SWITCHES = {"ZOO_FIXED_PARAMS": {}, "CALIBRATION": "crossfit", "OOF_META": "refit", "PWFO_COMBINE": "nested",
+                "COST_MODEL": "slippage"}  # fmt: skip
 
 
 def file_hash(path: Path) -> str:

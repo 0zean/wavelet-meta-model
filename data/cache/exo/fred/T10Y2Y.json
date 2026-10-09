@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "1976-06-01",
+  "fetched_at": "2026-10-09T02:53:45.909223-04:00",
+  "n_rows": 12586,
+  "name": "T10Y2Y",
+  "schema_version": 1,
+  "sha256": "12b97805b5fcccb95360343e087d37e942ee9ae3815c987fbaac5bcc8809de30",
+  "source": "fred",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10Y2Y"
+}

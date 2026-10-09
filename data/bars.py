@@ -31,8 +31,9 @@ OVERLAP = pd.Timedelta(days=7)  # re-fetched on top-ups to detect retroactive (c
 ADJ_RTOL = 1e-6
 FETCH_CHUNK = pd.Timedelta(days=366)
 CALENDAR_MAX_AGE = pd.Timedelta(days=30)
-# Final-evaluation holdout (SPEC §9): research code may not load bars on or after this day
-HOLDOUT_START = pd.Timestamp("2025-10-01")
+# Holdout (SPEC §9, moved by §11.1 in U13): research code may not load bars on or after this day. The U1–U11 holdout
+# 2025-10-01 → 2026-09-27 is now the reported quasi-holdout; the real holdout is the forward test (PLAN2 U20)
+HOLDOUT_START = pd.Timestamp("2026-10-01")
 
 
 class HoldoutError(ValueError):

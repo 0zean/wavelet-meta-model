@@ -61,3 +61,116 @@ def half_spread(index: pd.DatetimeIndex, bars_5min: pd.DataFrame, window_days: i
         fill = np.where(pos >= 0, prior.to_numpy()[np.maximum(pos, 0)], np.nan)
         est = np.where(np.isnan(est), fill, est)
     return pd.Series(np.maximum(est, floor), index=index, name="half_spread").where(~np.isnan(est))
+
+
+# ── Per-fill costs (SPEC §19, U13) ───────────────────────────────────────────
+
+COST_MODELS = ("slippage", "cs", "quotes")
+QUOTES_FLOOR_BP = 0.25
+FILL_KINDS = ("open", "intra", "close")  # entries / gap exits / trims at the open; intrabar barriers; closes
+
+
+def auction_flags(index: pd.DatetimeIndex, bar_minutes: int | None) -> tuple[np.ndarray, np.ndarray]:
+    """
+    (open fill is the opening auction, close fill is the closing auction) per bar of `index` (NY bar-open stamps).
+
+    Daily bars: both. Intraday: the open of a bar stamped at the 09:30 session open; the close of a bar ending at or
+    after 16:00 (a session-anchored stub bar included), or of the session's last bar in `index` when that bar spans
+    13:00 (an early close; a regular session whose data stops at 13:00 would be misread as one).
+    """
+    n = len(index)
+    if bar_minutes is None:
+        return np.ones(n, bool), np.ones(n, bool)
+    local = index.tz_convert("America/New_York") if index.tz is not None else index
+    start = (local.hour * 60 + local.minute).to_numpy()
+    end = start + bar_minutes
+    day = local.normalize()
+    last = np.r_[day[1:] != day[:-1], True] if n else np.zeros(0, bool)
+    is_open = start == 9 * 60 + 30
+    is_close = (end >= 16 * 60) | (last & (start < 13 * 60) & (end >= 13 * 60))
+    return is_open, is_close
+
+
+def _bin_label(minutes: np.ndarray, bin_minutes: int) -> np.ndarray:
+    m0 = 9 * 60 + 30
+    start = m0 + ((minutes - m0) // bin_minutes) * bin_minutes
+    start = np.clip(start, m0, 16 * 60 - bin_minutes)
+    return np.array([f"{s // 60:02d}:{s % 60:02d}" for s in start], dtype=object)
+
+
+def quotes_half_spread(
+    years: np.ndarray, bins: np.ndarray, table: pd.DataFrame, floor_bp: float = QUOTES_FLOOR_BP
+) -> np.ndarray:
+    """
+    Half-spread (fraction) for each (year, bin) from one symbol's quotes table (data.quotes; columns year, bin,
+    half_spread_bp): the table's year, else the nearest earlier year; floored at `floor_bp`. A year before the
+    table's first raises (no later year stands in for an earlier one).
+    """
+    lookup = {(int(y), b): v for y, b, v in zip(table["year"], table["bin"], table["half_spread_bp"])}
+    have = np.array(sorted({int(y) for y in table["year"]}))
+    out = np.empty(len(years))
+    cache: dict[tuple[int, str], float] = {}
+    for i, (y, b) in enumerate(zip(years, bins)):
+        key = (int(y), b)
+        if key not in cache:
+            earlier = have[have <= key[0]]
+            if not len(earlier):
+                raise ValueError(f"quotes table has no year <= {key[0]} (first: {have[0] if len(have) else None})")
+            yy = next((int(e) for e in earlier[::-1] if (int(e), b) in lookup), None)
+            if yy is None:
+                raise ValueError(f"quotes table has no {b!r} bin in any year <= {key[0]}")
+            cache[key] = max(lookup[(yy, b)], floor_bp) * 1e-4
+        out[i] = cache[key]
+    return out
+
+
+def fill_costs(index: pd.DatetimeIndex, cfg, cost_data=None) -> pd.DataFrame | None:
+    """
+    One-way cost fraction of a fill at each bar of `index`, by fill kind (columns `open`, `intra`, `close`), for
+    cfg.COST_MODEL; None for "slippage" (SLIPPAGE_PCT on every fill, the pre-U13 backtest).
+
+    - "cs": SLIPPAGE_PCT + the trailing Corwin–Schultz half-spread (`half_spread`, the risk profile's window and
+      floor) on every fill; `cost_data` = the symbol's 5Min bars with history before `index`.
+    - "quotes": `cost_data` = the symbol's rows of the quotes table. Opening / closing auction fills (auction_flags)
+      pay the auction proxy half-spread only; other fills pay SLIPPAGE_PCT + the half-spread of the time-of-day bin
+      of the fill (open: the bar's start, close: its end, intrabar: its start; daily bars' intrabar fills: `day`).
+    """
+    from data.timeframes import get_timeframe
+    from risk.profiles import get_profile
+
+    model = cfg.COST_MODEL
+    if model == "slippage":
+        return None
+    if cost_data is None:
+        raise ValueError(f"COST_MODEL={model!r} needs cost data for the symbol (5Min bars for 'cs', quotes rows "
+                         "for 'quotes')")  # fmt: skip
+    slip = cfg.SLIPPAGE_PCT
+    if model == "cs":
+        prof = get_profile(cfg.RISK_PROFILE)
+        c = slip + half_spread(index, cost_data, prof.spread_window_days, prof.spread_floor).to_numpy()
+        return pd.DataFrame({k: c for k in FILL_KINDS}, index=index)
+    if model != "quotes":
+        raise ValueError(f"COST_MODEL must be one of {COST_MODELS}, got {model!r}")
+    from data.quotes import BIN_MINUTES
+
+    minutes = get_timeframe(cfg.TIMEFRAME).minutes
+    local = index.tz_convert("America/New_York") if index.tz is not None else index
+    years = local.year.to_numpy()
+    is_open, is_close = auction_flags(index, minutes)
+    n = len(index)
+
+    def hs(bins):
+        return quotes_half_spread(years, bins, cost_data)
+
+    if minutes is None:
+        open_c = hs(np.full(n, "open_auction", dtype=object))
+        close_c = hs(np.full(n, "close_auction", dtype=object))
+        intra = slip + hs(np.full(n, "day", dtype=object))
+    else:
+        start = (local.hour * 60 + local.minute).to_numpy()
+        reg_open = slip + hs(_bin_label(start, BIN_MINUTES))
+        reg_close = slip + hs(_bin_label(start + minutes, BIN_MINUTES))
+        intra = reg_open
+        open_c = np.where(is_open, hs(np.full(n, "open_auction", dtype=object)), reg_open)
+        close_c = np.where(is_close, hs(np.full(n, "close_auction", dtype=object)), reg_close)
+    return pd.DataFrame({"open": open_c, "intra": intra, "close": close_c}, index=index)

@@ -1,0 +1,18 @@
+{
+  "columns": [
+    "value",
+    "open",
+    "high",
+    "low",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "2008-01-02",
+  "fetched_at": "2026-10-09T02:52:48.364496-04:00",
+  "n_rows": 4722,
+  "name": "VIX6M",
+  "schema_version": 1,
+  "sha256": "36ace4254e290babad3530fb15ee35cca8b08ec2f32b885e1b39255f4f25a01a",
+  "source": "cboe",
+  "url": "https://cdn-api.cboe.com/api/global/us_indices/daily_prices/VIX6M_History.csv"
+}

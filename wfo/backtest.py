@@ -211,43 +211,41 @@ def run_backtest(
     signals: pd.DataFrame,
     cfg: RunConfig,
     size_col: str = "bet_size",
-    spread_bars: pd.DataFrame | None = None,
+    cost_data: pd.DataFrame | None = None,
 ) -> dict[str, tuple[pd.Series, pd.DataFrame]]:
     """
     Backtest the meta-filtered, sized signals (`size_col`, cfg.POSITION_MODE) and, as the benchmark
     meta-labeling must beat, the unfiltered primary signal on the same events at m = 1. With an active
-    cfg.RISK_PROFILE both go through the risk layer (risk.portfolio.simulate_portfolio, one symbol).
+    cfg.RISK_PROFILE or a cfg.COST_MODEL other than "slippage" both go through the portfolio simulator
+    (risk.portfolio.simulate_portfolio, one symbol; with profile "none" and slippage costs it equals simulate_trades).
 
     Args:
         df (pd.DataFrame): OHLC data covering the OOS span.
         signals (pd.DataFrame): WFO output.
         cfg (RunConfig): Run configuration.
         size_col (str, optional): Bet-size column of the meta-filtered strategy. Defaults to "bet_size".
-        spread_bars (pd.DataFrame | None, optional): 5Min bars of the symbol, with history before the OOS span,
-            for the Corwin–Schultz half-spread (risk profiles with spread="cs"). Defaults to None.
+        cost_data (pd.DataFrame | None, optional): The symbol's cost inputs for cfg.COST_MODEL (risk.costs.fill_costs):
+            "cs" its 5Min bars with history before the OOS span, "quotes" its rows of the quotes table. Defaults to None.
 
     Returns:
         dict[str, tuple[pd.Series, pd.DataFrame]]: Strategy name → (equity, trades).
     """
-    from risk.costs import half_spread
+    from risk.costs import fill_costs
     from risk.portfolio import simulate_portfolio
     from risk.profiles import get_profile
 
     profile = get_profile(cfg.RISK_PROFILE)
     print(
         f"\n[BACKTEST]  Simulating barrier-exit trades (sizer {cfg.SIZER}, {cfg.POSITION_MODE} positions, "
-        f"risk {profile.name}) ..."
+        f"risk {profile.name}, costs {cfg.COST_MODEL}) ..."
     )
-    hs = None
-    if profile.spread == "cs":
-        if spread_bars is None:
-            raise ValueError(f"risk profile {profile.name!r} charges spreads: pass the symbol's 5Min spread_bars")
-        hs = {"_": half_spread(df.index, spread_bars, profile.spread_window_days, profile.spread_floor)}
+    fc = fill_costs(df.index, cfg, cost_data)
+    costs = None if fc is None else {"_": fc}
     results = {}
     for name, col, sz in (("Meta-filtered", "trade_signal", size_col), ("Primary only", "signed_dir", None)):
-        if profile.active:
+        if profile.active or costs is not None:
             eq, trades, _ = simulate_portfolio(
-                {"_": df}, {"_": signals}, cfg, profile, side_col=col, size_col=sz, half_spreads=hs
+                {"_": df}, {"_": signals}, cfg, profile, side_col=col, size_col=sz, costs=costs
             )
             results[name] = (eq, trades)
         elif cfg.POSITION_MODE == "single":

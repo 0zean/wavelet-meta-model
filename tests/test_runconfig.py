@@ -213,9 +213,9 @@ def test_embargo_removes_exactly_the_exits_before_the_boundary():
 
 def test_holdout_guard():
     cfg = RunConfig.for_timeframe("1Day")
-    ok = pd.bdate_range("2025-09-01", "2025-09-30", tz="America/New_York")
+    ok = pd.bdate_range("2026-09-01", "2026-09-30", tz="America/New_York")
     cfg.holdout_guard(ok)
-    reach = pd.bdate_range("2025-09-01", HOLDOUT_START, tz="America/New_York")
+    reach = pd.bdate_range("2026-09-01", HOLDOUT_START, tz="America/New_York")
     with pytest.raises(HoldoutError):
         cfg.holdout_guard(reach)
     with pytest.raises(HoldoutError):

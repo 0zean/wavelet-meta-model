@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "1990-01-02",
+  "fetched_at": "2026-10-09T02:53:44.642284-04:00",
+  "n_rows": 9290,
+  "name": "VIXCLS",
+  "schema_version": 1,
+  "sha256": "3e5df3af64513ae35c5e1d8811baaf5904d6b8a2824815fe9ae47b0ab5605050",
+  "source": "fred",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS"
+}

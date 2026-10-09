@@ -467,7 +467,7 @@ def test_cli_writes_skipped_folds_sidecar(daily, tmp_path, monkeypatch):
     import wavelet_meta_model as app
 
     monkeypatch.setattr(app, "make_synthetic_spy", lambda n: daily)
-    cfg = RunConfig.for_timeframe("1Day", PRIMARY="sma_cross", **WFO_CFG)
+    cfg = RunConfig.for_timeframe("1Day", PRIMARY="sma_cross", COST_MODEL="slippage", **WFO_CFG)
     monkeypatch.setattr(app, "plot_results", lambda *a, **k: None)
     app.main(cfg=cfg, out_dir=str(tmp_path))
     run = json.loads((tmp_path / "wfo_run.json").read_text())

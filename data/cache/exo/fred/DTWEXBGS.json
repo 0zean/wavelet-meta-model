@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-09",
+  "coverage_start": "2006-01-02",
+  "fetched_at": "2026-10-09T02:53:46.480046-04:00",
+  "n_rows": 5203,
+  "name": "DTWEXBGS",
+  "schema_version": 1,
+  "sha256": "dc8cd6edf60a59d4dcb26dab36a75f0392d7c5291741f04096521e99e89ee375",
+  "source": "fred",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTWEXBGS"
+}

@@ -20,7 +20,7 @@ from wfo import wfo_engine
 from wfo.backtest import equity_curve, run_backtest, simulate_positions, simulate_trades
 from wfo.wfo_engine import purged, run_wfo, wfo_folds
 
-CFG = RunConfig.for_timeframe("1Day")
+CFG = RunConfig.for_timeframe("1Day", COST_MODEL="slippage")
 RNG = np.random.default_rng(0)
 P_TRAIN = RNG.uniform(0.3, 0.85, 400)
 RET_TRAIN = RNG.normal(0.001, 0.02, 400)

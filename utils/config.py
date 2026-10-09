@@ -228,6 +228,11 @@ class RunConfig:
     # any other routes the backtest through the portfolio simulator (vol target, caps, drawdown throttle, daily
     # loss gate, spread costs), which needs POSITION_MODE="single".
     RISK_PROFILE: str = "none"
+    # Transaction costs (SPEC §19, U13; risk.costs.fill_costs): "quotes" = half-spread from the quotes table
+    # (data/costs/quotes_half_spread.csv) by year and time of day, auction proxies for open / close auction fills,
+    # + SLIPPAGE_PCT off-auction; "cs" = SLIPPAGE_PCT + trailing Corwin–Schultz half-spread (U8–U11 "standard");
+    # "slippage" = SLIPPAGE_PCT only (U7–U11 default). Any but "slippage" backtests through the portfolio simulator.
+    COST_MODEL: Literal["slippage", "cs", "quotes"] = "quotes"
 
     # Holdout (SPEC §9): the WFO refuses data on/after data.bars.HOLDOUT_START unless True
     ALLOW_HOLDOUT: bool = False
@@ -289,6 +294,10 @@ class RunConfig:
 
         if get_profile(self.RISK_PROFILE).active and self.POSITION_MODE != "single":
             raise ValueError(f"RISK_PROFILE={self.RISK_PROFILE!r} needs POSITION_MODE='single'")
+        if self.COST_MODEL not in ("slippage", "cs", "quotes"):
+            raise ValueError(f"COST_MODEL must be one of ('slippage', 'cs', 'quotes'), got {self.COST_MODEL!r}")
+        if self.COST_MODEL != "slippage" and self.POSITION_MODE != "single":
+            raise ValueError(f"COST_MODEL={self.COST_MODEL!r} needs POSITION_MODE='single' (the portfolio simulator)")
         if not 0 < self.META_THRESH < 1:
             raise ValueError(f"META_THRESH must be in (0, 1), got {self.META_THRESH}")
         if self.ZOO_CV_SPLITS < 2:
@@ -350,7 +359,7 @@ class RunConfig:
         return cls.for_timeframe(
             "5Min",
             **{"WINDOW_UNIT": "bars", "INITIAL_TRAIN": 2000, "VAL": 1000, "TEST": 500, "EMBARGO": 0}
-            | {"FEATURE_GROUPS": None}
+            | {"FEATURE_GROUPS": None, "COST_MODEL": "slippage"}
             | overrides,
         )
 

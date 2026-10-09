@@ -457,6 +457,50 @@ the added ETFs (SVXY's 2018 leverage change), quotes sampling bias (a week per q
 
 **Cost.** 1–2 sessions; data fetch < 1 h. Depends on nothing (can start with U12).
 
+**Status (2026-10-09).** ✅ Complete (adversarial review done: no BREAKING; SEVERE fixed; MINORs fixed or deferred
+below). 508 tests pass; ruff clean. Branch `unit/13-exo-data-costs`. As-built notes in SPEC §12 and §19.
+- **Unit tests — met** (`tests/test_exo.py`, `tests/test_costs.py`, `tests/test_u13_review.py`; no network): CBOE /
+  FRED / CFE parsers, `available_at` rules (DST, federal holidays, the H.10 weekly Monday), cache round trip, top-up,
+  revision log and tamper detection, holdout guard, calendar integrity (8 scheduled FOMC a year, 7 in 2020 plus the
+  two unscheduled statements; every scheduled event day a session except the 5 BLS Good-Friday releases), VX roll
+  (and no front month before the first loaded expiry), quotes sampler (fallbacks, pre-open clip, plan, table).
+- **Live smoke — met** (`scripts/u13_smoke.py exo`): the four CBOE indexes (URL host `cdn-api.cboe.com`) vs FRED
+  VIXCLS max |Δ| = 0.00 on 2,734 days; VX1/VIX median 1.043 over 2016–2025 (contango 76 % of days).
+  BAMLH0A0HYM2 exists on FRED only from 2023-10-09 (ICE licence), so HY OAS is unusable for the dev window.
+- **Quotes table — met** (`data/costs/quotes_half_spread.csv`, all 30 symbols, 2016–2026). SPY 10:00–15:30 median
+  half-spread 0.155 bp (2016–2025) vs Corwin–Schultz 1.53 bp; profiles for SPY, QQQ, IWM, AAPL, NVDA in
+  `results/u13/quotes_profile.png` (NVDA 2.2 bp at 09:30 falling to 0.9 bp at 15:45). The fetch took 3 h, not < 1 h:
+  Alpaca's 200 requests / min binds, and ~90 % of marks need a 60 s fallback request for a few thin ETFs.
+- **Hand test — met.** `COST_MODEL="quotes"` fills cost SLIPPAGE_PCT + the bin's half-spread off-auction and the
+  auction proxy alone at the open / close auctions, intraday and daily (`test_quotes_fills_*_by_hand`). `slippage`
+  is the pre-U13 backtest bit for bit; `cs` equals U8's charge; U12 parity re-run with `COST_MODEL=slippage`: PASS.
+- **New ETFs — met.** IEF LQD HYG DBC USO UUP EFA EEM VNQ SLV SVXY cached (5Min from 2016-01-04, all listed before
+  2016, so no listing gaps); quality report `results/data_quality_u13_etfs.csv`; SVXY's 2018-02-28 change from −1×
+  to −0.5× recorded in `data.fetch.REGIME_BREAKS`. The new bar files are not committed (141 MB; see handoff).
+- **Also built:** the event tables (`data/calendar/events.csv`, `earnings.csv`; `python -m data.events`), the
+  forward option-chain collector (`data/options.py`: Alpaca has no historical chain or open interest, so the U15
+  gamma proxy uses the VIX / skew fallback), and `HOLDOUT_START` → 2026-10-01 (SPEC §11.1, separate commit).
+- **Review fixes:**
+  - S1: EDGAR's submissions JSON adds a second NY offset to the acceptance time for AAPL, AMZN, META, JPM, UNH
+    (checked against the filing index pages). Acceptance now comes from the index pages; JPM / UNH are `bmo` by
+    their own times, so the "files 3–5 h late" convention was an artifact and is gone.
+  - S2: VX1 / VX2 rows before the first loaded expiry (2014) used a back-month contract; dropped.
+  - S3: the quotes sample has almost no event or stress sessions. Measured with a separate 50-session sample:
+    FOMC / NFP / OPEX / month-end sessions cost 0.99–1.03× the table in their trade bins; stress sessions 2.1×
+    (2–4.7× by symbol). Documented, not adjusted (below).
+  - S4: the table and the ETF bars were still fetching at review time; both landed.
+  - M1 (Feb 2026 rescheduled CPI / NFP known only from release), M3 (pre-open quotes), M4 (SPEC), M5 (CLI fails
+    before the WFO), M7 (SVXY break machine-readable), M8 (option snapshot point-in-time note): fixed.
+- **Deferred:**
+  - Costs in stress sessions are 2–4× the table: whether to scale costs with realised / implied volatility is a
+    decision for the family specs (U17); the magnitude floor of §17.2 uses the table as is.
+  - M2: VIX has values on exchange holidays from 2022 (other CBOE indexes do not); ratio features must be built on
+    common dates (U15).
+  - M6: `coverage_end` = the fetch day, so a same-day morning fetch is not refreshed after the close; irrelevant
+    before HOLDOUT_START, matters for the forward test (U20).
+  - The per-year medians price a fill with its whole year's sample (cost-model look-ahead within a year).
+  - A credit-spread state needs a source other than FRED's HY OAS (e.g. HYG vs IEF) — U15.
+
 ### U14 — Event samplers, exit models and intraday volatility structure (ISOM)
 
 **Goal.** Let a primary define *when* it trades (scheduled times, directional-change events, CUSUM) and
@@ -760,7 +804,8 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
 ## Status
 
 - U12 — ✅ complete 2026-10-09 (branch `unit/12-harness-speed`; parity PASS, cost table in the U12 status note).
-- U13 — not started.
+- U13 — ✅ complete 2026-10-09 (branch `unit/13-exo-data-costs`; quotes table, event tables, `COST_MODEL=quotes`
+  default, `HOLDOUT_START` 2026-10-01; status note under U13).
 - U14 — not started.
 - U15 — not started.
 - U16 — not started.
