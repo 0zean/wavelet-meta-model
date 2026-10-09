@@ -652,10 +652,29 @@ Implementation (U13, as built):
   bars exist from 2024-02. No historical chain or open interest can be built: `data/options.py` collects the SPY/QQQ
   chain forward (`uv run python -m data.options`), and the U15 gamma proxy uses the VIX/skew fallback for the
   development window.
+- `quotes` (`data/quotes.py`; not a `load_series` source): sessions 6–10 of Feb/May/Aug/Nov 2016Q1 → 2026Q3 (215
+  sessions), 30 symbols, marks open + 5 min … close − 5 min plus `open_auction` (open + 1 min) and `close_auction`
+  (close − 1 min); prevailing quote = last in [m − 5 s, m), then 60 s, then 15 min (windows clipped at the open).
+  Table `data/costs/quotes_half_spread.csv` (+ `.json`): median half-spread per symbol × year × {26 15-minute bins,
+  open_auction, close_auction, day}, 9,570 rows from 509,550 samples (82 missing: Alpaca's 2019-08-12 SIP hole; 49
+  crossed / one-sided; 3 pre-open). The raw samples are cached under `data/cache/exo/quotes/` (git-ignored; about 3 h
+  to re-fetch at 200 requests / min). SPY 10:00–15:30 median 0.155 bp over 2016–2025 vs Corwin–Schultz 1.53 bp
+  (`results/u13/quotes_smoke.json`); the 0.25 bp floor binds for SPY in every year and for QQQ (2020–2026 except 2022) and IWM (2021, 2024–2026). Stocks' open
+  proxy (the 09:31 quote) is wide (UNH 8.9 bp, XOM 3.9 bp median): conservative for a single-price auction fill.
+  Sampling bias (U13 review): the base week holds almost no FOMC / NFP / OPEX / month-end session and no stress
+  session. A separate sample (`fetch --plan events`: one FOMC, NFP, OPEX, month-end session per year + 7 stress
+  sessions, 50 sessions, `data/cache/exo/quotes/event_samples/`, not in the table) measures the gap in each kind's
+  trade bins (event half-spread / table value, median across symbols): FOMC 14:00–16:00 1.03 (max UNH 1.48), NFP
+  open 1.01, OPEX close 1.01, month-end close 0.99, stress sessions (2018-02-06, 2020-03-16 … 20, 2024-08-05, all
+  bins) 2.10 (IWM 2.9, AAPL 3.5, TLT 4.0, USO 4.7). Scheduled events cost about what the table says; crisis sessions
+  cost 2–4× more, which the table does not model (a volatility-scaled cost is a family-spec decision, U17).
 - Universe: `DEFAULT_UNIVERSE` += IEF, LQD, HYG, DBC, USO, UUP, EFA, EEM, VNQ, SLV, SVXY (5Min from 2016-01-04; all
   listed before 2016). SVXY changed from −1× to −0.5× the VIX short-term futures index on 2018-02-28 after the
   2018-02-05 loss: its history is two products, and it is the survivor of that event (XIV was terminated);
   `data.fetch.REGIME_BREAKS` records the date. USO's 1:8 reverse split (2020-04-29) is in the adjusted bars.
+  Quality (`results/data_quality_u13_etfs.csv`, 2016-01-04 → 2026-09-30): 2,701 sessions each, none missing, no OHLC
+  violation; UUP misses 5.0 % of 5Min bars (no-trade bars), DBC 0.7 %, the rest ≤ 0.13 %. Largest moves are real:
+  SVXY −84 % on 2018-02-06, USO 2020-03/04, SLV −29 % on 2026-01-30.
 
 ---
 
