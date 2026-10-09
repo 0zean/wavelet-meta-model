@@ -122,6 +122,22 @@ def base_volatility(close: pd.Series, span: int, profile: VolProfile) -> pd.Seri
     return (log_ret / profile.factor(close.index)).ewm(span=span, min_periods=span).std()
 
 
+def hold_scale(index: pd.DatetimeIndex, profile: VolProfile, horizon: int, hold_overnight: bool) -> np.ndarray:
+    """
+    √Σ s(b)² over the slots a position entered after bar t holds: the `horizon` slots from the slot after b_t (the
+    next session's first slot when t is the last slot). Without hold_overnight they stop at the session's last slot
+    (16:00; early closes are not known from the stamps), as the vertical barrier does; with it they wrap into the
+    next session (slot 0, which carries the overnight gap). Flat profile, full hold: √horizon.
+    """
+    k = len(profile.s)
+    start = (bar_slots(index, profile.bar_minutes) + 1) % k
+    slots = start[:, None] + np.arange(horizon)
+    s2 = profile.s**2
+    if hold_overnight:
+        return np.sqrt(s2[slots % k].sum(axis=1))
+    return np.sqrt(np.where(slots < k, s2[np.minimum(slots, k - 1)], 0.0).sum(axis=1))
+
+
 def isom_counts(events: pd.DatetimeIndex, bar_minutes: int) -> np.ndarray:
     """Events per session slot (Kablan 2009's ISOM): an int array of length n_slots."""
     k = n_slots(bar_minutes)

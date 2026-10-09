@@ -22,7 +22,15 @@ import numpy as np
 import pandas as pd
 
 from features.triple_barrier_labels import barrier_width, cusum_events
-from features.vol_profile import OPEN_MINUTE, VolProfile, bar_volatility, ny_dates, ny_minutes
+from features.vol_profile import (
+    OPEN_MINUTE,
+    VolProfile,
+    bar_volatility,
+    base_volatility,
+    hold_scale,
+    ny_dates,
+    ny_minutes,
+)
 from utils.config import RunConfig
 
 EVENT_SAMPLERS = ("cusum", "dc", "schedule")
@@ -291,7 +299,8 @@ def sample_events(
     Tradeable events (cfg.EVENT_SAMPLER) and their barrier widths, using only data up to each event.
 
     σ per bar = bar_volatility (with `profile`, the fold's VolProfile, under VOL_PROFILE="tod"); barriers are
-    ±BARRIER_MULT · σ_t · √VERTICAL_BARS. Unless HOLD_OVERNIGHT, cusum / dc events on a session's last bar are skipped.
+    ±BARRIER_MULT · σ_t · √VERTICAL_BARS, or with a profile ±BARRIER_MULT · σ_base_t · √Σ s(b)² over the held slots
+    (vol_profile.hold_scale). Unless HOLD_OVERNIGHT, cusum / dc events on a session's last bar are skipped.
 
     Args:
         df (pd.DataFrame): OHLC data with a DatetimeIndex.
@@ -313,4 +322,11 @@ def sample_events(
         if not cfg.HOLD_OVERNIGHT:
             session_end = pd.Series(df.index.normalize(), index=df.index).shift(-1) != df.index.normalize()
             events = events[~session_end.loc[events].to_numpy()]
-    return barrier_width(vol, cfg.BARRIER_MULT, cfg.VERTICAL_BARS).loc[events].to_frame()
+    if profile is None:
+        return barrier_width(vol, cfg.BARRIER_MULT, cfg.VERTICAL_BARS).loc[events].to_frame()
+    # SPEC §14 as built: under a profile the barrier is sized by σ over the slots the position holds (σ_base_t ·
+    # √Σ_held s(b)²), not by the event slot's σ_t · √VERTICAL_BARS: the 09:30 slot carries the overnight gap
+    # (s ≈ 9 on SPY), so σ_t there is far above the move of the hour that follows it
+    base = base_volatility(df["close"], cfg.VOL_SPAN, profile).loc[events].to_numpy()
+    held = hold_scale(events, profile, cfg.VERTICAL_BARS, cfg.HOLD_OVERNIGHT)
+    return pd.DataFrame({"width": cfg.BARRIER_MULT * base * held}, index=events)

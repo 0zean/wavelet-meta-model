@@ -13,7 +13,7 @@ from features.events import dc_events, sample_events, schedule_events
 from features.exits import exit_frame, exit_phase, hysteresis_exits, time_exits
 from features.session import session_frame
 from features.triple_barrier_labels import triple_barrier_labels
-from features.vol_profile import VolProfile, bar_volatility, isom_counts, n_slots
+from features.vol_profile import VolProfile, bar_volatility, hold_scale, isom_counts, n_slots
 from tests.test_costs import AUCTION, SLIP, bin_bp, const_quotes_table, session_5min, signals_at
 from tests.test_features import random_walk_after
 from utils.config import RunConfig
@@ -92,6 +92,37 @@ def test_profile_sigma_is_causal_and_a_profile_fit_past_the_cut_is_caught():
     leak = lambda d: bar_volatility(d["close"], 100, VolProfile.fit(d.iloc[: c + 2], 5))
     with pytest.raises(AssertionError):
         assert_prefix_equal(leak(df), leak(random_walk_after(df, c, 1)), df.index[c])
+
+
+def test_hold_scale_covers_the_held_slots():
+    idx = intraday(2).index
+    flat = VolProfile.flat(5)
+    np.testing.assert_allclose(hold_scale(idx[[0, 10]], flat, 12, False), np.sqrt(12))
+    s = np.ones(78)
+    s[0] = 9.0  # the gap slot
+    prof = VolProfile(s, 5)
+    # 15:20 (slot 70) holds slots 71..77 only, intraday; with overnight holds it wraps into 0..4 of the next session
+    assert hold_scale(idx[[70]], prof, 12, False)[0] == pytest.approx(np.sqrt(7))
+    assert hold_scale(idx[[70]], prof, 12, True)[0] == pytest.approx(np.sqrt(11 + 81))
+    # an event at 09:30 (slot 0) holds slots 1..12: its width ignores the gap slot's s(0)
+    assert hold_scale(idx[[0]], prof, 12, False)[0] == pytest.approx(np.sqrt(12))
+    # an event on the last bar enters the next session's first bar
+    assert hold_scale(idx[[77]], prof, 3, False)[0] == pytest.approx(np.sqrt(81 + 2))
+
+
+def test_tod_widths_use_the_held_slots_and_flat_tod_widths_match_plain_ones_mid_session():
+    df = intraday(30, seed=18, u_shape=True)
+    cfg = CFG5.replace(VOL_PROFILE="tod")
+    prof = VolProfile.fit(df.iloc[: 78 * 20], 5)
+    ev = sample_events(df, cfg, profile=prof)
+    base = (np.log(df["close"]).diff() / prof.factor(df.index)).ewm(span=100, min_periods=100).std()
+    want = cfg.BARRIER_MULT * base.loc[ev.index].to_numpy() * hold_scale(ev.index, prof, cfg.VERTICAL_BARS, False)
+    np.testing.assert_allclose(ev["width"].to_numpy(), want, rtol=1e-14)
+    flat = sample_events(df, cfg, profile=VolProfile.flat(5))
+    plain = sample_events(df, CFG5)
+    assert flat.index.equals(plain.index)
+    mid = np.array([m <= 65 for m in (flat.index.hour * 60 + flat.index.minute - 570) // 5])  # a full 12-bar hold
+    np.testing.assert_allclose(flat["width"].to_numpy()[mid], plain["width"].to_numpy()[mid], rtol=1e-14)
 
 
 def test_isom_counts_events_per_slot():
