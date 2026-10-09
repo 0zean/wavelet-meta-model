@@ -1,3 +1,7 @@
+> **2026-10-08 — U1–U11 are complete (null result). This file is the historical record of that work.
+> Forward work is planned in [PLAN2.md](PLAN2.md) (hypothesis-family program, U12 → U21); the critique
+> that motivates it is in [REVIEW.md](REVIEW.md); the new interfaces are SPEC.md §11–§19.**
+
 # PLAN — Zoo-scale meta-labeling research with Power Walk-Forward retraining
 
 ## Thesis

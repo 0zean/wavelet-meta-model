@@ -511,3 +511,266 @@ deflation a pick made from the whole table faces), errors, holdout accesses.
 ## §10 Dependencies
 
 Add: `alpaca-py`, `python-dotenv`, `lightgbm` (added U6), `joblib` (added U10), `scipy` (explicit). `pyyaml` becomes used (U10).
+
+---
+
+## §11 Amendments for the hypothesis-family program (PLAN2, 2026-10-08)
+
+Everything in §1–§10 stands unless amended here. Section references below are to this file.
+
+### §11.1 Windows, holdout, stages
+
+| item | was (U1–U11) | now |
+|---|---|---|
+| development window | 2016-01-04 → 2025-09-30 | unchanged (selection and headline tests) |
+| holdout | 2025-10-01 → 2026-09-27, evaluated once (done, batch `33b8b08e02e9413c`) | that window is the **quasi-holdout**: reported per family as a robustness slice with a contamination note, never a gate |
+| `HOLDOUT_START` | 2025-10-01 | **2026-10-01**; research code may not read bars on or after it; only `live/` (§18) reads past it, with an audit record |
+| ledger stages | U6 … U10, A … E | + `F` (family dev test), `G` (overlay), `H` (forward test) |
+| trial unit | a cell (a PWFO cell = its grid) | a family **variant** = 1 trial whatever its instrument count (the test is pooled); an overlay configuration = 1 trial |
+| trial budget | none | `TRIAL_BUDGET` per family spec (default 12 + 2 overlay), program cap 8 families / 112 trials, enforced by the runner |
+| verdict | per cell: Holm over 14 holdout streams; DSR over 1,402 | per family: Holm over families on the pooled headline test + floors + coherence (§17); DSR reported with N = program trials |
+
+### §11.2 Engine defaults (U12)
+
+| field | default | notes |
+|---|---|---|
+| `ZOO_FIXED_PARAMS` | `{rf_ldp_fast: {max_features: 1}, logit_l2: {C: 0.1}, xgb: {max_depth: 2}, lightgbm: {num_leaves: 7}}` | a model with an entry skips its purged-CV grid (one fit per window); `{}` restores the grid |
+| `CALIBRATION` | `"rolling"` | `rolling`: Platt map fit on the previous windows' OOS (raw p, outcome) pairs inside the current rolling IS span; first window uses `crossfit`; `crossfit` = §4 behaviour; `none` = raw p |
+| `OOF_META` | `"reuse"` | `oof_meta_prob` returns `cal.predict(oof_raw_)` of the fitted `_Tuned`; `"refit"` = §7 behaviour |
+| `PWFO_COMBINE` | `"average"` | the PWFO stream = equal-weight mean of the run combos' daily returns on their common span; no burn-in, no selection; PBO across combos still reported; `"nested"` = §6 behaviour |
+| `PWFO_IS_GRID` / `PWFO_OOS_GRID` | intraday `(504, 756)` / `(21,)`; 1Day `(1260, 1512)` / `(21,)` | U11 Stage C: cadence made no difference |
+| `META_MODEL` for screens | `logit_l2`, `rf_ldp_fast` | `catboost` stays registered, never a default |
+| parallelism | flat loky pool over (cell, combo) tasks | no nested pools (U11 Stage E crashes) |
+| `COST_MODEL` | `"quotes"` (§19) | `"cs"` and `"slippage"` kept for regression |
+| `VOL_PROFILE` | `"none"` globally; `"tod"` for every intraday family (§14) | |
+
+Invariant: with every new switch at its old value (`ZOO_FIXED_PARAMS={}`, `CALIBRATION=crossfit`,
+`OOF_META=refit`, `PWFO_COMBINE=nested`, `COST_MODEL=slippage`, `VOL_PROFILE=none`, `EVENT_SAMPLER=cusum`,
+`EXIT_MODEL=triple_barrier`) the U11 Stage C `daily_returns.csv` of the parity cells
+(`tests/fixtures/u12_parity.json`) and the legacy hash `402ef202…` reproduce exactly.
+
+---
+
+## §12 Exogenous data (U13)
+
+`data/exo.py: load_series(source, name, start, end, *, allow_holdout=False) -> DataFrame` with columns
+`value` (float) and `available_at` (tz-aware UTC instant from which the value may be used; the
+point-in-time rule), indexed by the observation date (NY, tz-naive midnight). Cache
+`data/cache/exo/{source}/{name}.npz` + `.json` sidecar (`schema_version`, `source`, `name`, `columns`,
+`n_rows`, `coverage_start/end`, `fetched_at`, `url`, `sha256`), atomic writes, hash verified on load,
+top-ups with a 30-day overlap (re-fetch all on any revision). `end > HOLDOUT_START` raises unless
+`allow_holdout`.
+
+| source | names | `available_at` | notes |
+|---|---|---|---|
+| `cboe` | VIX, VIX9D, VIX3M, VIX6M (daily OHLC) | session date 16:20 ET | `https://cdn.cboe.com/api/global/us_indices/daily_prices/{NAME}_History.csv` (confirmed for VIX3M; U13 verifies the others and records the final URLs here) |
+| `cboe` | VX1, VX2 (continuous front/second VIX futures settlements), `VX1/VIX`, `VX2/VX1` | settlement date 16:20 ET | built from Cboe CFE per-expiry files; roll on the expiry date; the expiry row's settle is the final price |
+| `fred` | VIXCLS, DGS2, DGS10, T10Y2Y, BAMLH0A0HYM2, DTWEXBGS | next business day 09:00 ET (posting lag) | VIXCLS is a cross-check of the CBOE file only |
+| `calendar` | FOMC statement days (14:00 ET), CPI days, NFP days (08:30 ET), OPEX (third Friday), month-end, turn-of-month (−1 … +3), pre-holiday | known in advance | checked-in CSV `data/calendar/events.csv` with a provenance column; 2016 → 2027 |
+| `earnings` | per cached stock: date, `timing ∈ {bmo, amc}` | known in advance once announced; stored with the announcement date | Alpaca corporate actions / news first; checked-in CSV where missing |
+| `alpaca_options` | daily SPY/QQQ chain snapshot: strike, expiry, bid/ask, IV, Greeks | snapshot time | 2024-02 → ; free indicative feed; open interest only if the schema has it (U13 confirms) |
+| `quotes` | per symbol: median half-spread (bp) by time-of-day bin × year; open and close auction proxies | — | one trading week per quarter of NBBO at 5-minute marks, 2016 → 2026 |
+
+**Invariants.** No value enters a feature on a bar stamped before its `available_at` (enforced in the
+feature builder, tested with a planted same-day value). Daily exo values align to intraday bars by the
+last `available_at` ≤ bar stamp. Revisions overwrite (no vintages kept); the sidecar records the fetch time.
+
+---
+
+## §13 Event samplers and exit models (U14)
+
+`RunConfig.EVENT_SAMPLER ∈ {"cusum", "dc", "schedule"}`, `EVENT_PARAMS: dict`;
+`RunConfig.EXIT_MODEL ∈ {"triple_barrier", "time", "hysteresis"}`, `EXIT_PARAMS: dict`. The exit models
+and `schedule` never change a feature value, so they are excluded from the feature-cache key; `dc` and
+`cusum` with `VOL_PROFILE` change `session.dc_overshoot`, so the sampler stays in the key.
+
+**Samplers** (`features/events.py`; all return the event frame of `sample_events`: index = event bar,
+`width`, plus `entry_pos`, the bar whose open is the fill):
+- `cusum`: §3/§4 behaviour; threshold `CUSUM_MULT · σ_t` with σ_t from §14.
+- `dc`: directional change (Guillaume et al. 1997; the ISOM paper's event definition): a run is upward
+  until log price falls `δ` below its running maximum, then an event is emitted at the confirmation bar
+  and a downward run starts; `δ = DC_MULT · σ_session` (`EVENT_PARAMS.dc_mult`, default 2). `overshoot`
+  = log move from the confirmation bar to the next reversal, exposed (lagged) by the `session` group.
+- `schedule`: `EVENT_PARAMS = {entry_times: ["15:30"], days: "all" | "fomc" | "cpi_nfp" | "tom" |
+  "non_macro" | "earnings", gate: "<expr>"}`. The event bar is the last bar whose close precedes the
+  entry time; `entry_pos` = the first bar stamped ≥ entry time (its open is the fill). `days` is a
+  calendar predicate from §12; `gate` is a boolean expression over `session` columns evaluated at the
+  event bar (e.g. `abs(open_to_now) > 0.5 * sigma_day`). Early closes: times past the close map to the
+  last bar; `"close"` always means the session's last bar.
+
+**Exit models** (`features/exits.py`; all return the `barrier_exits` frame):
+- `triple_barrier`: §3 behaviour.
+- `time`: `EXIT_PARAMS = {exit_time: "close" | "HH:MM" | null, hold_bars: int | null}`; `"close"` =
+  fill at the session's last bar close (modelled MOC); `"HH:MM"` = fill at that bar's open; `hold_bars`
+  = close of the k-th held bar. Overnight (`overnight` primary): entry MOC, exit next session MOO
+  (`exit_time: "open"`).
+- `hysteresis`: `EXIT_PARAMS = {beta: float, max_bars: int}` on the primary's continuous `signal`:
+  a long exits at the first bar whose signal ≤ −β (short: ≥ +β) or at `max_bars`; fill at that bar's
+  close. The entry threshold α is the primary's own gate.
+
+**Fills.** Auction fills (`close`/`open`) pay the §19 half-spread only; all other fills pay half-spread +
+`SLIPPAGE_PCT`. The same-bar tie rules of §3 apply to `triple_barrier` only.
+
+**Invariants (tested).** The decision bar strictly precedes the fill bar; no exit before entry; labels
+for scheduled events are the fill-to-fill return; `average_uniqueness` and the purge use the same spans.
+
+---
+
+## §14 Intraday volatility structure (U14; the ISOM idea done properly)
+
+References: Andersen & Bollerslev (1997) intraday periodicity; Dacorogna et al. (2001) ϑ-time; the
+Kablan (2009) ISOM/IAOM counts are the event-rate view of the same seasonality.
+
+- `features/vol_profile.VolProfile` (per-fold state, fit on train bars before the embargo like
+  fracdiff): slots b = session-relative bar index (13 at 30Min, 26 at 15Min, 78 at 5Min, 7 at 1Hour
+  with the stub as its own slot). `s(b) = median_sessions |r_b| / median_b median_sessions |r_b|`,
+  smoothed by a 3-slot moving median, floored at 0.25. `transform(r) = r / s(b)`.
+- `bar_volatility(close, span, profile)`: σ_t = EWM σ(span) of the deseasonalized returns up to t,
+  multiplied by `s(b_t)`. With `VOL_PROFILE="none"` the profile is identically 1 (bit-identical to §3).
+- `σ_day` (session σ) = σ_t at the first slot × √(bars per session); `σ_overnight` = EWM σ of
+  close-to-open log returns (span `VOL_SPAN` sessions).
+- ISOM diagnostics: `isom_counts(events, n_slots)` and `iaom = isom / n_sessions` per fold in
+  `wfo_run.json`; the `session` group exposes `iaom[b_t]` (train-window value, causal) as `activity`.
+- Invariant: barrier widths and CUSUM thresholds in slot b scale with `s(b)`; the event share in the
+  first hour drops relative to `none` (reported, not gated).
+
+---
+
+## §15 State feature groups (U15)
+
+All groups prefixed as in §3; exo-backed groups declare `needs=("exo",)` and read `context["exo"]`.
+
+| group | columns | alignment |
+|---|---|---|
+| `session` (intraday) | `gap_sigma` (overnight gap / σ_overnight), `prev_cc`, `prev_oc`, `open_to_now`, `first30` (NaN before 10:00), `mins_to_close`, `activity` (IAOM at slot), `rvol` (cumulative volume / its time-of-day profile), `dc_overshoot` (lagged) | bars only |
+| `vol_state` | `vix`, `vix9d_vix`, `vix3m_vix`, `vx1_vix`, `vx2_vx1`, `rv21_vix`, `garch_sigma` (GARCH(1,1) fit on train, per fold), `ret_std_garch` | `available_at` |
+| `calendar_events` | `to_fomc`, `since_fomc`, `to_cpi`, `to_nfp`, flags `fomc_day`, `cpi_nfp_day`, `opex_week`, `tom`, `pre_holiday`, `mins_since_release` (intraday, on release days) | known in advance |
+| `cross_asset` | existing columns + `mkt_ret_lag{1,3,6}`, `sector_ret_lag{1,3,6}`, `rel_strength` (symbol − sector, h bars) | market/sector bars aligned by stamp (≤ t) |
+| `rates_credit` | `d_dgs10`, `t10y2y`, `d_hy_oas`, `d_dollar` (daily changes) | `available_at` |
+| `gamma_proxy` (optional, 2024-02 →) | `skew25` (put − call IV at 25Δ), `atm_iv`, `gex_sign` if open interest exists | snapshot time |
+
+Runner: `experiments/runner.load_cell_data` supplies `context["market"]` (SPY at the cell's timeframe),
+`context["sector"]` (mapping in `data/sectors.py`) and `context["exo"]` (the series the cell's groups
+need, loaded through §12). The feature cache key already includes each context frame's data hash.
+
+---
+
+## §16 Mechanism primaries (U16)
+
+All are `RulePrimary` subclasses: no fit, fixed parameters, frame = `PRIMARY_COLUMNS`; `magnitude` is the
+rule's size hint in [0, 1] (the `rule_size` sizer passes it through; `fixed` ignores it). Each declares
+`SAMPLER`, `EXIT`, `TIMEFRAMES`, `LONG_ONLY`.
+
+| primary | sampler / exit | side | magnitude | params (defaults) |
+|---|---|---|---|---|
+| `vol_target` | schedule daily open / time (next rebalance) | +1 | min(1, σ*/σ̂) | `sigma_target` 0.15, `window` 21, `band` 0.10, `vol_source` rv\|ewm\|vix |
+| `tsmom` | schedule weekly (Monday open) / time | sign(trailing return) or sign(MODWT slope) | min(1, 0.10/σ̂_asset) | `lookback` 252, `vol_window` 63, `estimator` ret\|modwt, `long_only` false, `gross_cap` 1.0 |
+| `overnight` | schedule last bar / time `open` | +1 | 1 | `vix_max` null |
+| `calendar_drift` | schedule by predicate / time | +1 | 1 | `windows` [fomc_pre, tom], `tlt_month_end` true |
+| `intraday_momentum` | schedule `15:30` / time `close` | sign(predictor) | min(1, \|predictor\|/σ_day) | `entry` 15:30, `predictor` open_to_now\|first30, `threshold_sigma` 0.5 |
+| `gap_fade` | schedule `09:35`, days non_macro / time `10:30` or hysteresis | −sign(gap) | min(1, \|gap_sigma\|/2) | `min_gap_sigma` 1.0, `exit` 10:30, `follow_on_news` false |
+| `event_reaction` | schedule release + 15 min, days fomc\|cpi_nfp / time + 90 min | sign(post-release return) | min(1, \|react\|/σ_day) | `observe_min` 15, `hold_min` 90 |
+| `weekly_reversal` | schedule weekly / time | −sign(last-week return), rank within set | 1/n | `set` sector_etfs |
+| `vix_carry` (U21) | schedule daily / time | −1 on SVXY when `vx1_vix > 1.05 and vix < 25` else flat | 1 | hard rules in the family spec |
+
+Diagnostics add per-slot precision and ISOM counts. Invariant: every primary passes §8 causality and a
+synthetic sanity test; `rule_size` with magnitude ≡ 1 equals `fixed` bit for bit.
+
+---
+
+## §17 Family tests (U17)
+
+### §17.1 Family spec (`families/<id>.yaml`)
+
+```yaml
+id: F5_intraday_momentum
+mechanism: "<two sentences>"
+registered: {sha: <git sha>, date: 2026-xx-xx}     # written by `families register`
+instruments: [SPY, QQQ, IWM, DIA]        # or basket: {symbols: [...], weighting: equal_risk}
+timeframe: 5Min
+headline:                                 # the only tested variant
+  primary: {name: intraday_momentum, params: {entry: "15:30", predictor: open_to_now, threshold_sigma: 0.5}}
+  exit: {model: time, params: {exit_time: close}}
+  cost_model: quotes
+  risk_profile: standard
+variants:                                 # reported only; count <= TRIAL_BUDGET - 1
+  - {label: entry_1500, primary.params.entry: "15:00"}
+  - {label: first30, primary.params.predictor: first30}
+state_splits: [vix_tercile, macro_day, abs_move_tercile, gamma_sign]
+response: [sharpe, mean_per_trade_bp, hit_rate, path_monotone]
+sample_splits: [{label: sector_etfs, instruments: [XLE, XLF, XLK, XLV]}]
+benchmark: buy_and_hold_ew
+floors: {min_net_ret: 0.02, min_edge_to_cost: 3.0, max_dd: null}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667}
+overlay: {models: [logit_l2, rf_ldp_fast], sizers: [linear, rule_size],
+          features: [wavelet_core, session, vol_state, calendar_events, cross_asset]}
+TRIAL_BUDGET: 12
+```
+
+The runner refuses a family whose `registered.sha` is not an ancestor of `HEAD`, whose spec differs
+from the committed file, or whose variant count exceeds the budget.
+
+### §17.2 Pooled streams and the headline test
+
+- Variant stream = equal-risk mean of the instruments' daily returns (weights ∝ 1/σ of each
+  instrument's buy-and-hold over the dev window, fixed ex ante); a basket family's stream is its
+  portfolio cell's.
+- Headline statistics: annualized Sharpe with PSR(0) (§6); Sharpe difference vs benchmark by
+  Ledoit & Wolf (2008): studentized circular block bootstrap, block 21 sessions, 2,000 resamples,
+  two-sided p; alpha vs benchmark by OLS with Newey–West (lag 5) SE; max drawdown; net return.
+- Floors: `net_ret ≥ min_net_ret` (overlays: 2 %/yr; long-only families: `0.8 × benchmark`);
+  `gross_edge_per_turnover ≥ min_edge_to_cost × cost_per_turnover`, where gross edge = Σ gross trade
+  P&L / Σ traded notional and cost = the §19 half-spread (+ slippage where it applies) averaged over the
+  fills; `max_dd` if set.
+- Coherence: ≥ `coherence_share` of the variants have the headline's sign on the Sharpe difference and
+  the **median** variant clears the floors. The specification curve (every variant's statistic with its
+  CI, sorted) is published; no variant replaces the headline.
+- Splits (state / response / sample) and the quasi-holdout slice are reported with CIs, never tested.
+- Shrinkage: per-instrument Sharpes with James–Stein shrinkage toward the family mean (reported).
+
+### §17.3 Program verdict
+
+Holm over the families' headline Sharpe-difference p-values at α = 0.05. A family **passes** iff its
+Holm-adjusted p < 0.05, every floor holds and it is coherent. The DSR of each headline is reported with
+N = counted trials of stages F and G, V from their per-period Sharpes.
+
+### §17.4 Overlay test (stage G)
+
+Overlay stream vs the family's headline stream: paired Ledoit–Wolf Sharpe difference (same block
+bootstrap), floor `overlay net_ret ≥ headline net_ret`, Holm over the overlay tests, plus a procedure
+bootstrap: the choice between the ≤ 2 overlay configurations is re-run on 100 block-bootstrapped label
+sets and the adopted configuration's advantage must exceed the 95th percentile of the bootstrapped
+advantages. Adopted overlays replace the headline in the registry; others are discarded.
+
+---
+
+## §18 Forward test (U20)
+
+- `families/registry.yaml`: per adopted family — cell hash(es), code hash, freeze date, registered
+  expectation (dev Sharpe and its 90 % CI, benchmark), verdict rule.
+- `live/`: signal recomputation from cached bars plus an intraday top-up (Alpaca latest bars) under the
+  frozen code hash (a mismatch refuses to trade); orders by `time_in_force` `opg` / `cls` for auction
+  fills, limit-at-touch for intraday entries, bracket exits for `time` exits; reconciliation of modelled vs
+  actual fills (slippage ledger); BOCPD monitor on the daily P&L (Adams & MacKay 2007; Student-t
+  predictive; hazard 1/λ with λ = the registered expected run length; prune at log-prob −10; erosion
+  trigger = expected run length < λ/4 for 5 consecutive days; shock trigger = P(changepoint) > 0.5) →
+  flatten and alert; stage `H` ledger rows from forward sessions.
+- Verdict after ≥ 252 forward sessions: PSR(0) ≥ 0.95 after Holm across forward families, and
+  "consistent with registration" iff the forward Sharpe lies inside the registered CI. Interim reports at
+  60 and 126 sessions are descriptive only.
+- `HOLDOUT_START = 2026-10-01`; `live/` reads past it with `allow_holdout=True` and an audit line in
+  `data/cache/forward_access.jsonl`; research code cannot.
+
+---
+
+## §19 Cost model (U13)
+
+`COST_MODEL ∈ {"slippage", "cs", "quotes"}`:
+- `slippage`: `SLIPPAGE_PCT` only (U7).
+- `cs`: `SLIPPAGE_PCT` + Corwin–Schultz half-spread from 5Min bars (U8); known to over-estimate by ≈ 10×
+  on SPY (1.5 bp vs ≈ 0.3 bp quoted); regression only.
+- `quotes`: half-spread from the §12 quotes table (symbol, year, time-of-day bin; nearest earlier year
+  when missing; floored at 0.25 bp) + `SLIPPAGE_PCT` for non-auction fills; auction fills (`open`/`close`
+  entries and exits) pay the auction proxy half-spread only. Short borrow `borrow_bps` as in §7.
+- Every fill records its modelled cost in the trade frame (`cost_bp`); the family report shows cost as a
+  share of gross P&L. Invariant: the magnitude floor of §17.2 uses the same table.
