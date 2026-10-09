@@ -16,7 +16,7 @@ from features.causal_modwt import wavelet_ar_features
 from features.fractional_diff import fit_fracdiff_d, fracdiff_transform
 from features.indicators import compute_rsi, compute_siegel_slope, compute_vwap
 from features.registry import feature_group
-from features.triple_barrier_labels import bar_volatility
+from features.vol_profile import bar_volatility
 
 WAVELET_EXT_FILTERS = ("db1", "db2", "la8")
 ENERGY_WINDOW_MULT = 4  # detail-energy window = ENERGY_WINDOW_MULT · 2^J bars
@@ -360,3 +360,28 @@ class Fracdiff:
     def transform(df: pd.DataFrame, state, cfg) -> pd.DataFrame:
         fd = fracdiff_transform(df["close"], state).reindex(df.index)
         return fd.rename(Fracdiff.column).to_frame()
+
+
+@feature_group("session", intraday_only=True, per_fold=True)
+class Session:
+    """
+    Session state (SPEC §14–§15, features/session.py): overnight gap in σ_overnight units, the previous session's
+    close-to-close and open-to-close returns, open-to-now and first-30-minute returns, minutes to 16:00, the slot's
+    activity (IAOM of DC events over the fold's train window), relative volume and the lagged DC overshoot (δ with the
+    fold's VolProfile under VOL_PROFILE="tod"). Per fold: the profile and the IAOM are fit on train bars.
+    """
+
+    @staticmethod
+    def fit(train_df: pd.DataFrame, cfg):
+        from features.session import train_iaom
+        from features.vol_profile import fit_profile
+
+        return fit_profile(train_df, cfg), train_iaom(train_df, cfg)
+
+    @staticmethod
+    def transform(df: pd.DataFrame, state, cfg) -> pd.DataFrame:
+        from features.session import GROUP_COLUMNS, session_frame
+
+        profile, iaom = state
+        frame = session_frame(df, cfg, profile, iaom)
+        return _prefixed("session", {c: frame[c].to_numpy() for c in GROUP_COLUMNS}, df.index)

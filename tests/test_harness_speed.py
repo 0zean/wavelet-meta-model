@@ -17,7 +17,8 @@ import wfo.wfo_engine as eng
 from experiments import ledger as L
 from experiments.spec import expand, load_spec
 from features.groups import cusum_state
-from features.triple_barrier_labels import bar_volatility, cusum_events
+from features.triple_barrier_labels import cusum_events
+from features.vol_profile import bar_volatility
 from models import zoo
 from models.meta_model import fit_meta_model, oof_meta_prob
 from models.zoo import PROB_CLIP, REGISTRY, make_model

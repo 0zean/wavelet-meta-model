@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from features.groups import causal_modwt
-from features.triple_barrier_labels import bar_volatility
+from features.vol_profile import bar_volatility
 from primaries.base import primary, rule_frame
 from utils.config import RunConfig
 

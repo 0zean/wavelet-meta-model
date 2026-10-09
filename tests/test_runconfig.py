@@ -10,7 +10,8 @@ import pandas as pd
 import pytest
 
 from data.bars import HOLDOUT_START, HoldoutError
-from features.triple_barrier_labels import barrier_exits, sample_events, triple_barrier_labels
+from features.events import sample_events
+from features.triple_barrier_labels import barrier_exits, triple_barrier_labels
 from utils.config import TIMEFRAME_DEFAULTS, RunConfig
 from utils.data_loader import load_ohlcv
 from wfo.backtest import simulate_trades

@@ -32,7 +32,8 @@ CELLS = {
     "a52bf71cec3e9215": "SPY 1Day wavelet_trend logit_l2 fixed (full feature groups)",
 }
 OLD_SWITCHES = {"ZOO_FIXED_PARAMS": {}, "CALIBRATION": "crossfit", "OOF_META": "refit", "PWFO_COMBINE": "nested",
-                "COST_MODEL": "slippage"}  # fmt: skip
+                "COST_MODEL": "slippage", "VOL_PROFILE": "none", "EVENT_SAMPLER": "cusum",
+                "EXIT_MODEL": "triple_barrier"}  # fmt: skip
 
 
 def file_hash(path: Path) -> str:

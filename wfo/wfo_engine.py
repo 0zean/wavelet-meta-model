@@ -4,9 +4,11 @@ from typing import NamedTuple
 import numpy as np
 import pandas as pd
 
+from features.events import sample_events
 from features.feature_builder import FeatureSet
 from features.selection import clustered_mda
-from features.triple_barrier_labels import average_uniqueness, sample_events, triple_barrier_labels
+from features.triple_barrier_labels import average_uniqueness, triple_barrier_labels
+from features.vol_profile import fit_profile, isom_counts, ny_dates, profile_for
 from models.meta_model import fit_meta_model, make_meta_labels, meta_predict, oof_meta_prob, side_returns
 from models.zoo import ZooFitError, inner_cv
 from primaries import check_signal, make_primary
@@ -192,12 +194,61 @@ def wfo_folds(index: pd.DatetimeIndex, cfg: RunConfig) -> list[Fold]:
 class Prepared(NamedTuple):
     """Whole-series inputs shared by every fold / window (all causal: bar t uses bars <= t)."""
 
-    events: pd.DataFrame  # CUSUM events + barrier widths
-    labels: pd.DataFrame  # triple-barrier outcomes (read only through `purged`)
+    events: pd.DataFrame | None  # sampled events + barrier widths (None under VOL_PROFILE="tod": per window)
+    labels: pd.DataFrame | None  # exit-model outcomes (read only through `purged`)
     fset: FeatureSet
     base_feats: pd.DataFrame  # static feature groups
-    event_pos: pd.Series  # bar position of each event
+    event_pos: pd.Series | None  # bar position of each event
     size_names: tuple[str, ...]  # cfg.SIZER first, then the extra sizers
+    symbol: str | None = None
+    windows: dict | None = None  # VOL_PROFILE="tod": (fit_start, fit_end) → WindowEvents of the latest window
+
+
+class WindowEvents(NamedTuple):
+    events: pd.DataFrame
+    labels: pd.DataFrame
+    event_pos: pd.Series
+    profile: object  # the window's VolProfile (None without VOL_PROFILE="tod")
+
+
+def sample_and_label(df: pd.DataFrame, cfg: RunConfig, profile=None, symbol: str | None = None):
+    """Events (cfg.EVENT_SAMPLER, σ with `profile`), their exit-model labels and bar positions on the full series."""
+    events = sample_events(df, cfg, profile=profile, symbol=symbol)
+    labels = triple_barrier_labels(df, events, cfg)
+    return events, labels, pd.Series(df.index.get_indexer(events.index), index=events.index)
+
+
+def window_events(df: pd.DataFrame, cfg: RunConfig, prep: Prepared, fit_start: int, fit_end: int) -> WindowEvents:
+    """
+    The events, labels and event positions a window fits and predicts with. Without a time-of-day profile they are the
+    run's (prepare). With VOL_PROFILE="tod" σ depends on the fold's VolProfile, fit on train bars [fit_start, fit_end)
+    (before the embargo, like fracdiff), so events, widths and labels are recomputed on the full series for the
+    window (causal: event t uses bars <= t and the train-fit profile; labels are read only through `purged`).
+    Cached by (fit_start, fit_end) for the latest window.
+    """
+    if cfg.VOL_PROFILE == "none":
+        return WindowEvents(prep.events, prep.labels, prep.event_pos, None)
+    key = (fit_start, fit_end)
+    if key not in prep.windows:
+        profile = fit_profile(df.iloc[fit_start:fit_end], cfg)
+        prep.windows.clear()
+        prep.windows[key] = WindowEvents(*sample_and_label(df, cfg, profile, prep.symbol), profile)
+    return prep.windows[key]
+
+
+def isom_diagnostic(df: pd.DataFrame, cfg: RunConfig, win: WindowEvents, fit_start: int, fit_end: int) -> dict | None:
+    """SPEC §14 ISOM of a window: its events per session slot over the train bars [fit_start, fit_end), the number of
+    sessions there (iaom = isom / n_sessions) and the fitted profile s(b) (intraday only)."""
+    minutes = profile_for(cfg)
+    if minutes is None:
+        return None
+    pos = win.event_pos
+    train_ev = pos.index[(pos >= fit_start) & (pos < fit_end)]
+    out = {"isom": isom_counts(train_ev, minutes).tolist(),
+           "n_sessions": len(np.unique(ny_dates(df.index[fit_start:fit_end])))}  # fmt: skip
+    if win.profile is not None:
+        out["s"] = win.profile.to_dict()["s"]
+    return out
 
 
 class WindowFit(NamedTuple):
@@ -210,6 +261,7 @@ class WindowFit(NamedTuple):
     calibration: str = (
         ""  # the meta-model's calibration: "rolling", "sigmoid" / "isotonic" (cross-fit), "none", "legacy"
     )
+    isom: dict | None = None  # isom_diagnostic of the window (intraday)
 
 
 def prepare(
@@ -221,19 +273,23 @@ def prepare(
     feature_cache_dir=None,
     sizers: tuple[str, ...] = (),
 ) -> Prepared:
-    """Events, labels and static features on the full series, once per run (see run_wfo)."""
+    """Events, labels and static features on the full series, once per run (see run_wfo). Under VOL_PROFILE="tod" the
+    events depend on each window's profile and are sampled per window (window_events)."""
     cfg.holdout_guard(df.index)
-    make_primary(cfg)  # fail fast on an unknown primary or bad PRIMARY_PARAMS
+    prim = make_primary(cfg)  # fail fast on an unknown primary or bad PRIMARY_PARAMS
+    if cfg.EXIT_MODEL == "hysteresis" and not hasattr(prim, "score"):
+        raise ValueError(f"EXIT_MODEL='hysteresis' needs a rule primary with a bar-level score, not {cfg.PRIMARY!r}")
 
     print("\n" + "═" * 60)
     print("  Sampling events, labels and causal features on the full dataset")
     print("═" * 60)
-    events = sample_events(df, cfg)
-    labels = triple_barrier_labels(df, events, cfg)
+    events = labels = event_pos = None
+    if cfg.VOL_PROFILE == "none":
+        events, labels, event_pos = sample_and_label(df, cfg, symbol=symbol)
     fset = FeatureSet(cfg, context=context, symbol=symbol, cache_dir=feature_cache_dir)
     base_feats = build_features(df, cfg, fset)
-    event_pos = pd.Series(df.index.get_indexer(events.index), index=events.index)
-    return Prepared(events, labels, fset, base_feats, event_pos, tuple(dict.fromkeys((cfg.SIZER, *sizers))))
+    size_names = tuple(dict.fromkeys((cfg.SIZER, *sizers)))
+    return Prepared(events, labels, fset, base_feats, event_pos, size_names, symbol, {})
 
 
 def fit_window(
@@ -263,7 +319,10 @@ def fit_window(
     cal_history (CALIBRATION="rolling", walked in window order): the meta-model is calibrated on its usable pairs
     (fit_meta_model), and this window's test events' raw meta-probabilities and meta-labels are added to it.
     """
-    events, labels, fset, base_feats, event_pos, size_names = prep
+    fset, base_feats, size_names = prep.fset, prep.base_feats, prep.size_names
+    win = window_events(df, cfg, prep, fit_start, train_end - emb_tr)
+    events, labels, event_pos = win.events, win.labels, win.event_pos
+    isom = isom_diagnostic(df, cfg, win, fit_start, train_end - emb_tr)
     N = len(df)
 
     # ── Features: per-fold groups (fracdiff d) fit on train bars before the embargo ──
@@ -363,7 +422,7 @@ def fit_window(
             print(f"[PRIM]  Warning: fold {fold} {split} sides are {sh:.1%} long (one-sided primary)")
     skipped = tuple(n for n, sz in fitted.items() if sz is None and meta_mdl is not None)
     cal = "" if meta_mdl is None else str(getattr(meta_mdl, "calibration_", "legacy")).split(" ")[0]
-    return WindowFit("ok", result_ts, is_frame, meta_mdl is None, skipped, len(X_fit), cal)
+    return WindowFit("ok", result_ts, is_frame, meta_mdl is None, skipped, len(X_fit), cal, isom)
 
 
 def run_wfo(
@@ -427,6 +486,7 @@ def run_wfo(
     all_results, meta_skipped, primary_skipped = [], [], []
     sizer_skipped = {n: [] for n in size_names}
     calibration: dict[str, int] = {}
+    isom_folds: dict[str, dict] = {}
     hist = CalHistory() if cfg.CALIBRATION == "rolling" else None
     for fold, (train_end, val_end, test_end, emb_tr, emb_vl) in enumerate(wfo_folds(df.index, cfg), start=1):
         print(f"\n{'─' * 60}")
@@ -443,6 +503,8 @@ def run_wfo(
             meta_skipped.append(fold)
         if res.calibration:
             calibration[res.calibration] = calibration.get(res.calibration, 0) + 1
+        if res.isom is not None:
+            isom_folds[str(fold)] = res.isom
         for n in res.sizer_skipped:
             sizer_skipped[n].append(fold)
         result_ts = res.oos
@@ -460,6 +522,8 @@ def run_wfo(
     if cfg.META_MODEL != "legacy":  # meta-model calibration → folds (rolling vs its cross-fit fallback)
         combined.attrs["calibration_folds"] = calibration
     combined.attrs["primary_skipped_folds"] = primary_skipped  # folds dropped: primary could not be fit
+    if isom_folds:  # SPEC §14: train-window events per session slot (and the fitted s(b) under VOL_PROFILE="tod")
+        combined.attrs["isom_folds"] = isom_folds
     combined.attrs["sizer_skipped_folds"] = sizer_skipped[cfg.SIZER]  # sizer could not be fit (no trades)
     for n in size_names[1:]:
         combined.attrs[f"sizer_skipped_folds:{n}"] = sizer_skipped[n]

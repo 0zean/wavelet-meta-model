@@ -9,7 +9,8 @@ import pandas as pd
 import pytest
 import xgboost as xgb
 
-from features.triple_barrier_labels import average_uniqueness, sample_events, triple_barrier_labels
+from features.events import sample_events
+from features.triple_barrier_labels import average_uniqueness, triple_barrier_labels
 from models import zoo
 from models.meta_model import fit_meta_model
 from models.zoo import PROB_CLIP, REGISTRY, ScaledLogit, ZooFitError, inner_cv, make_model

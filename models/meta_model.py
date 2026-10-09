@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from features.triple_barrier_labels import barrier_exits
+from features.exits import exit_frame
 from models.zoo import ZooFitError, ZooModel, _clip, _Sigmoid, _Tuned, describe, inner_cv, make_model
 from utils.config import RunConfig
 
@@ -31,16 +31,9 @@ def make_meta_labels(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.D
 
 
 def side_returns(df: pd.DataFrame, events: pd.DataFrame, primary_preds: pd.DataFrame, cfg: RunConfig) -> pd.Series:
-    """Gross barrier-exit return of taking the primary's side on each event (side-aware ties, as in the backtest)."""
+    """Gross exit return (cfg.EXIT_MODEL) of taking the primary's side on each event (side-aware ties, as in the backtest)."""
     side = primary_preds["signed_dir"]
-    out = barrier_exits(
-        df,
-        events.index,
-        events["width"],
-        side=side,
-        vertical_bars=cfg.VERTICAL_BARS,
-        hold_overnight=cfg.HOLD_OVERNIGHT,
-    )
+    out = exit_frame(df, events.index, events["width"], cfg, side=side)
     return (side.loc[out.index] * out["ret"]).rename("side_ret")
 
 

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
-from features.triple_barrier_labels import barrier_exits
+from features.exits import exit_frame
 from models.zoo import PROB_CLIP
 from utils.config import RunConfig
 from validation.scoring import brier, neg_log_loss
@@ -117,14 +117,7 @@ def meta_outcomes(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig) -> pd
     backtest) next to its meta_prob. Events of folds whose meta-model was skipped (signals.attrs
     "meta_skipped_folds") are flagged `scored=False`: their meta_prob is a placeholder 0, not a prediction.
     """
-    out = barrier_exits(
-        df,
-        signals.index,
-        signals["width"],
-        side=signals["signed_dir"],
-        vertical_bars=cfg.VERTICAL_BARS,
-        hold_overnight=cfg.HOLD_OVERNIGHT,
-    )
+    out = exit_frame(df, signals.index, signals["width"], cfg, side=signals["signed_dir"])
     sig = signals.loc[out.index]
     skipped = signals.attrs.get("meta_skipped_folds", [])
     return pd.DataFrame(

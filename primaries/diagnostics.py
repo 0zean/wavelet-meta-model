@@ -21,19 +21,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from features.triple_barrier_labels import barrier_exits
+from features.exits import exit_frame
 from utils.config import RunConfig
 
 
 def _side_returns(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig, s: int) -> pd.Series:
-    out = barrier_exits(
-        df,
-        signals.index,
-        signals["width"],
-        side=pd.Series(s, index=signals.index),
-        vertical_bars=cfg.VERTICAL_BARS,
-        hold_overnight=cfg.HOLD_OVERNIGHT,
-    )
+    out = exit_frame(df, signals.index, signals["width"], cfg, side=pd.Series(s, index=signals.index))
     return s * out["ret"]
 
 
