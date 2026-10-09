@@ -171,11 +171,13 @@ def vx_continuous(contracts: dict[pd.Timestamp, pd.Series]) -> pd.DataFrame:
     Continuous VX1 / VX2 from monthly contracts {expiry: settle by trade date}.
 
     On trade date d, VX1 is the contract with the earliest expiry ≥ d (on its expiry date the contract's row is its
-    final settlement; the roll happens the session after) and VX2 the next one. A date where either contract has no
-    settlement row is NaN for that leg (and logged); dates where VX1 is missing are dropped.
+    final settlement; the roll happens the session after) and VX2 the next one. Only dates on or after the earliest
+    loaded expiry are kept: before it the true front month is a contract that was not loaded, and a later contract
+    (months out) would be mislabelled VX1. A date where either contract has no settlement row is NaN for that leg (and
+    logged); dates where VX1 is missing are dropped.
     """
     exps = sorted(contracts)
-    dates = sorted(set().union(*(s.index for s in contracts.values())))
+    dates = sorted(d for d in set().union(*(s.index for s in contracts.values())) if d >= exps[0])
     vx1, vx2, missing = [], [], []
     for d in dates:
         k = next((i for i, e in enumerate(exps) if e >= d), None)

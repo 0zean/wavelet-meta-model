@@ -105,6 +105,9 @@ def main(
     print(f"[CFG]   primary={cfg.PRIMARY} {cfg.PRIMARY_PARAMS or ''}")
     print(f"[CFG]   models: meta={cfg.META_MODEL} primary={cfg.PRIMARY_MODEL}  meta_train={cfg.META_TRAIN}")
     print(f"[CFG]   sizing: {cfg.SIZER} step={cfg.SIZE_STEP} positions={cfg.POSITION_MODE}  risk={cfg.RISK_PROFILE}")
+    print(f"[CFG]   costs: {cfg.COST_MODEL}")
+    if cfg.COST_MODEL == "quotes" and (not symbol or data_path):  # fail before the WFO, not after it
+        raise ValueError("COST_MODEL='quotes' needs an Alpaca symbol (its quotes-table rows); pass --cost-model")
 
     # Feature context (cross-asset market bars) and cache (Alpaca data only: the key needs a symbol)
     context = {}
@@ -145,8 +148,6 @@ def main(
     elif cfg.COST_MODEL == "quotes":  # SPEC §19: the symbol's rows of the quotes half-spread table
         from data.quotes import read_table
 
-        if not symbol or data_path:
-            raise ValueError("COST_MODEL='quotes' needs an Alpaca symbol (its quotes-table rows)")
         table = read_table()
         cost_data = table[table["symbol"] == symbol.upper()].reset_index(drop=True)
     results = run_backtest(df_oos, signals, cfg, cost_data=cost_data)

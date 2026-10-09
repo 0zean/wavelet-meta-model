@@ -70,8 +70,20 @@ def test_vx_continuous_rolls_after_the_expiry_row():
     c = {e1: pd.Series([13.0, 13.5], index=days[:2]), e2: pd.Series([14.0, 14.2, 14.4], index=days),
          e3: pd.Series([15.0, np.nan, 15.4], index=days).dropna()}  # fmt: skip
     vx = exo.vx_continuous(c)
-    assert vx["VX1"].tolist() == [13.0, 13.5, 14.4]  # the expiry row (01-17) is still the front month
-    assert vx["VX2"].iloc[[0, 2]].tolist() == [14.0, 15.4] and vx["VX2"].iloc[1] == 14.2
+    # 01-16 precedes the first loaded expiry (its front month was not loaded); the expiry row (01-17) is still VX1
+    assert vx.index[0] == e1 and vx["VX1"].tolist() == [13.5, 14.4]
+    assert vx["VX2"].tolist() == [14.2, 15.4]
+
+
+def test_vx_continuous_starts_at_the_first_loaded_expiry():
+    """Review S2: before the earliest loaded expiry the true front month was not loaded; a contract months out would
+    be labelled VX1, so those dates are dropped."""
+    d = pd.bdate_range("2014-04-21", "2015-02-18")
+    jan, feb = pd.Timestamp("2015-01-21"), pd.Timestamp("2015-02-18")
+    vx = exo.vx_continuous({jan: pd.Series(20.0, index=d[d <= jan]), feb: pd.Series(21.0, index=d)})
+    assert (
+        vx.index[0] == jan and vx.loc[jan, "VX1"] == 20.0 and (vx.loc[jan + pd.Timedelta(days=1) :, "VX1"] == 21).all()
+    )
 
 
 def test_cfe_contract_parser_drops_unsettled_rows():
@@ -142,7 +154,7 @@ def test_vx_fetch_caches_expired_contracts(tmp_path, monkeypatch):
         return json.dumps(listing) if url == exo.CFE_LIST_URL else files[url.rsplit("/", 1)[-1]]
 
     vx = exo._fetch_vx(tmp_path, http)
-    assert vx["VX1"].tolist() == [13.0, 13.5, 14.4] and "VX_2024-01-24.csv" not in seen  # weeklies ignored
+    assert vx["VX1"].tolist() == [13.5, 14.4] and "VX_2024-01-24.csv" not in seen  # weeklies ignored
     seen.clear()
     exo._fetch_vx(tmp_path, http)
     assert "VX_2024-01-17.csv" not in seen and "VX_2024-02-14.csv" in seen  # expired: from the raw cache
@@ -203,7 +215,12 @@ def test_earnings_table_and_series(sessions):
     n = ea.groupby("symbol").size()
     assert set(n.index) == set(events.EARNINGS_CIK) and (n >= 43).all()
     assert (pd.to_datetime(ea["date"]).isin(sessions)).all()
-    assert (ea.loc[ea["symbol"].isin(events.LATE_FILERS), "timing"] == "bmo").all()
+    assert (ea.loc[ea["symbol"].isin(["JPM", "UNH"]), "timing"] == "bmo").all()  # pre-open filers
+    # review S1: a release at a fixed NY clock time has a fixed NY acceptance minute in both seasons (the submissions
+    # JSON added a second UTC offset for some filers)
+    ny = pd.to_datetime(ea["accepted_at"], utc=True).dt.tz_convert(NY)
+    aapl = ny[(ea["symbol"] == "AAPL") & (ea["date"] >= "2020-01-01")]
+    assert aapl.dt.strftime("%H:%M").isin(["16:30", "16:31", "16:32", "16:35"]).mean() > 0.9
     for sym, conv in events.EARNINGS_CONVENTION.items():
         assert (ea.loc[ea["symbol"] == sym, "timing"] == conv).mean() > 0.85, sym  # XOM: 42 of 47
     jpm = exo.load_series("earnings", "JPM", "2024-01-01", "2025-01-01")
@@ -216,10 +233,14 @@ def test_earnings_classification():
     def c(sym, t):
         return events.classify_earnings(sym, pd.Timestamp(t, tz=NY).tz_convert("UTC"))
 
-    assert c("JPM", "2024-04-12 10:30") == ("2024-04-12", "bmo", "convention", "2024-04-12")
-    assert c("AAPL", "2024-05-02 20:30") == ("2024-05-02", "amc", "acceptance", "2024-05-02")
-    assert c("XOM", "2018-02-09 15:24") == ("2018-02-09", "dmh", "acceptance", "")
-    assert c("NVDA", "2019-01-28 09:04") == ("2019-01-28", "bmo", "acceptance", "")
+    assert c("JPM", "2024-07-12 06:46") == ("2024-07-12", "bmo", "2024-07-12")
+    assert c("AAPL", "2024-05-02 16:30") == ("2024-05-02", "amc", "2024-05-02")
+    assert c("XOM", "2018-02-09 15:24") == ("2018-02-09", "dmh", "")
+    assert c("NVDA", "2019-01-28 09:04") == ("2019-01-28", "bmo", "")
+    html = '<div class="infoHead">Accepted</div>\n         <div class="info">2024-07-12 06:46:30</div>'
+    assert events.parse_accepted(html) == pd.Timestamp("2024-07-12 10:46:30", tz="UTC")
+    with pytest.raises(ValueError, match="Accepted"):
+        events.parse_accepted("<html></html>")
 
 
 def test_fomc_and_bls_parsers():
@@ -307,6 +328,28 @@ def test_fetch_session_falls_back_and_marks_missing(tmp_path):
         quotes.load_samples(tmp_path, day)
 
 
+def test_fallback_windows_stop_at_the_open_and_preopen_quotes_are_dropped():
+    """Review M3: the 15-minute window of the 09:31 mark reached pre-open quotes."""
+    o = pd.Timestamp("2016-02-08 09:30", tz=NY)
+    src = FakeQuotes()
+    quotes.fetch_session(src, ["C"], quotes.sample_marks(o, o + pd.Timedelta(hours=1))[:1], session_open=o)
+    assert [w for _, w in src.calls] == [5.0, 60.0, 60.0]  # [09:30, 09:31): the long window is clipped at the open
+    mk = pd.Timestamp("2016-02-08 14:31", tz="UTC")
+    s = pd.DataFrame({"symbol": "X", "label": "open_auction", "bid": [10.0, 10.0], "ask": [10.5, 10.01], "mark": mk,
+                      "quote_ts": [pd.Timestamp("2016-02-08 14:20", tz="UTC"), mk - pd.Timedelta(seconds=3)]})  # fmt: skip
+    t = quotes.build_table(s)
+    assert t["n"].tolist() == [1] and t["half_spread_bp"].iloc[0] == pytest.approx(0.01 / 20.01 * 1e4)
+
+
+def test_event_plan_rotates_kinds_and_adds_stress_days(sessions):
+    plan = quotes.event_days(sessions, events.read_events(), 2016, "2026-10-01")
+    kinds = pd.Series(plan)
+    assert kinds.value_counts().to_dict() == {"FOMC": 11, "NFP": 11, "OPEX": 11, "MONTH_END": 11, "STRESS": 7}
+    assert "2020-03-16" in plan and all(pd.Timestamp(d) in set(sessions) for d in plan)
+    months = pd.to_datetime(kinds[kinds == "OPEX"].index).month
+    assert months.nunique() >= 6  # the occurrence rotates across years
+
+
 def test_table_medians_bins_and_invalid_quotes():
     assert [quotes.tod_bin(x) for x in ("09:35", "09:40", "09:45", "12:59", "15:55")] == [
         "09:30", "09:30", "09:45", "12:45", "15:45"]  # fmt: skip
@@ -314,7 +357,7 @@ def test_table_medians_bins_and_invalid_quotes():
     rows = [("X", "09:35", 100.0, 100.02), ("X", "09:40", 100.0, 100.04), ("X", "10:05", 100.0, 100.01),
             ("X", "open_auction", 100.0, 100.10), ("X", "close_auction", 100.0, 99.0),  # crossed: dropped
             ("X", "10:10", 0.0, 100.0)]  # one-sided: dropped  # fmt: skip
-    s = pd.DataFrame(rows, columns=["symbol", "label", "bid", "ask"]).assign(mark=mk)
+    s = pd.DataFrame(rows, columns=["symbol", "label", "bid", "ask"]).assign(mark=mk, quote_ts=mk)
     t = quotes.build_table(s).set_index("bin")
     hs = lambda b, a: (a - b) / (a + b) * 1e4
     assert t.loc["09:30", "half_spread_bp"] == pytest.approx(np.median([hs(100, 100.02), hs(100, 100.04)]))

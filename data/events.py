@@ -2,7 +2,7 @@
 Scheduled-event and earnings tables (SPEC §12 `calendar` and `earnings`, U13): checked-in CSVs, read without network.
 
     data/calendar/events.csv    kind, date, event_time, value, known_from, scheduled, source
-    data/calendar/earnings.csv  symbol, date, timing, timing_source, accepted_at, known_from, accession
+    data/calendar/earnings.csv  symbol, date, timing, accepted_at, known_from, accession
 
 Kinds: FOMC (statement days, 14:00 ET; the two unscheduled 2020 statements at their own times), CPI and NFP
 (release days, 08:30 ET, from BLS's release archives and schedules; BLS also releases on Good Friday, a federal
@@ -15,18 +15,20 @@ calendar already.
 `known_from` is the NY date from whose midnight a row is public (its `available_at`):
 - scheduled releases and calendar-derived kinds: 1 January of the event's year (the Fed, BLS and NYSE publish the
   year's schedule before it starts);
-- releases moved by the 2025 shutdown (CPI / NFP dated 2025-10-01 … 2026-01-31): the release date itself
-  (conservative; the new dates were announced days to weeks ahead);
+- releases moved by the 2025 shutdown and the early-February 2026 funding lapse (CPI / NFP dated 2025-10-01 …
+  2026-02-28): the release date itself (conservative; the new dates were announced days to weeks ahead);
 - PRE_HOLIDAY before an unscheduled closure (2018-12-05, 2025-01-09): the Monday of the closure week
   (conservative; both were announced earlier);
 - unscheduled FOMC statements: the statement instant (`available_at` = `event_at`).
 
-Earnings (SEC EDGAR, Form 8-K Item 2.02 "Results of Operations", 2016 →): date = the filing's NY date; `timing` from
-the acceptance time: before 09:30 ET `bmo`, 16:00 ET or later `amc`, otherwise `dmh` — except JPM and UNH, which
-release before the open and file the 8-K 3–5 h later, so their in-session filings are `bmo` (`timing_source` =
-`convention`). The announcement dates of the releases are not in EDGAR: a release matching the company's usual
-timing (`amc` for AAPL MSFT NVDA AMZN GOOGL META, `bmo` for JPM UNH XOM) is public from midnight of its day; any
-other filing (pre-announcements, XOM's mid-quarter "earnings considerations") only from its acceptance time.
+Earnings (SEC EDGAR, Form 8-K Item 2.02 "Results of Operations", 2016 →): the acceptance time is the "Accepted"
+field (Eastern time) of each filing's index page. The submissions JSON's `acceptanceDateTime` is not used: for some
+filers (AAPL, AMZN, META, JPM, UNH) it is the true instant plus one more New York UTC offset (e.g. AAPL 2024-08-01
+16:30:26 ET appears as 2024-08-02T00:30:26Z; GOOGL's values are right). Date = the acceptance's NY date; `timing`:
+before 09:30 ET `bmo`, 16:00 ET or later `amc`, otherwise `dmh`. The announcement dates of the releases are not in
+EDGAR: a release matching the company's usual timing (`amc` for AAPL MSFT NVDA AMZN GOOGL META, `bmo` for JPM UNH
+XOM) is public from midnight of its day; any other filing (pre-announcements, XOM's mid-quarter "earnings
+considerations") only from its acceptance time.
 
     uv run python -m data.events    # rebuild both CSVs (network: federalreserve.gov, bls.gov, sec.gov)
 """
@@ -45,7 +47,7 @@ EVENTS_CSV = CALENDAR_DIR / "events.csv"
 EARNINGS_CSV = CALENDAR_DIR / "earnings.csv"
 EVENT_KINDS = ("FOMC", "CPI", "NFP", "OPEX", "MONTH_END", "TOM", "PRE_HOLIDAY")
 EVENT_COLUMNS = ["kind", "date", "event_time", "value", "known_from", "scheduled", "source"]
-EARNINGS_COLUMNS = ["symbol", "date", "timing", "timing_source", "accepted_at", "known_from", "accession"]
+EARNINGS_COLUMNS = ["symbol", "date", "timing", "accepted_at", "known_from", "accession"]
 TIMING = {"bmo": -1.0, "dmh": 0.0, "amc": 1.0}
 FIRST_YEAR, LAST_YEAR = 2016, 2027
 
@@ -68,19 +70,19 @@ BLS_HEADERS = {
     "Upgrade-Insecure-Requests": "1",
 }
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/{name}"
+SEC_INDEX_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{nodash}/{acc}-index.htm"
 SEC_HEADERS = {"User-Agent": "wavelet-meta-model research admin@example.com"}  # SEC asks for a contact-style UA
 EARNINGS_CIK = {"AAPL": 320193, "MSFT": 789019, "NVDA": 1045810, "AMZN": 1018724, "GOOGL": 1652044,
                 "META": 1326801, "JPM": 19617, "XOM": 34088, "UNH": 731766}  # fmt: skip
 EARNINGS_CONVENTION = {**dict.fromkeys(["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META"], "amc"),
                        **dict.fromkeys(["JPM", "UNH", "XOM"], "bmo")}  # fmt: skip
-LATE_FILERS = {"JPM", "UNH"}  # pre-open release, 8-K accepted in the session (EDGAR acceptance 10:00–12:54 ET)
 
 # Unscheduled FOMC policy statements (the Fed's pages list the meetings, not the statement times): the 2020-03-02
 # conference call's rate cut was announced 2020-03-03 10:00 ET; the 2020-03-15 (Sunday) statement at 17:00 ET.
 # The 2019-10-04 unscheduled meeting issued no statement that day (reserve-management purchases followed 2019-10-11).
 FOMC_UNSCHEDULED = {"2020-03-02": ("2020-03-03", "10:00"), "2020-03-15": ("2020-03-15", "17:00"), "2019-10-04": None}
 UNSCHEDULED_CLOSURES = {"2018-12-05": "2018-12-03", "2025-01-09": "2025-01-06"}  # closure → conservative known_from
-SHUTDOWN_RESCHEDULED = ("2025-10-01", "2026-01-31")
+SHUTDOWN_RESCHEDULED = ("2025-10-01", "2026-02-28")
 MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
                                       "dec"], start=1)}  # fmt: skip
 
@@ -309,20 +311,26 @@ def _sec_filings(cik: int, http) -> list[dict]:
     rows = []
     for b in blocks:
         for i in range(len(b["form"])):
-            rows.append({k: b[k][i] for k in ("form", "items", "filingDate", "acceptanceDateTime", "accessionNumber")})
+            rows.append({k: b[k][i] for k in ("form", "items", "filingDate", "accessionNumber")})
     return rows
 
 
-def classify_earnings(symbol: str, accepted_utc: pd.Timestamp) -> tuple[str, str, str, str]:
-    """(date, timing, timing_source, known_from) of one 8-K Item 2.02 filing (rules in the module docstring)."""
+def parse_accepted(html: str) -> pd.Timestamp:
+    """The "Accepted" field of an EDGAR filing index page (Eastern time) → tz-aware UTC instant."""
+    m = re.search(r'infoHead">Accepted</div>\s*<div class="info">(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)</div>', html)
+    if not m:
+        raise ValueError("no Accepted field on the EDGAR index page")
+    return pd.Timestamp(m.group(1)).tz_localize(NY_TZ).tz_convert("UTC")
+
+
+def classify_earnings(symbol: str, accepted_utc: pd.Timestamp) -> tuple[str, str, str]:
+    """(date, timing, known_from) of one 8-K Item 2.02 filing (rules in the module docstring)."""
     t = accepted_utc.tz_convert(NY_TZ)
     hm = t.hour * 60 + t.minute
-    timing, src = ("bmo" if hm < 9 * 60 + 30 else "amc" if hm >= 16 * 60 else "dmh"), "acceptance"
-    if timing == "dmh" and symbol in LATE_FILERS:
-        timing, src = "bmo", "convention"
+    timing = "bmo" if hm < 9 * 60 + 30 else "amc" if hm >= 16 * 60 else "dmh"
     date = str(t.date())
     known = date if timing == EARNINGS_CONVENTION[symbol] else ""
-    return date, timing, src, known
+    return date, timing, known
 
 
 def build_earnings(http) -> pd.DataFrame:
@@ -331,9 +339,13 @@ def build_earnings(http) -> pd.DataFrame:
         for f in _sec_filings(cik, http):
             if f["form"] != "8-K" or "2.02" not in f["items"].split(",") or f["filingDate"] < f"{FIRST_YEAR}-01-01":
                 continue
-            acc = pd.Timestamp(f["acceptanceDateTime"])
-            date, timing, src, known = classify_earnings(sym, acc)
-            rows.append((sym, date, timing, src, acc.isoformat(), known, f["accessionNumber"]))
+            a = f["accessionNumber"]
+            time.sleep(0.15)  # SEC fair-access limit: ≤ 10 requests / s
+            acc = parse_accepted(http(SEC_INDEX_URL.format(cik=cik, nodash=a.replace("-", ""), acc=a), SEC_HEADERS))
+            if str(acc.tz_convert(NY_TZ).date()) > f["filingDate"]:
+                raise ValueError(f"{sym} {a}: accepted {acc} after its filing date {f['filingDate']}")
+            date, timing, known = classify_earnings(sym, acc)
+            rows.append((sym, date, timing, acc.isoformat(), known, a))
         time.sleep(0.2)
     df = pd.DataFrame(rows, columns=EARNINGS_COLUMNS).sort_values(["symbol", "date", "accepted_at"])
     dup = df.duplicated(["symbol", "date"], keep=False)

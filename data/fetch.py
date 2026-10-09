@@ -22,6 +22,9 @@ DEFAULT_UNIVERSE = [
     # short-term futures on 2018-02-28 (after 2018-02-05); USO reverse-split 1:8 on 2020-04-29 (bars are adjusted)
     "IEF", "LQD", "HYG", "DBC", "USO", "UUP", "EFA", "EEM", "VNQ", "SLV", "SVXY",
 ]  # fmt: skip
+# Product changes that split a symbol's history into regimes (SPEC §12): a family using the symbol must start after
+# the date or model the break. SVXY is also the survivor of the 2018 short-vol ETPs (XIV was terminated).
+REGIME_BREAKS = {"SVXY": ("2018-02-28", "target changed from -1x to -0.5x the S&P 500 VIX Short-Term Futures Index")}
 
 
 def main(argv: list[str] | None = None) -> pd.DataFrame | None:

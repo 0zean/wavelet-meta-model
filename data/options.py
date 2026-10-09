@@ -9,6 +9,10 @@ can only be accumulated forward, one snapshot per day — the U15 gamma proxy fa
 proxy for the development window.
 
     uv run python -m data.options SPY QQQ [--days 60]    # today's snapshot → {cache}/{UNDERLYING}/{date}.npz + .json
+
+A snapshot is filed under the NY date of the run and its sidecar records `fetched_at`; each row's `quote_ts` is the
+instant of its quote (a run before the open stores the previous session's quotes). Point-in-time use goes by
+`quote_ts` / `fetched_at`, never by the file date; run it after the close.
 """
 
 import argparse
