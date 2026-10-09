@@ -127,7 +127,9 @@ def main(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     signals.to_csv(out_path)
     # meta_prob is a placeholder 0 in folds whose meta-model was skipped: the CSV alone cannot tell them apart
-    (Path(out_dir) / "wfo_run.json").write_text(json.dumps({k: list(v) for k, v in signals.attrs.items()}))
+    (Path(out_dir) / "wfo_run.json").write_text(
+        json.dumps({k: v if isinstance(v, dict) else list(v) for k, v in signals.attrs.items()})
+    )
     print(f"[OUT]   WFO signals saved to {out_path} (skipped folds in wfo_run.json)")
 
     # Backtest, metrics and plots cover only the OOS span

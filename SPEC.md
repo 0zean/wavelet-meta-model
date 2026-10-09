@@ -561,9 +561,14 @@ Implementation (U12, as built):
   both classes the meta-model is fit uncalibrated and a weighted Platt map on the pairs is its calibrator; otherwise
   (always the first window) it cross-fits. A window without a meta-model adds no pairs. `legacy` meta-models are
   never calibrated (the switch does not apply).
-- `OOF_META=reuse` applies to zoo meta-models (`legacy` refits); RunConfig refuses a train-fit sizer (`ecdf`,
-  `kelly_capped`) with `reuse` when the meta-model would hold no OOF predictions (`CALIBRATION != crossfit` and a
-  one-point grid). Under `refit` + `rolling` the per-split refits' raw predictions go through the window's calibrator.
+- `OOF_META=reuse` applies to zoo meta-models (`legacy` refits). When a run's sizers (`cfg.SIZER` or extra ones)
+  include a train-fit sizer (`ecdf`, `kelly_capped`), each window's meta-model keeps its purged-CV OOF predictions
+  (`need_oof`: k fits + 1 refit even with one grid point and rolling calibration); otherwise it is one fit. Under
+  `refit` + `rolling` the per-split refits' raw predictions go through the window's calibrator.
+- Each fitted window records its meta-model's calibration (`rolling`, `sigmoid` / `isotonic` = cross-fit, `none`,
+  `legacy`): PWFO window table column `calibration`, stats / ledger `calibration_windows`; WFO signals attr and ledger
+  `calibration_folds`. At 1Day with `MIN_VAL_EVENTS = 100` roughly a third of windows cross-fit (too few resolved
+  pairs); intraday, the first 2–4 windows of each combo.
 - `average`: the common span is every day on which all run combos (those with ≥ 1 fitted window) have an OOS return;
   `n_trials` / DSR still count every grid combo. The ledger row's `n_oos_windows` is the sum over combos (nested: the
   default combo's). `PWFO_DEFAULT` (only read by `nested`) defaults to the first IS length × OOS 21.

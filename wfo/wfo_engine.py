@@ -457,7 +457,8 @@ def run_wfo(
 
     combined = pd.concat(all_results).sort_index()
     combined.attrs["meta_skipped_folds"] = meta_skipped  # folds whose meta-model could not be fit (no trades)
-    combined.attrs["calibration_folds"] = calibration  # meta-model calibration → folds (rolling vs cross-fit fallback)
+    if cfg.META_MODEL != "legacy":  # meta-model calibration → folds (rolling vs its cross-fit fallback)
+        combined.attrs["calibration_folds"] = calibration
     combined.attrs["primary_skipped_folds"] = primary_skipped  # folds dropped: primary could not be fit
     combined.attrs["sizer_skipped_folds"] = sizer_skipped[cfg.SIZER]  # sizer could not be fit (no trades)
     for n in size_names[1:]:
