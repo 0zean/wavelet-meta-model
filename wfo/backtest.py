@@ -199,6 +199,19 @@ def simulate_positions(
     return out, bets
 
 
+def primary_size_col(cfg: RunConfig) -> str | None:
+    """Bet-size column of the unfiltered primary stream: the rule's own size hint (`magnitude`) under the `rule_size`
+    sizer (SPEC §16), else None (m = 1)."""
+    return "magnitude" if cfg.SIZER == "rule_size" else None
+
+
+def portfolio_path(cfg: RunConfig, profile) -> bool:
+    """Whether run_backtest simulates through risk.portfolio: an active risk profile, a cost model other than
+    "slippage", or time / hysteresis exits (scheduled exits free their symbol for an entry at the same fill and
+    roll into it, and market-on-close entries fill at the close: modelled there only)."""
+    return profile.active or cfg.COST_MODEL != "slippage" or cfg.EXIT_MODEL in ("time", "hysteresis")
+
+
 def run_backtest(
     df: pd.DataFrame,
     signals: pd.DataFrame,
@@ -208,9 +221,11 @@ def run_backtest(
 ) -> dict[str, tuple[pd.Series, pd.DataFrame]]:
     """
     Backtest the meta-filtered, sized signals (`size_col`, cfg.POSITION_MODE) and, as the benchmark
-    meta-labeling must beat, the unfiltered primary signal on the same events at m = 1. With an active
-    cfg.RISK_PROFILE or a cfg.COST_MODEL other than "slippage" both go through the portfolio simulator
-    (risk.portfolio.simulate_portfolio, one symbol; with profile "none" and slippage costs it equals simulate_trades).
+    meta-labeling must beat, the unfiltered primary signal on the same events at m = 1 (at the rule's `magnitude`
+    under the `rule_size` sizer, primary_size_col). With an active cfg.RISK_PROFILE, a cfg.COST_MODEL other than
+    "slippage" or time / hysteresis exits (portfolio_path) single positions go through the portfolio simulator
+    (risk.portfolio.simulate_portfolio, one symbol; with profile "none" and slippage costs it equals simulate_trades
+    on triple-barrier exits).
 
     Args:
         df (pd.DataFrame): OHLC data covering the OOS span.
@@ -235,13 +250,14 @@ def run_backtest(
     fc = fill_costs(df.index, cfg, cost_data)
     costs = None if fc is None else {"_": fc}
     results = {}
-    for name, col, sz in (("Meta-filtered", "trade_signal", size_col), ("Primary only", "signed_dir", None)):
-        if profile.active or costs is not None:
+    streams = (("Meta-filtered", "trade_signal", size_col), ("Primary only", "signed_dir", primary_size_col(cfg)))
+    for name, col, sz in streams:
+        if cfg.POSITION_MODE == "single" and portfolio_path(cfg, profile):
             eq, trades, _ = simulate_portfolio(
                 {"_": df}, {"_": signals}, cfg, profile, side_col=col, size_col=sz, costs=costs
             )
             results[name] = (eq, trades)
-        elif cfg.POSITION_MODE == "single":
+        elif cfg.POSITION_MODE == "single":  # triple-barrier exits, slippage costs, no risk layer
             trades = simulate_trades(df, signals, cfg, side_col=col, size_col=sz)
             results[name] = (equity_curve(df, trades, cfg.INIT_CASH, cfg.SIZE), trades)
         else:

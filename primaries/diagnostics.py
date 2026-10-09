@@ -11,7 +11,12 @@ Per fold and overall, on the OOS events:
   turnover      share of consecutive events whose side flips
   net_bp        mean side-return net of round-trip slippage, in bp
 
-Both sides are evaluated with the backtest's barrier rules (adverse barrier on same-bar ties).
+Both sides are evaluated with the backtest's barrier rules (adverse barrier on same-bar ties). Flat events (side 0,
+the SPEC §16 mechanism primaries) take no position: the metrics cover the sided events, and `n_flat` counts the flat
+ones (a column present only when there are any).
+
+`slot_diagnostics` (U16) splits the same metrics by the time-of-day slot of the entry bar (intraday), with the ISOM
+count of each slot (events per session over the signals' sessions, SPEC §14).
 
     uv run python -m primaries.diagnostics runs/*/ --out results/primary_diagnostics.csv
 """
@@ -22,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 from features.exits import exit_frame
+from features.vol_profile import ny_dates
 from utils.config import RunConfig
 
 
@@ -31,6 +37,9 @@ def _side_returns(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig, s: in
 
 
 def _summary(side: pd.Series, r_long: pd.Series, r_short: pd.Series, cfg: RunConfig) -> dict:
+    flat = side == 0
+    n_flat = int(flat.sum())
+    side, r_long, r_short = side[~flat], r_long[~flat], r_short[~flat]
     r_side = r_long.where(side > 0, r_short)
     ok = r_side > cfg.META_MIN_RET
     opp = (r_long > cfg.META_MIN_RET) | (r_short > cfg.META_MIN_RET)
@@ -42,6 +51,7 @@ def _summary(side: pd.Series, r_long: pd.Series, r_short: pd.Series, cfg: RunCon
         "recall": ok[opp].mean() if opp.any() else np.nan,
         "turnover": (side.diff().fillna(0) != 0).iloc[1:].mean() if len(side) > 1 else np.nan,
         "net_bp": (r_side.mean() - 2 * cfg.SLIPPAGE_PCT) * 1e4,
+        **({"n_flat": n_flat} if n_flat else {}),
     }
 
 
@@ -74,6 +84,33 @@ def primary_diagnostics(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig,
                 **_summary(g["signed_dir"], r_long.loc[g.index], r_short.loc[g.index], cfg),
             }
         )
+    return pd.DataFrame(rows)
+
+
+def slot_diagnostics(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig, symbol: str = "") -> pd.DataFrame:
+    """
+    The primary_diagnostics metrics per entry slot (the HH:MM of each event's entry bar, the bar after the event) plus
+    slot "all"; `per_session` = the slot's sided events per session of the signals' span (its ISOM count).
+
+    Args:
+        df (pd.DataFrame): Intraday OHLC data covering the signals and their exits.
+        signals (pd.DataFrame): Signal frame (signed_dir, width; fold-free signals are fine).
+        cfg (RunConfig): Run configuration (its exit model evaluates both sides).
+        symbol (str, optional): Label for the symbol column. Defaults to "".
+    """
+    r_long = _side_returns(df, signals, cfg, +1)
+    r_short = _side_returns(df, signals, cfg, -1)
+    sig = signals.loc[r_long.index.intersection(r_short.index)]
+    pos = df.index.get_indexer(sig.index) + 1
+    local = df.index[pos].tz_convert("America/New_York") if df.index.tz is not None else df.index[pos]
+    slot = pd.Series(local.strftime("%H:%M"), index=sig.index)
+    span = df.index[(df.index >= sig.index[0]) & (df.index <= sig.index[-1])] if len(sig) else df.index[:0]
+    n_sess = max(len(np.unique(ny_dates(span))), 1)
+    rows = []
+    for name, g in [*sig.groupby(slot), ("all", sig)]:
+        row = _summary(g["signed_dir"], r_long.loc[g.index], r_short.loc[g.index], cfg)
+        rows.append({"symbol": symbol, "timeframe": cfg.TIMEFRAME, "primary": cfg.PRIMARY, "slot": name,
+                     "per_session": row["n_events"] / n_sess, **row})  # fmt: skip
     return pd.DataFrame(rows)
 
 

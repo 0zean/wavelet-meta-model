@@ -83,7 +83,7 @@ def oof_primary(
         cols = list(X.columns) if select is None else select(Xtr, lab, w)
         p = make_primary(cfg).fit(df.iloc[fit_start:], Xtr[cols], lab, w, cfg)
         Xte = X.iloc[test][cols]
-        frames.append(check_signal(p.signal(df, Xte, cfg), Xte, p.name))
+        frames.append(check_signal(p.signal(df, Xte, cfg), Xte, p))
     return pd.concat(frames).loc[X.index]
 
 
@@ -376,7 +376,7 @@ def fit_window(
                 kept = select_features(X_tr, lab_tr, w_tr, cfg, train_end - fit_start).kept
                 X_tr, X_vl, X_ts = X_tr[kept], X_vl[kept], X_ts[kept]
             prim = make_primary(cfg).fit(df.iloc[fit_start:train_end], X_tr, lab_tr, w_tr, cfg, val=(X_vl, lab_vl))
-            prim_fit = check_signal(prim.signal(df.iloc[:val_end], X_vl, cfg), X_vl, prim.name)
+            prim_fit = check_signal(prim.signal(df.iloc[:val_end], X_vl, cfg), X_vl, prim)
             X_fit, lab_fit, w_fit = X_vl, lab_vl, w_vl
         else:
             # Train+val events purged at the val end; out-of-fold primary signals (feature selection inside
@@ -395,6 +395,11 @@ def fit_window(
     except ZooFitError as e:  # a non-legacy PRIMARY_MODEL with a single-class (inner) train split
         print(f"[WFO]  Fold {fold}: primary could not be fit ({e}) — skipping")
         return WindowFit("primary_failed", None, None, False, (), 0)
+    flat = (prim_fit["signed_dir"] == 0).to_numpy()
+    if flat.any():  # an ALLOW_FLAT primary's flat events hold no position: no meta-label, not fitted on
+        keep = prim_fit.index[~flat]
+        X_fit, prim_fit, lab_fit = X_fit.loc[keep], prim_fit.loc[keep], lab_fit.loc[keep]
+        w_fit = average_uniqueness(lab_fit, N)
 
     # ── Side-aware meta-labels → meta-model ──────────────────────────────
     meta_lbl = make_meta_labels(df, events.loc[X_fit.index], prim_fit, cfg)
@@ -408,7 +413,7 @@ def fit_window(
     raw_ts = []
 
     def predict(X: pd.DataFrame, end: int, keep_raw: bool = False) -> pd.DataFrame:
-        prim_x = check_signal(prim.signal(df.iloc[:end], X, cfg), X, prim.name)
+        prim_x = check_signal(prim.signal(df.iloc[:end], X, cfg), X, prim)
         res = meta_predict(meta_mdl, X, prim_x, cfg.META_THRESH)
         if keep_raw and meta_mdl is not None:
             raw_ts.append(pd.Series(meta_mdl.predict_raw(pd.concat([X, prim_x], axis=1)), index=X.index))
@@ -417,7 +422,8 @@ def fit_window(
         res["primary"] = prim.name
         for n, sz in fitted.items():
             col = "bet_size" if n == cfg.SIZER else f"bet_size:{n}"
-            res[col] = 0.0 if sz is None else np.where(res["trade_signal"] != 0, sz.size(res["meta_prob"]), 0.0)
+            m = 0.0 if sz is None else sz.size(res["meta_prob"], hint=res["magnitude"].to_numpy())
+            res[col] = np.where(res["trade_signal"] != 0, m, 0.0)
         return res
 
     result_ts = predict(X_ts, test_end, keep_raw=rolling)

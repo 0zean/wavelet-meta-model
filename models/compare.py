@@ -115,7 +115,7 @@ def cpcv_sharpes(df: pd.DataFrame, cfg: RunConfig, role: str, model: str, symbol
         prim = make_primary(cfg)
         if cfg.PRIMARY == "ml_xgb":
             raise ValueError("CPCV for the meta role needs a fixed-rule primary (ml_xgb would need nested OOF)")
-        frame = check_signal(prim.signal(df, X, cfg), X, prim.name)
+        frame = check_signal(prim.signal(df, X, cfg), X, prim)
         side = frame["signed_dir"].to_numpy()
         side_ret = np.where(side > 0, rets["long"], rets["short"])
         y = (side_ret > cfg.META_MIN_RET).astype(int)

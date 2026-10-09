@@ -9,8 +9,11 @@ data, entry_pos = t + 1 (the schedule sampler picks t as the bar before its entr
 - `dc`: directional change (Guillaume et al. 1997): an event at the bar that CONFIRMS a reversal, i.e. log price is
   δ_t = dc_mult · σ_t below the running maximum of an up run (or above the minimum of a down run). The run's
   overshoot (confirmation → extreme) is only known at the next confirmation (`dc_events`, the session group).
-- `schedule`: fixed session times (`entry_times`), a calendar predicate (`days`) and an optional `gate` over the
-  session frame (features.session) at the event bar.
+- `schedule`: fixed session times (`entry_times`), a calendar predicate (`days`, tested `day_offset` sessions after the
+  entry session), a period (`every`: every session, or only the first session of each week / month in the data) and
+  an optional `gate` over the session frame (features.session) at the event bar. `entry_times: ["close"]` (SPEC §16,
+  U16) is a market-on-close entry: the entry bar is the session's last bar and the fill is its CLOSE (the closing
+  auction), decided at the close of the bar before it (`entry_at_close`).
 
 σ_t is bar_volatility with the fold's VolProfile (cfg.VOL_PROFILE="tod") or plain (§3). Unless HOLD_OVERNIGHT,
 cusum / dc events on a session's last bar are skipped (their entry would be next session); scheduled events are not
@@ -34,13 +37,14 @@ from features.vol_profile import (
 from utils.config import RunConfig
 
 EVENT_SAMPLERS = ("cusum", "dc", "schedule")
-DAY_PREDICATES = ("all", "fomc", "cpi_nfp", "tom", "non_macro", "earnings")
+DAY_PREDICATES = ("all", "fomc", "cpi_nfp", "macro", "tom", "month_end", "opex", "non_macro", "earnings")
+PERIODS = ("session", "week", "month")
 DEFAULT_DC_MULT = 2.0
 CLOSE_MINUTE = 16 * 60
 EARLY_CLOSE_MINUTE = 13 * 60
 AMC_NEXT_MAX_DAYS = 4
 _DEFAULTS = {"cusum": {}, "dc": {"dc_mult": DEFAULT_DC_MULT}, "schedule": {"entry_times": None, "days": "all",
-             "gate": None}}  # fmt: skip
+             "gate": None, "every": "session", "day_offset": 0}}  # fmt: skip
 
 
 def parse_time(s: str) -> int:
@@ -77,18 +81,47 @@ def event_params(cfg: RunConfig) -> dict:
         from data.timeframes import get_timeframe
 
         minutes = get_timeframe(cfg.TIMEFRAME).minutes
+        if "close" in times and len(times) > 1:
+            raise ValueError(
+                f"EVENT_PARAMS entry_times: 'close' (a market-on-close entry) cannot be mixed, got {times!r}"
+            )
         for t in times:
+            if t == "close":
+                continue
             m = parse_time(t)
             if minutes is None:
                 if m != OPEN_MINUTE:
-                    raise ValueError(f"1Day bars trade only at the open; entry time {t!r} is not 'open' / '09:30'")
+                    raise ValueError(f"1Day bars trade at the open or the close; entry time {t!r} is not 'open' / "
+                                     "'09:30' / 'close'")  # fmt: skip
             elif not (OPEN_MINUTE <= m < CLOSE_MINUTE and (m - OPEN_MINUTE) % minutes == 0):
                 raise ValueError(f"entry time {t!r} is not a {cfg.TIMEFRAME} bar open between 09:30 and 16:00")
         if p["days"] not in DAY_PREDICATES:
             raise ValueError(f"EVENT_PARAMS days must be one of {DAY_PREDICATES}, got {p['days']!r}")
+        if p["every"] not in PERIODS:
+            raise ValueError(f"EVENT_PARAMS every must be one of {PERIODS}, got {p['every']!r}")
+        off = p["day_offset"]
+        if not (isinstance(off, int) and not isinstance(off, bool) and off >= 0):
+            raise ValueError(f"EVENT_PARAMS day_offset must be an integer >= 0, got {off!r}")
         if p["gate"] is not None and (not isinstance(p["gate"], str) or minutes is None):
             raise ValueError("EVENT_PARAMS gate must be a string expression over session columns (intraday only)")
     return p
+
+
+def entry_at_close(cfg: RunConfig) -> bool:
+    """True when the run's entries fill at the CLOSE of the entry bar (schedule entry_times ["close"], MOC)."""
+    return cfg.EVENT_SAMPLER == "schedule" and event_params(cfg)["entry_times"] == ["close"]
+
+
+def period_starts(day: np.ndarray, every: str) -> np.ndarray:
+    """Per session date (sorted, unique): is it the first session of its `every` period (session / ISO week / month)?"""
+    d = np.asarray(day).astype("M8[D]")
+    if every == "session":
+        return np.ones(len(d), bool)
+    if every == "week":
+        key = (d.astype(np.int64) + 3) // 7  # 1970-01-01 was a Thursday: (days + 3) // 7 changes on Mondays
+    else:
+        key = d.astype("M8[M]").astype(np.int64)
+    return np.r_[True, key[1:] != key[:-1]] if len(d) else np.zeros(0, bool)
 
 
 def dc_mult(cfg: RunConfig) -> float:
@@ -180,7 +213,9 @@ def dc_events(close: pd.Series, delta: pd.Series) -> tuple[pd.DatetimeIndex, pd.
 
 # ── Schedule ─────────────────────────────────────────────────────────────────
 
-_MACRO = {"fomc": ("FOMC",), "cpi_nfp": ("CPI", "NFP"), "tom": ("TOM",), "non_macro": ("FOMC", "CPI", "NFP")}
+_MACRO = {"fomc": ("FOMC",), "cpi_nfp": ("CPI", "NFP"), "macro": ("FOMC", "CPI", "NFP"), "tom": ("TOM",),
+          "month_end": ("MONTH_END",), "opex": ("OPEX",), "non_macro": ("FOMC", "CPI", "NFP")}  # fmt: skip
+_NO_DAY = np.iinfo(np.int64).min + 1  # a target session past the data: matches no calendar day
 
 
 def _decision_utc(index: pd.DatetimeIndex, bar_minutes: int | None) -> np.ndarray:
@@ -232,6 +267,7 @@ def _check_calendar_years(entry_day: np.ndarray) -> None:
 
     years = pd.to_datetime(read_events()["date"]).dt.year
     lo, hi = int(years.min()), int(years.max())
+    entry_day = entry_day[entry_day.astype("M8[D]").astype(np.int64) != _NO_DAY]
     ys = entry_day.astype("M8[Y]").astype(int) + 1970
     if len(ys) and (ys.min() < lo or ys.max() > hi):
         raise ValueError(f"schedule days predicate: bars span {ys.min()}–{ys.max()}, the event table {lo}–{hi}")
@@ -244,8 +280,12 @@ def schedule_events(
     Scheduled event bars (SPEC §13): for each entry time T the entry bar is the bar stamped T in its session and the
     event bar is the bar before it in the data (T = 09:30: the previous session's last bar; T later: a bar of the same
     session, else no event that day). On an early close (the session's last bar spans 13:00) a T at or past the
-    close maps to the session's last bar. `days` keeps sessions whose calendar event is known (available_at) by the
-    decision time; `gate` is evaluated on the session frame at the event bar (a NaN comparison is False).
+    close maps to the session's last bar. T = "close" (MOC): the entry bar is the session's last bar, filled at its
+    close, when it is the closing-auction bar (risk.costs.auction_flags), the event bar the bar before it in the same
+    session (1Day: the previous session). `every` keeps entry
+    sessions that are the first of their week / month in the data. `days` keeps sessions whose session `day_offset`
+    sessions later (in the data) is a calendar day known (available_at) by the decision time; `gate` is evaluated on
+    the session frame at the event bar (a NaN comparison is False).
     """
     from data.timeframes import get_timeframe
 
@@ -253,14 +293,21 @@ def schedule_events(
     minutes = get_timeframe(cfg.TIMEFRAME).minutes
     n = len(df)
     day = ny_dates(df.index)
+    first = np.r_[True, day[1:] != day[:-1]] if n else np.zeros(0, bool)
+    last = np.r_[day[1:] != day[:-1], True] if n else np.zeros(0, bool)
+    sess = np.cumsum(first) - 1
+    first_pos, last_pos = np.flatnonzero(first), np.flatnonzero(last)  # session k's first / last bar
     if minutes is None:
         entry = np.arange(1, n)
+    elif p["entry_times"] == ["close"]:
+        from risk.costs import auction_flags
+
+        # MOC: the session's last bar must be its closing-auction bar (a session missing it gives no event)
+        is_close = auction_flags(df.index, minutes)[1]
+        ok = (last_pos >= 1) & (sess[np.maximum(last_pos - 1, 0)] == sess[last_pos]) & is_close[last_pos]
+        entry = last_pos[ok]
     else:
         mins = ny_minutes(df.index)
-        first = np.r_[True, day[1:] != day[:-1]] if n else np.zeros(0, bool)
-        last = np.r_[day[1:] != day[:-1], True] if n else np.zeros(0, bool)
-        sess = np.cumsum(first) - 1
-        last_pos = np.flatnonzero(last)  # session k's last bar
         # an early close: the session's last bar spans 13:00 (risk.costs.auction_flags' rule), so a hole at the end
         # of a regular session is not read as one
         early = (mins[last_pos] < EARLY_CLOSE_MINUTE) & (mins[last_pos] + minutes >= EARLY_CLOSE_MINUTE)
@@ -278,12 +325,17 @@ def schedule_events(
                 at = at[(at >= 1) & first[at]]
             parts.append(at)
         entry = np.unique(np.concatenate(parts)) if parts else np.zeros(0, np.int64)
+    entry = entry[period_starts(day[first_pos], p["every"])[sess[entry]]]
     t = entry - 1
     keep = np.ones(len(t), bool)
     if p["days"] != "all":
-        _check_calendar_years(day[entry])
+        target = sess[entry] + p["day_offset"]
+        ok = target < len(first_pos)
+        tday = np.where(ok, day[first_pos[np.minimum(target, len(first_pos) - 1)]].astype(np.int64), _NO_DAY)
+        tday = tday.astype("M8[D]")
+        _check_calendar_years(tday)
         kinds = "earnings" if p["days"] == "earnings" else _MACRO[p["days"]]
-        hit = _known_days(kinds, _decision_utc(df.index[t], minutes), day[entry], day, symbol)
+        hit = _known_days(kinds, _decision_utc(df.index[t], minutes), tday, day, symbol)
         keep &= ~hit if p["days"] == "non_macro" else hit
     if p["gate"] is not None and len(t):
         from features.session import session_frame

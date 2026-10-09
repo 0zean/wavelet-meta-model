@@ -35,7 +35,7 @@ def fitted(name: str, cfg: RunConfig = CFG):
 
 
 def test_registry_and_config():
-    assert set(REGISTRY) == {"fixed", "linear", "ldp_sigmoid", "ecdf", "kelly_capped"}
+    assert set(REGISTRY) == {"fixed", "rule_size", "linear", "ldp_sigmoid", "ecdf", "kelly_capped"}
     with pytest.raises(ValueError, match="unknown sizer"):
         make_sizer("nope", CFG)
     for bad in ({"SIZER": "nope"}, {"SIZE_STEP": 1.5}, {"KELLY_FRACTION": 0}, {"POSITION_MODE": "multi"}):
@@ -52,7 +52,8 @@ def test_sizer_monotone_bounded_zero_below_threshold(name, tau):
     s = fitted(name, cfg)
     p = np.r_[np.linspace(0, 1, 2001), RNG.uniform(0, 1, 2000), tau, np.nextafter(tau, 0), 0.0, 1.0]
     p.sort()
-    m = s.size(p)
+    hint = np.ones_like(p) if name == "rule_size" else None  # rule_size passes the primary's magnitude through
+    m = s.size(p, hint=hint)
     assert ((m >= 0) & (m <= 1)).all()
     assert (np.diff(m) >= 0).all()  # non-decreasing in p
     assert (m[p < tau] == 0).all()
@@ -61,7 +62,7 @@ def test_sizer_monotone_bounded_zero_below_threshold(name, tau):
     if name == "ldp_sigmoid":
         assert (m[p <= 0.5] == 0).all()
     with pytest.raises(ValueError, match="NaN"):
-        s.size([0.6, np.nan])
+        s.size([0.6, np.nan], hint=None if hint is None else [1.0, 1.0])
 
 
 def test_sizer_formulas():
