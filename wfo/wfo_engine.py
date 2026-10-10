@@ -400,6 +400,9 @@ def fit_window(
         keep = prim_fit.index[~flat]
         X_fit, prim_fit, lab_fit = X_fit.loc[keep], prim_fit.loc[keep], lab_fit.loc[keep]
         w_fit = average_uniqueness(lab_fit, N)
+        if len(X_fit) < cfg.MIN_VAL_EVENTS:  # the event minimums counted the flat events
+            print(f"[WFO]  Fold {fold}: {len(X_fit)} sided meta-model rows after the flat ones — skipping")
+            return WindowFit("insufficient_events", None, None, False, (), 0)
 
     # ── Side-aware meta-labels → meta-model ──────────────────────────────
     meta_lbl = make_meta_labels(df, events.loc[X_fit.index], prim_fit, cfg)
@@ -428,7 +431,9 @@ def fit_window(
 
     result_ts = predict(X_ts, test_end, keep_raw=rolling)
     if raw_ts:  # outcomes from future bars: CalHistory.pairs hands them out only once resolved
-        cal_history.add(raw_ts[0], make_meta_labels(df, events.loc[X_ts.index], result_ts, cfg), spans=labels)
+        sided = result_ts.index[result_ts["signed_dir"] != 0]  # flat events have no meta-label
+        meta_ts = make_meta_labels(df, events.loc[sided], result_ts.loc[sided], cfg)
+        cal_history.add(raw_ts[0].loc[sided], meta_ts, spans=labels)
     is_frame = None
     if in_sample:
         X_is = X_fit if cfg.META_TRAIN == "oof" else pd.concat([X_tr, X_vl]).sort_index()

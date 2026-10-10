@@ -727,3 +727,88 @@ def test_run_wfo_with_mechanism_primaries_keeps_the_signal_schema():
         cols = list(sig.columns)
         ref = ref or cols
         assert cols == ref and cols[:6] == ["clf_prob", "direction", "signed_dir", "magnitude", "signal", "confidence"]
+
+
+def test_an_experiment_cell_records_the_mechanism_primarys_sampler_and_exit():
+    from experiments.spec import expand
+
+    doc = {"stage": "U10", "defaults": {"symbols": "SPY", "timeframe": "5Min", "start": "2024-01-02",
+                                        "end": "2024-06-28", "sizer": "rule_size"},
+           "cells": [{"primary": "overnight"},
+                     {"primary": "gap_fade", "overrides": {"EXIT_PARAMS": {"exit_time": "10:00"}}}]}  # fmt: skip
+    a, b = expand(doc)
+    assert a.spec["overrides"] == {"EVENT_SAMPLER": "schedule", "EVENT_PARAMS": {"entry_times": ["close"]},
+                                   "EXIT_MODEL": "time", "EXIT_PARAMS": {"exit_time": "open"}}  # fmt: skip
+    ref = primary_config("overnight", "5Min")
+    assert all(getattr(a.config(), k) == getattr(ref, k) for k in ("EVENT_SAMPLER", "EVENT_PARAMS", "EXIT_MODEL",
+                                                                     "EXIT_PARAMS", "SIZER"))  # fmt: skip
+    assert (
+        b.spec["overrides"]["EXIT_PARAMS"] == {"exit_time": "10:00"} and b.config().EXIT_PARAMS["exit_time"] == "10:00"
+    )
+    with pytest.raises(ValueError, match="runs on"):
+        expand({**doc, "cells": [{"primary": "gap_fade", "timeframe": "1Day"}]})
+
+
+def test_flat_events_stay_out_of_the_rolling_calibration_and_the_meta_diagnostics(monkeypatch):
+    from wfo.wfo_metrics import meta_outcomes
+
+    d = daily(700, seed=5, start="2021-01-04", drift=-2e-4)
+    cfg = primary_config("tsmom", "1Day", {"long_only": True, "lookback": 21},
+                         EVENT_PARAMS={"entry_times": ["open"], "every": "session"}, INITIAL_TRAIN=300, VAL=60,
+                         TEST=40, MIN_TRAIN_EVENTS=20, MIN_VAL_EVENTS=10, COST_MODEL="slippage",
+                         FEATURE_GROUPS=("wavelet_core",), META_MODEL="logit_l2", META_TRAIN="oof")  # fmt: skip
+    added = []
+    real = engine.CalHistory.add
+
+    def spy(self, raw, y, spans=None):
+        added.append(raw.index)
+        return real(self, raw, y, spans)
+
+    monkeypatch.setattr(engine.CalHistory, "add", spy)
+    sig = engine.run_wfo(d, cfg)
+    flat = sig.index[sig["signed_dir"] == 0]
+    assert len(flat) and added and not any(ix.intersection(flat).size for ix in added)
+    out = meta_outcomes(d, sig, cfg)
+    sided = int((sig["signed_dir"] != 0).sum())
+    assert out.index.intersection(flat).empty and sided - 1 <= len(out) <= sided  # the last may have no exit
+
+
+@pytest.mark.parametrize("name,tf,params", list(primary_cases()))
+def test_every_mechanism_primary_is_causal_at_each_event(name, tf, params):
+    """Strict cut: for events across the sample, every bar after the EVENT BAR replaced — the event is still sampled
+    and its side / magnitude unchanged (catches a one-bar peek that fixed cuts miss on sparse schedules)."""
+    df = daily(600, seed=3, start="2022-01-03") if tf == "1Day" else intraday(130, seed=4, start="2024-01-02")
+    cfg = primary_config(name, tf, params)
+    a = signals_for(df, cfg, symbol="SPY")
+    a = a[a["signed_dir"] != 0] if (a["signed_dir"] != 0).sum() >= 3 else a
+    picks = a.index[np.unique(np.linspace(0, len(a) - 1, 6).astype(int))]
+    for k, t in enumerate(picks):
+        c = df.index.get_loc(t)
+        if c >= len(df) - 2:
+            continue
+        b = signals_for(random_walk_after(df, c, 20 + k), cfg, symbol="SPY")
+        assert t in b.index, (name, t)
+        pd.testing.assert_series_equal(a.loc[t, ["signed_dir", "magnitude"]], b.loc[t, ["signed_dir", "magnitude"]],
+                                       check_names=False, obj=f"{name} {t}")  # fmt: skip
+
+
+def test_a_position_exiting_at_the_close_still_blocks_an_entry_at_that_bars_open():
+    df = pd.concat([session_5min("2024-07-01"), session_5min("2024-07-02")])
+    cfg = sched(["10:05", "15:55"], EXIT_MODEL="time", EXIT_PARAMS={"exit_time": "close"}, COST_MODEL="slippage")
+    ev = schedule_events(df, cfg)
+    assert hhmm(ev[:2]) == ["10:00", "15:50"]
+    _, tr = run_backtest(df, _sig(df, df.index.get_indexer(ev[:2]), [1, 1]), cfg)["Primary only"]
+    assert len(tr) == 1  # the MOC exit of the first fills after the 15:55 open: the second entry is blocked
+
+
+def test_an_experiment_cell_gets_rule_size_and_refuses_a_missing_feature_group():
+    from experiments.spec import expand
+
+    base = {"symbols": "SPY", "timeframe": "1Day", "start": "2016-01-04", "end": "2025-10-01"}
+    (cell,) = expand({"stage": "U10", "defaults": base, "cells": [{"primary": "vol_target"}]})
+    assert cell.spec["sizer"] == "rule_size" and cell.config().SIZER == "rule_size"
+    (fixed,) = expand({"stage": "U10", "defaults": {**base, "sizer": "fixed"}, "cells": [{"primary": "vol_target"}]})
+    assert fixed.spec["sizer"] == "fixed"  # an explicit sizer is kept
+    with pytest.raises(ValueError, match="vol_state"):
+        expand({"stage": "U10", "defaults": base,
+                "cells": [{"primary": {"name": "overnight", "params": {"vix_max": 30}}}]})  # fmt: skip

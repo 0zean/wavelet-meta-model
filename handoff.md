@@ -1,114 +1,89 @@
-# Session Handoff — U15 state and context feature groups (merged to main)
+# Session Handoff — U16 mechanism primaries (branch, not yet merged)
 
 ## Where it started
-The user asked me to review `handoff.md` (U14 merged as PR #16) and begin U15 per PLAN2.md and SPEC §15. U15 was built
-on `unit/15-state-features`, adversarially reviewed, fixed, re-verified (suite, parity, legacy run), and then (at the
-user's request) pushed, opened as PR #17 and merged into `main` (merge commit 6b4808c).
+The user asked me to review `handoff.md` (U15 merged as PR #17) and begin U16 per PLAN2.md and SPEC §16. U16 was built
+on `unit/16-mechanism-primaries`, adversarially reviewed, fixed, and re-verified (suite, parity twice, legacy run,
+smoke spec). Not pushed, no PR (the user's call).
 
 ## Decisions locked + what shipped
-- Point-in-time exo access — `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\features\exo_align.py`:
-  - Groups never see raw frames; they get an `Exo` view restricted to their declared series.
-  - Rule: a row is used only when `available_at` ≤ bar stamp (bar open; a naive index is NY time).
-  - Accessors: `asof`, `ratio` (built on common observation dates), `change`, `next_date` / `last_date` / `on_day`,
-    `known_dates`. `withdrawn_at` is honoured.
-- Registry: `FeatureGroup.optional` and `FeatureGroup.exo`, plus `context_needs`
-  (`...\features\registry.py`).
-- `FeatureSet` (`...\features\feature_builder.py`):
-  - builds each group's context;
-  - per-fold groups that declare `needs` get it as `transform(df, state, cfg, context)`.
-- `features\cache.py`: `context_hash` covers the full exo frames.
-- Groups — `...\features\state.py` (computations), registered in `...\features\groups.py`:
-  - `vol_state` (per fold): VIX, VIX9D/VIX3M ratios, VX1/VIX, VX2/VX1, rv21/VIX; GARCH(1,1) with variance targeting,
-    numpy/scipy, fit on train bars only. Intraday it runs on returns deseasonalized by a train-fit VolProfile,
-    because 5Min folds start with 42 sessions. < 500 returns → RuntimeWarning → fold skipped
-    (`WindowFit` status renamed `fracdiff_failed` → `feature_fit_failed` in `...\wfo\wfo_engine.py`).
-  - `calendar_events`:
-    - `to_` / `since_` FOMC/CPI/NFP in sessions; `to_*` = 63 cap when no next event is visible (late December);
-    - flags: `fomc_day`, `cpi_nfp_day`, `opex_week`, `tom` (value −1/+1..+3), `pre_holiday`;
-    - `mins_since_release` (intraday, 480 on non-release days).
-  - `rates_credit`: `d_dgs10`, `t10y2y`, `d_credit` (FRED BAA10Y), `d_dollar` (5-obs log change of DTWEXBGS).
-  - `cross_asset` now also has `mkt_ret_lag{1,3,6}`. With a "sector" context it adds `sector_ret_lag{1,3,6}`,
-    `sector_resid_ret` and `rel_strength_h`.
-  - `gamma_proxy` NOT built: no historical chain.
-- BAA10Y added to `...\data\exo.py` `FRED_SERIES` (H.15 available_at rule) and cached in
-  `...\data\cache\exo\fred\BAA10Y.{npz,json}` (committed). It replaces HY OAS as the credit spread, because HY OAS
-  only covers 2023-10 →.
-- Review SEVERE fix — `...\data\events.py`:
-  - `ORIGINAL_SCHEDULE` and `schedule_series`, served as `calendar/{FOMC,CPI,NFP}_SCHEDULE`.
-  - Contents: the originally published dates of cancelled/moved releases (FOMC 2020-03-18; BLS 2025-10..2026-02),
-    checked against Wayback BLS snapshots, public from Jan 1 and withdrawn at their own scheduled instant.
-  - `to_*` reads these. The flags and `since_*` read held releases only.
-- `...\data\sectors.py`: AAPL/MSFT/NVDA → XLK, JPM → XLF, XOM → XLE, UNH → XLV, AMZN/GOOGL/META → QQQ. ETFs get
-  market context only.
-- `...\features\context.py` `load_context`:
-  - market SPY, sector, exo rows from start − 120 d;
-  - calendar rows to end + 120 d, allowed past HOLDOUT_START (schedules only);
-  - refuses `cross_asset` on the market symbol itself.
-- Runner (`...\experiments\runner.py`):
-  - `load_cell_data` returns `data["context"][sym]` only for cells whose groups need it;
-  - the context enters `data_hash` and `signals_key` and is passed to `run_wfo`, `run_pwfo` and `combo_job`;
-  - `CachedBars.exo` added; `experiments\report.py` pilot rule passes context.
-- CLI (`...\wavelet_meta_model.py`) uses `load_context` for an Alpaca `--symbol`.
-- Records: PLAN2.md U15 status note and Status list; SPEC.md §15 "Implementation (U15, as built)".
-- Smoke spec and diagnostic:
-  - `...\experiments\specs\u15_smoke.yaml` (stage U10; 4 cells ok on a scratch ledger);
-  - `...\scripts\u15_state.py` → `...\results\u15\state_features.json`.
+- Primaries — `primaries/mechanism.py` (`MechanismPrimary`, `primary_config`, `session_state`, `CALENDAR_WINDOWS`):
+  `vol_target`, `tsmom`, `overnight`, `calendar_drift` (one window per cell), `intraday_momentum`, `gap_fade`,
+  `event_reaction`, `weekly_reversal` (time-series form; the sector rank is U17). `vix_carry` is U21.
+- MOC modelling decided (the U14 deferral): entry-at-close fill model. Schedule `entry_times: ["close"]` = decide at
+  the bar before the closing-auction bar and fill at its close (`features/events.entry_at_close`).
+- Sampler / exit keys (`features/events.py`, `features/exits.py`): `every` (session / week / month), `day_offset`,
+  predicates `macro` / `month_end` / `opex`; time exit `exit_session`, `exit_time: next`.
+- Portfolio simulator (`risk/portfolio.py`):
+  - MOC entries fill at the close.
+  - A known scheduled exit frees its symbol; an exit at the entry's own fill rolls into it (cost on the traded
+    shares only; an unchanged bet keeps its shares).
+  - `wfo/backtest.portfolio_path` sends time / hysteresis exits through the portfolio simulator.
+  - Behaviour change: a MOO exit no longer blocks the same open's entry.
+- Flat sides (0) for mechanism primaries (`primaries/base.check_signal(frame, X, primary)`). They are excluded from:
+  meta fitting, CalHistory, `meta_outcomes`, CPCV (refused), and trading.
+- `rule_size` sizer (`sizing/sizers.py`, `size(p, hint)`). Under it the primary stream is sized by `magnitude`
+  (`wfo/backtest.primary_size_col`).
+- `experiments/spec.normalize`: a mechanism primary's sampler / exit go into the cell's `overrides`; `sizer`
+  defaults to `rule_size`; a needed feature group must be listed.
+- Diagnostics: `primaries/diagnostics.slot_diagnostics`; `n_flat`.
+- Records:
+  - SPEC §16 "Implementation (U16, as built)".
+  - PLAN2 U16 status note and Status line.
+  - `experiments/specs/u16_smoke.yaml`.
+  - `scripts/u16_primaries.py` → `results/families/u16_slot_diagnostics.{csv,json}`, `results/u16/smoke_cells.json`.
 
 ## Key files for next session
-- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\PLAN2.md` — U15 status note (deferred items); U16
-  (mechanism primaries, SPEC §16) is next.
-- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\SPEC.md` — §15 as-built notes; §16 for U16.
-- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\features\exo_align.py`, `features\state.py`,
-  `features\context.py` — the APIs U16 primaries (calendar_drift, event_reaction, gap_fade days) will read.
-- `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model\tests\test_u15.py` — 38 tests: point-in-time,
-  exo-perturbation causality, the leaky-join mutation check, calendar hand cases, schedule-leak regressions, GARCH,
-  runner context.
-- Plan file: none (PLAN2.md drives the program).
+- `PLAN2.md` — U16 status note (deferred items); U17 (family-test tooling, SPEC §17) is next.
+- `SPEC.md` §16 as built; §17 for U17.
+- `primaries/mechanism.py`, `risk/portfolio.py`, `features/events.py`, `features/exits.py` — what U17's family cells
+  run.
+- `tests/test_u16.py` — 94 tests:
+  - harness: MOC, periods / offsets, exit_session / next, rolls, freed slots, rule_size, flats;
+  - per-primary causality (fixed cuts + strict per-event), synthetic sanity, real SPY hand trades, spec layer.
 - Memory files touched: none.
 
 ## Running state
-- Background processes: none (suite, parity, smoke, diagnostic and reviewer all finished).
-- Dev servers / ports: none.
+- Background processes: none.
 - Open worktrees / branches:
-  - `unit/15-state-features` is merged; it can be deleted, as can `unit/13-…` and `unit/14-…`.
-  - Carried over, untouched: `C:\Users\Nick\Desktop\Code\Python Projects\wavelet-meta-model-stage-b`.
-  - The scratch worktree of `main` used for the legacy comparison was removed.
-- Scratch (disposable), in the session scratchpad: `parity15\`, `smoke\`, `legacy\`, `legacy_main\`, `wb\` (Wayback
-  BLS pages), `review\` (reviewer probes).
-- Pending task chip: "Investigate legacy CSV regression hash drift" (spawned this session).
+  - `unit/16-mechanism-primaries` (this work).
+  - Scratch worktree of `main` at `<scratchpad>/main_wt` (legacy comparison; its own `.venv` is broken by long
+    paths — the run used the repo's `.venv`). Removable.
+  - Carried over: `wavelet-meta-model-stage-b`; merged branches `unit/13…15` still deletable.
+- Scratch (disposable) in the session scratchpad: `smoke16run/`, `parity16/`, `parity16b/`, `legacy16/`,
+  `legacy_main16/`, `review16/` (reviewer probes).
+- Pending task chip from U15 ("Investigate legacy CSV regression hash drift") is now moot: see below.
 
 ## Verification — how to confirm things still work
-- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q` — 614 passed.
+- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q` — 712 passed.
 - `uvx ruff check . && uvx ruff format --check .` — clean.
-- Parity (~17 min) — `parity: PASS` (8/8), as at 7a52fdd:
+- Parity (~17 min) — PASS (8/8):
   1. `uv run python scripts/u12_parity.py spec P.yaml`
-  2. `LOKY_MAX_CPU_COUNT=1 python -m experiments --root R --ledger R/ledger.jsonl run P.yaml --jobs 24`
+  2. `LOKY_MAX_CPU_COUNT=1 python -m experiments --root R --ledger R/ledger.jsonl run P.yaml --jobs 20`
   3. `uv run python scripts/u12_parity.py check R R/ledger.jsonl`
 - `PYTHONIOENCODING=utf-8 MPLBACKEND=Agg uv run python wavelet_meta_model.py data/data.csv --out R` —
-  `R/wfo_signals.csv` sha1 `f8e0617e…` (identical on `main` before U15; see open question).
-- `uv run python scripts/u15_state.py` — reproduces `results\u15\state_features.json` (cached bars and exo, no
-  network).
-- `LOKY_MAX_CPU_COUNT=1 uv run python -m experiments --root <scratch> --ledger <scratch>/ledger.jsonl run experiments/specs/u15_smoke.yaml --jobs 4`
-  — 4 ok.
+  `wfo_signals.csv` sha1 `551d8074…`; all five outputs identical to `main`.
+- `LOKY_MAX_CPU_COUNT=1 uv run python -m experiments --root S --ledger S/ledger.jsonl run experiments/specs/u16_smoke.yaml --jobs 8`
+  — 14 ok. Then `uv run python scripts/u16_primaries.py --smoke S`.
 
 ## Deferred + open questions
-- Deferred: releases on non-session days (the Sunday 2020-03-15 FOMC statement, Good Friday CPI/NFP) flag no session
-  — a family-spec choice for F8 (U16/U17).
-- Deferred: sector ETFs get no "sector" context (PLAN asked for it); AMZN/GOOGL/META map to QQQ.
-- Deferred: `gamma_proxy` — no historical chain or open interest; `data/options.py` collects forward (U19/U20).
-  Candidate sources were discussed at the end of the session (SqueezeMetrics GEX/DIX CSV, CBOE SKEW/VVIX, ThetaData /
-  ORATS / CBOE DataShop, a bar-based realized-gamma proxy).
-- Deferred: BAA10Y `available_at` (next business day 16:30 ET) assumed, not verified against FRED's publication lag.
-- Deferred: between a cancellation's announcement and its original scheduled instant, `to_*` is stale (announcement
-  dates not recorded); rescheduled BLS rows in 2025-10..2026-02 stay public only on their release day (U13 rule).
-- Carried over: MOC entries and `width` under time/hysteresis exits (U16); stress-session costs (U17); exo
-  `coverage_end` (U20); SVXY's 2018 break (F9/U21).
-- Open: the legacy CSV hash on `main` is `f8e0617e…`, not the `551d8074…` recorded after U12–U14; U15 does not change
-  it. Either the reference value or the environment drifted (task chip spawned).
-- Open: delete the merged `unit/13-…` / `unit/14-…` / `unit/15-…` branches and the stage-b worktree? (the user's call)
-- Noted in PLAN2 (U15 deferred): explore CBOE SKEW and VVIX in the exo layer plus a bar-based realized-gamma proxy as
-  the gamma proxy (SqueezeMetrics GEX as a later cross-check).
+- Deferred (PLAN2 U16 list):
+  - Calendar windows and weekly rebalances count data sessions, not exchange sessions (SPY 1Day drops 2019-08-12).
+  - weekly_reversal's rank needs a basket cell (U17).
+  - vol_target's `vix` band path restarts per window.
+  - MOC at 15:55 is after NYSE's 15:50 cutoff for single stocks.
+  - `n_trades` counts rolls.
+  - Width warm-up drops the first VOL_SPAN bars' events.
+  - event_reaction trades 2020-03-03 at the scheduled times.
+- Closed: the legacy hash. `main` and this branch both give `551d8074…` (the U12–U14 reference); U15's `f8e0617e…`
+  was that session's environment. The U15 task chip can be dismissed.
+- Open: push `unit/16-mechanism-primaries` and open a PR? Delete merged branches / the stage-b worktree? (the user's
+  call)
+- Noted for later units: the smoke spec lowers MIN_*_EVENTS and widens 5Min windows. U17 family cells should run
+  the rules without the meta-model's event minimums (Phase 1 has no ML).
 
 ## Pick up here
-Start U16 (mechanism primaries; PLAN2 U16, SPEC §16) on a new branch `unit/16-...` off `main`. It builds on the U14
-samplers/exits and the U15 `session` / `calendar_events` / `vol_state` groups.
+Merge U16 if the user approves, then start U17 (family-test tooling; PLAN2 U17, SPEC §17) on `unit/17-...` off
+`main`. Primary inputs:
+- `primary_config` / spec cells;
+- the primary-only stream sized by `rule_size`;
+- portfolio cells for F2 / F10.

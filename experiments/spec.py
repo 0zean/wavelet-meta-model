@@ -16,8 +16,10 @@ Experiment specs (SPEC §9, U10): a YAML file → a list of validated cells.
 
 Cell fields: symbols, timeframe, start, end ([start, end) NY dates), feature_groups ("default" or a list),
 primary {name, params}, model {meta, primary}, meta_train, sizer, risk_profile, pwfo ({is_grid, oos_grid, expanding}
-or null = one expanding WFO), seed, overrides (any other RunConfig field). Every cell's RunConfig is built at load
-time, so an invalid spec fails before anything runs.
+or null = one expanding WFO), seed, overrides (any other RunConfig field). A mechanism primary (SPEC §16) puts its
+default sampler and exit (config_overrides) into `overrides`, under the cell's own, so the recorded cell is the run
+configuration; its sizer defaults to `rule_size` (when the cell and the defaults set none), and a feature group its
+rule reads (vol_state for a VIX source / gate) must be listed. Every cell's RunConfig is built at load time, so an invalid spec fails before anything runs.
 """
 
 import copy
@@ -160,6 +162,21 @@ def normalize(raw: dict) -> dict:
     owned = _CELL_OWNED & set(c["overrides"])
     if owned:
         raise ValueError(f"overrides may not set {sorted(owned)}: use the cell's own fields")
+    from primaries import REGISTRY as PRIMARIES
+    from primaries.mechanism import MechanismPrimary
+
+    cls = PRIMARIES.get(c["primary"]["name"])
+    if isinstance(cls, type) and issubclass(cls, MechanismPrimary):
+        if c["timeframe"] not in cls.TIMEFRAMES:
+            raise ValueError(f"primary {c['primary']['name']!r} runs on {list(cls.TIMEFRAMES)}, not {c['timeframe']!r}")
+        p = cls(**c["primary"]["params"])
+        c["overrides"] = {**p.config_overrides(c["timeframe"]), **c["overrides"]}
+        if "sizer" not in raw:  # primary_config's default: the rule's own size hint
+            c["sizer"] = "rule_size"
+        missing = [g for g in p.needs_groups() if g not in c["feature_groups"]]
+        if missing:
+            raise ValueError(f"primary {c['primary']['name']!r} with {c['primary']['params']} reads the {missing} "
+                             "feature group(s): add them to feature_groups")  # fmt: skip
     c["overrides"] = {k: list(v) if isinstance(v, tuple) else v for k, v in dict(c["overrides"]).items()}
     return json.loads(json.dumps(c, sort_keys=True))  # plain JSON types (tuples → lists, sorted keys)
 
