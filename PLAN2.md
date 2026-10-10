@@ -1004,7 +1004,7 @@ model fits). 1 session of orchestration.
   with their own cell and benchmark. Fixes: registration decoded `git show` with the Windows codec, refusing an
   unchanged spec with non-ASCII text (found after registering, before any run); the program summary recomputes DSR
   with the program's trials at summary time; the summary shows the coherence verdict; per-trade responses count a
-  rolled chain as one position. 765 tests (17 in `tests/test_u18.py`).
+  rolled chain as one position. 764 tests pass (15 in `tests/test_u18.py`); ruff clean.
 - **Registered** `families/F1–F4.yaml` at e19b44f (commit 847e183), after the user approved the specs and the
   equal-risk benchmark. Deviations from this plan's text, stated in each spec header: risk profile `none` (`basket`
   for F2) instead of `standard`; benchmark `buy_and_hold_er`; F4 as one SPY position over the union of its windows on
