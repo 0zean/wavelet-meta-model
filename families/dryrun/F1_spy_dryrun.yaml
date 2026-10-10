@@ -1,0 +1,31 @@
+# U17 dry run (PLAN2 U17 done-criterion 3): F1's mechanism on SPY only, run on a scratch ledger to show that the
+# family tooling (registration, budget, rule cells, pooled test, report) works end to end on cached bars. It is NOT
+# the F1 family test: U18 registers families/F1.yaml (SPY, QQQ, IWM, DIA + the TLT / GLD check) and runs it on the
+# program ledger. Nothing here is a program trial.
+id: F1_spy_dryrun
+registered: {sha: '9e4bebfe42d1046abc50f9df43133b17e3f16d98', date: '2026-10-09'}
+mechanism: >-
+  Variance is predictable at a one-month horizon while the equity premium is not proportionally higher when variance
+  is high (Moreira & Muir 2017); scaling exposure by sigma*/sigma_hat (capped at 1) raises the Sharpe ratio and cuts
+  drawdowns by de-risking.
+instruments: [SPY]
+timeframe: 1Day
+headline:
+  primary: {name: vol_target, params: {sigma_target: 0.15, window: 21, band: 0.10, vol_source: rv}}
+  cost_model: quotes
+  risk_profile: none
+variants:
+  - {label: rv63, primary.params.window: 63}
+  - {label: ewm33, primary.params.vol_source: ewm, primary.params.window: 33}
+  - {label: target10, primary.params.sigma_target: 0.10}
+  - {label: target20, primary.params.sigma_target: 0.20}
+state_splits: [vix_tercile, macro_day, abs_move_tercile]
+response: [sharpe, max_dd, calmar, lpm2, skew, crisis_return, exposure]
+sample_splits:
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+  - {label: tlt_gld, instruments: [TLT, GLD]}
+benchmark: buy_and_hold_ew
+floors: {min_net_ret_vs_benchmark: 0.8}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 10

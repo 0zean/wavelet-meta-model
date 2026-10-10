@@ -1,0 +1,5 @@
+# Program-wide trial caps (PLAN2 protocol 3, SPEC §11.1): enforced by families/run.py before any cell of a family
+# runs. A trial is a family variant (stage F) or an overlay configuration (stage G), counted once per trial key
+# whatever its instrument count; amendments (<id>.v<k>) count against their family.
+max_families: 8
+max_trials: 112

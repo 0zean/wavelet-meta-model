@@ -121,7 +121,9 @@ def simulate_portfolio(
     Returns:
         (equity, trades, log): close-marked equity on the union timeline (attrs "turnover", "exposure" = share of
         bars with a position at any point, "avg_position" = mean Σ committed fraction of the held positions over the
-        closes with a position — m·SIZE per position without the risk layer, as the single-mode backtest); one row per executed position (entry / exit union positions, fills, one-way `entry_cost_bp` /
+        closes with a position — m·SIZE per position without the risk layer, as the single-mode backtest;
+        "traded_notional" / "cost_paid" = Σ shares traded × reference price / Σ their one-way costs, in cash, over
+        every fill: a rolled exit trades nothing, a roll's entry only the traded shares); one row per executed position (entry / exit union positions, fills, one-way `entry_cost_bp` /
         `exit_cost_bp` and round-trip `cost_bp` (the final exit's cost for a trimmed position), `size` = m,
         `frac` = committed fraction of equity, `pnl` in cash, per-unit `pnl_pct`, `exit_reason`); a per-bar log
         (gross / net / count / max |position| on decision-time marks after the open's decisions, the drawdown
@@ -204,6 +206,7 @@ def simulate_portfolio(
     flatten: set[str] = set()
     blocked_session = None
     turnover, pos_bars, pos_sum, held_bars = 0.0, 0, 0.0, 0
+    notional, cost_cash = 0.0, 0.0  # Σ traded notional at the fills' reference prices and Σ one-way costs, in cash
     trades: list[dict] = []
     log = {k: np.zeros(n) for k in ("gross", "net", "long", "short", "count", "max_pos", "dd_mult", "gate")}
     open_info: dict[str, dict] = {}  # per open lot: entry details for the trade record
@@ -218,7 +221,7 @@ def simulate_portfolio(
     ) -> None:
         """Sell (part of) a lot at reference price px with adverse costs (fill kind `kind`; none when `rolled` into a
         new position at the same fill, which pays the traded shares' cost); realize P&L into cash."""
-        nonlocal cash, turnover
+        nonlocal cash, turnover, notional, cost_cash
         lt = lots[s]
         q = lt.qty if frac_of_lot == 1.0 else lt.qty * frac_of_lot
         # equity with this lot marked at px (the others at their marks), before the fill's cost
@@ -231,6 +234,8 @@ def simulate_portfolio(
             pnl -= q * lt.entry_fill * profile.borrow_bps * 1e-4 * (b - lt.entry_b + 1) / cfg.bars_per_year
         if not rolled:
             turnover += q * fill / E
+            notional += q * px
+            cost_cash += q * px * c
         cash += pnl
         info = open_info[s]
         info["pnl"] += pnl
@@ -258,7 +263,7 @@ def simulate_portfolio(
     def enter(f: float, s: str, i: int, b: int, px: float, kind: str, E_dec: float, roll: bool) -> None:
         """Open bet i at reference price px of bar b (fill kind `kind`) with f of the decision-time equity E_dec;
         `roll`: the symbol's position exiting at this fill is rolled into it (cost on the traded shares only)."""
-        nonlocal turnover
+        nonlocal turnover, notional, cost_cash
         side = int(b_side[i])
         c_in = cost(s, b, kind)
         fill = px * (1.0 + side * c_in)
@@ -272,8 +277,11 @@ def simulate_portfolio(
             c_in = c_in * traded / qty  # the traded shares' cost, per share of the new position
             fill = px * (1.0 + side * c_in)
             turnover += traded * px / E_dec
+            notional += traded * px
         else:
             turnover += qty * fill / E_dec
+            notional += qty * px
+        cost_cash += qty * px * c_in  # a roll's c_in is already per share of the new position (the traded shares' cost)
         lots[s] = _Lot(s, i, side, qty, fill, b)
         busy_until[s] = int(b_exit_pos[i])
         open_info[s] = {
@@ -433,6 +441,8 @@ def simulate_portfolio(
     out.attrs["turnover"] = turnover
     out.attrs["exposure"] = held_bars / n
     out.attrs["avg_position"] = pos_sum / pos_bars if pos_bars else np.nan
+    out.attrs["traded_notional"] = notional  # the family test's edge-to-cost floor (SPEC §17.2)
+    out.attrs["cost_paid"] = cost_cash
     tr = pd.DataFrame(trades)
     if len(tr):
         tr["pnl_pct"] = tr["side"] * (tr["exit_fill"] / tr["entry_fill"] - 1.0)

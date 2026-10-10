@@ -87,6 +87,7 @@ class FeatureSet:
         context: dict[str, pd.DataFrame] | None = None,
         symbol: str | None = None,
         cache_dir=None,
+        require_core: bool = True,
     ):
         self.cfg = cfg
         self.context = context or {}
@@ -98,11 +99,12 @@ class FeatureSet:
             self.static: list[FeatureGroup] = []
             self.per_fold = [_LegacyFracdiff]
             return
-        specs = resolve_groups(groups, cfg.TIMEFRAME)
+        specs = resolve_groups(groups, cfg.TIMEFRAME, require_core)
         self.group_context = {s.name: self._group_context(s) for s in specs}
         self.static = [s for s in specs if not s.per_fold]
         self.per_fold = [_PerFold(s.fn, self.group_context[s.name] if s.needs else None) for s in specs if s.per_fold]
         self.names = [s.name for s in specs]
+        self.per_fold_names = [s.name for s in specs if s.per_fold]
 
     def _group_context(self, spec: FeatureGroup) -> dict:
         """The context a group sees: its `needs` (required), its `optional` keys when supplied, and for "exo" an
@@ -125,7 +127,7 @@ class FeatureSet:
             feats = self._cached(spec, df)
             print(f"[FEAT]  {spec.name:<15} {feats.shape[1]:>3} cols  {time.time() - t0:6.2f}s")
             parts.append(feats)
-        return pd.concat(parts, axis=1)
+        return pd.concat(parts, axis=1) if parts else pd.DataFrame(index=df.index)
 
     def _cached(self, spec: FeatureGroup, df: pd.DataFrame) -> pd.DataFrame:
         ctx = self.group_context[spec.name]

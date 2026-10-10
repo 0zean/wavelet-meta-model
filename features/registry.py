@@ -74,17 +74,18 @@ def feature_group(
     return register
 
 
-def resolve_groups(groups, timeframe: str) -> list[FeatureGroup]:
+def resolve_groups(groups, timeframe: str, require_core: bool = True) -> list[FeatureGroup]:
     """
     Validate a group list and drop intraday-only groups on daily bars (with a log line).
 
     Raises:
-        ValueError: If `wavelet_core` is missing, a name is unknown, or a name repeats.
+        ValueError: If `wavelet_core` is missing (unless not `require_core`: the rule pass builds only the groups a
+            fixed rule reads), a name is unknown, or a name repeats.
     """
     import features.groups  # noqa: F401  (registers the groups)
 
     groups = list(groups)
-    if REQUIRED_GROUP not in groups:
+    if require_core and REQUIRED_GROUP not in groups:
         raise ValueError(f"feature set {groups} lacks the required group {REQUIRED_GROUP!r}")
     unknown = [g for g in groups if g not in REGISTRY]
     if unknown:

@@ -16,6 +16,10 @@ WFO cells and every PWFO cell's combos (SPEC §11.2; no nested pools); the paren
 combo is back and appends each cell's row as it finishes. A failing cell is an `error` row with its traceback under
 `<root>/cells/<hash>/traceback.txt`; a cell with no fittable window is `no_fit`.
 
+Rule cells (model.meta "none", stage F; SPEC §17): each symbol's rule pass (wfo/rule_pass.py, through the signals
+cache) simulated through the portfolio simulator from the first live bar, no meta-model; kind "rule", n_trials 0 (the
+family runner's variant row is the counted trial), plus the cost totals the family test's floors read.
+
 Holdout: a cell whose range ends after HOLDOUT_START is refused unless `final=True`; a final run needs every cell in
 stage E and past HOLDOUT_START, records a `holdout_access` event first (in the ledger and in HOLDOUT_MARKER, outside
 any ledger), and is refused if either already holds a holdout access of a different batch (the holdout is evaluated
@@ -234,14 +238,16 @@ def _diag(df: pd.DataFrame, sig: pd.DataFrame, cfg: RunConfig) -> dict:
 
 
 def _signals(sym: str, df: pd.DataFrame, cfg: RunConfig, root: Path, feature_cache_dir, context=None) -> pd.DataFrame:
-    """run_wfo for one symbol, through the signals cache."""
+    """run_wfo for one symbol (the rule pass for META_MODEL "none"), through the signals cache."""
+    from wfo.rule_pass import rule_signals
     from wfo.wfo_engine import run_wfo
 
     path = root / "signals" / f"{signals_key(sym, cfg, df, context)}.pkl"
     if path.exists():
         print(f"[EXP]  {sym}: signals cache hit {path.name}")
         return pd.read_pickle(path)
-    sig = run_wfo(df, cfg, context=context, symbol=sym, feature_cache_dir=feature_cache_dir)
+    fn = rule_signals if cfg.META_MODEL == "none" else run_wfo
+    sig = fn(df, cfg, context=context, symbol=sym, feature_cache_dir=feature_cache_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".pkl")
     os.close(fd)
@@ -301,6 +307,59 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
         "turnover": float(m["Turnover (x/yr)"]),
         "max_dd": float(m["Max Drawdown (%)"]) / 100,  # bar-level drawdown (the daily one misses intraday troughs)
         "n_trials": 1,
+    }
+    row["calmar"] = row["ret_ann"] / abs(row["max_dd"]) if row["max_dd"] < 0 else np.nan
+    return row
+
+
+def _run_rule_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path, feature_cache_dir) -> dict:
+    """
+    A rule cell (META_MODEL "none", stage F; SPEC §17): the rule pass of each symbol (wfo.rule_pass), simulated from
+    the first live bar through the portfolio simulator (one or many symbols, cfg.RISK_PROFILE and cfg.COST_MODEL),
+    with no meta-model. Writes daily_returns.csv and trades.csv; the row adds the totals the family test's floors read
+    (traded_notional, cost_paid, pnl in cash on INIT_CASH). n_trials = 0: a rule cell is one instrument (or the basket)
+    of a family variant, and the variant is the counted trial (its own ledger row, families/run.py).
+    """
+    from risk.costs import fill_costs
+    from risk.portfolio import simulate_portfolio
+    from risk.profiles import get_profile
+    from wfo.pwfo import daily_returns
+    from wfo.wfo_engine import NoFitError
+    from wfo.wfo_metrics import strategy_metrics
+
+    context, cost = data.get("context") or {}, data.get("cost") or {}
+    sigs = {}
+    for sym, df in data["bars"].items():
+        sigs[sym] = _signals(sym, df, cfg, root, feature_cache_dir, context.get(sym))
+        sigs[sym].to_csv(out / f"signals_{sym}.csv")
+    starts = [s.attrs.get("live_start") for s in sigs.values() if s.attrs.get("live_start") is not None]
+    if not starts:
+        raise NoFitError("the rule never takes a position (no sided event): the data is shorter than its warm-up")
+    live = min(starts)
+    bars = {s: data["bars"][s].loc[live:] for s in sigs}
+    costs = None
+    if cfg.COST_MODEL != "slippage":
+        costs = {s: fill_costs(bars[s].index, cfg, cost.get(s)) for s in sigs}
+    eq, trades, _ = simulate_portfolio(bars, sigs, cfg, get_profile(cfg.RISK_PROFILE), side_col="trade_signal",
+                                       size_col="bet_size", costs=costs)  # fmt: skip
+    trades.to_csv(out / "trades.csv")
+    m = strategy_metrics(eq, trades, cfg.bars_per_year)
+    daily = daily_returns(eq)
+    daily.rename("ret").to_csv(out / "daily_returns.csv")
+    row = {"kind": "rule", **daily_stats(daily)}
+    row |= {
+        "n_trades": int(m["Num Trades"]),
+        "turnover": float(m["Turnover (x/yr)"]),
+        "max_dd": float(m["Max Drawdown (%)"]) / 100,
+        "n_trials": 0,
+        "live_start": str(live),
+        "init_cash": float(cfg.INIT_CASH),
+        "pnl": float(eq.iloc[-1] - cfg.INIT_CASH),
+        "traded_notional": float(eq.attrs["traded_notional"]),
+        "cost_paid": float(eq.attrs["cost_paid"]),
+        "n_oos_events": int(sum(len(s) for s in sigs.values())),
+        "n_sided": int(sum(int((s["signed_dir"] != 0).sum()) for s in sigs.values())),
+        "skipped_segments": {s: sig.attrs.get("skipped_segments", []) for s, sig in sigs.items()},
     }
     row["calmar"] = row["ret_ann"] / abs(row["max_dd"]) if row["max_dd"] < 0 else np.nan
     return row
@@ -402,6 +461,8 @@ def run_cell(cell: Cell, chash: str, data: dict, final: bool, root, feature_cach
         cfg = cell.config(final)
         if cell.is_pwfo:
             return _run_pwfo_cell(cell, cfg, data, out, feature_cache_dir)
+        if cfg.META_MODEL == "none":
+            return _run_rule_cell(cell, cfg, data, root, out, feature_cache_dir)
         return _run_wfo_cell(cell, cfg, data, root, out, feature_cache_dir)
 
     return _finish(out, _guarded(cell, out, body), time.time() - t0)
@@ -467,6 +528,8 @@ def finish_pwfo_cell(cell: Cell, chash: str, final: bool, root, grid: list, resu
 
 
 def cell_trials(cell: Cell) -> int:
+    if cell.is_rule:  # a family member: the family variant row is the counted trial (families/run.py)
+        return 0
     return len(cell.spec["pwfo"]["is_grid"]) * len(cell.spec["pwfo"]["oos_grid"]) if cell.is_pwfo else 1
 
 
@@ -550,21 +613,31 @@ def run(
     feature_cache_dir=feature_cache.DEFAULT_ROOT,
     holdout_marker=HOLDOUT_MARKER,
     on_row=None,
+    on_hash=None,
+    family: bool = False,
 ) -> list[dict]:
     """
     Run `cells` (module docstring) and append their ledger rows; returns the rows written by this call.
     One run per ledger at a time (an exclusive run lock; a second run raises). jobs >= 2 runs cells in worker
     processes: a worker that dies is detected, and the cells not yet recorded are re-run one per fresh process, a
     cell whose process dies again becoming an `error` row. jobs = 1 runs in-process (no crash isolation).
-    `on_row(row)` is called after each append (progress / tests).
+    `on_row(row)` is called after each append (progress / tests); `on_hash(cell, chash)` for every cell once its hash
+    is known, whether it then runs or is skipped (the family runner reads the cells' artifacts by hash).
+    Cells of the family stages (F / G / H) run only with `family=True` (families/run.py, which counts and budgets
+    their trials); without it they are refused before anything runs.
     """
+    from experiments.spec import FAMILY_STAGES
+
+    fam = sorted({c.stage for c in cells} & set(FAMILY_STAGES))
+    if fam and not family:
+        raise ValueError(f"stage(s) {fam} are family stages: run them through `python -m families run` (budgets)")
     with ledger.run_lock():
         return _run(cells, ledger, Path(root), source or CachedBars(), jobs, final, retry_errors,
-                    spec_name, feature_cache_dir, L.Ledger(holdout_marker), on_row)  # fmt: skip
+                    spec_name, feature_cache_dir, L.Ledger(holdout_marker), on_row, on_hash)  # fmt: skip
 
 
 def _run(cells, ledger, root, source, jobs, final, retry_errors, spec_name, feature_cache_dir, marker,
-         on_row) -> list[dict]:  # fmt: skip
+         on_row, on_hash=None) -> list[dict]:  # fmt: skip
     from joblib import Parallel, delayed
     from joblib.externals.loky.process_executor import BrokenProcessPool
 
@@ -608,6 +681,8 @@ def _run(cells, ledger, root, source, jobs, final, retry_errors, spec_name, feat
             data, dhash = None, "load-error"
             err = traceback.format_exc()
         chash = cell_hash(cell, cfg, dhash)
+        if on_hash is not None:
+            on_hash(cell, chash)
         if (chash, cell.stage) in seen:
             continue
         seen.add((chash, cell.stage))
