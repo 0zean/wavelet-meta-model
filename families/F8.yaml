@@ -11,6 +11,7 @@
 # - Variants (PLAN2 axes): observe 30 minutes with the same exit times (hold 75); hold 60; each release alone.
 #   QQQ, IWM, GLD (auxiliary instruments) are a sample split.
 id: F8
+registered: {sha: 'dd8228d0abeafdf6f2f45ed621fd5ab81279fa1b', date: '2026-10-10'}
 mechanism: >-
   After scheduled macro releases (FOMC statements at 14:00; CPI and NFP at 08:30) prices under-react for one to two
   hours as information is absorbed across asset classes and dealers' inventory constraints slow the adjustment, so the

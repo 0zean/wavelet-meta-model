@@ -11,6 +11,7 @@
 #   else 10:30). The news-continuation leg (follow on FOMC / CPI / NFP days) is a different claim and is not run;
 #   the single-stock leg is a sample split (on its non-macro days; earnings days are not excluded there).
 id: F7
+registered: {sha: 'dd8228d0abeafdf6f2f45ed621fd5ab81279fa1b', date: '2026-10-10'}
 mechanism: >-
   Large overnight gaps mix information, which persists, with liquidity-driven overnight moves and opening-auction
   imbalances, which revert; on days without scheduled news the liquidity component dominates, so part of the gap

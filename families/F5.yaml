@@ -14,6 +14,7 @@
 # - Not measured here: aux b (reversion over the next 1–3 days) and the gamma-proxy split (no proxy; SPEC §17.5);
 #   `path_monotone` is not built. Sector ETFs (aux d: absent there) are a sample split.
 id: F5
+registered: {sha: 'dd8228d0abeafdf6f2f45ed621fd5ab81279fa1b', date: '2026-10-10'}
 mechanism: >-
   Gamma hedging by option market makers and leveraged-ETF rebalancing buy into rises and sell into falls near the close
   (Baltussen, Da, Lammers & Martens 2021; Cheng & Madhavan 2009), and late-informed traders act on the morning's
