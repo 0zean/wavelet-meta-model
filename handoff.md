@@ -1,9 +1,9 @@
-# Session Handoff — U16 mechanism primaries (branch, not yet merged)
+# Session Handoff — U16 mechanism primaries (merged to main)
 
 ## Where it started
 The user asked me to review `handoff.md` (U15 merged as PR #17) and begin U16 per PLAN2.md and SPEC §16. U16 was built
 on `unit/16-mechanism-primaries`, adversarially reviewed, fixed, and re-verified (suite, parity twice, legacy run,
-smoke spec). Not pushed, no PR (the user's call).
+smoke spec), then (at the user's request) pushed, opened as PR #18 and merged into `main` (merge commit b338211).
 
 ## Decisions locked + what shipped
 - Primaries — `primaries/mechanism.py` (`MechanismPrimary`, `primary_config`, `session_state`, `CALENDAR_WINDOWS`):
@@ -44,11 +44,11 @@ smoke spec). Not pushed, no PR (the user's call).
 
 ## Running state
 - Background processes: none.
-- Open worktrees / branches:
-  - `unit/16-mechanism-primaries` (this work).
-  - Scratch worktree of `main` at `<scratchpad>/main_wt` (legacy comparison; its own `.venv` is broken by long
-    paths — the run used the repo's `.venv`). Removable.
-  - Carried over: `wavelet-meta-model-stage-b`; merged branches `unit/13…15` still deletable.
+- Open worktrees / branches: none besides `main`.
+  - Merged local branches `unit/11-*` … `unit/16-*` deleted.
+  - The stage-b worktree and the scratch `main` worktree removed (both clean; their branches were merged).
+  - Remote `origin/unit/*` branches are kept.
+- Hung processes left by the review subagent (a stdin-waiting `python -` and a wait loop) stopped.
 - Scratch (disposable) in the session scratchpad: `smoke16run/`, `parity16/`, `parity16b/`, `legacy16/`,
   `legacy_main16/`, `review16/` (reviewer probes).
 - Pending task chip from U15 ("Investigate legacy CSV regression hash drift") is now moot: see below.
@@ -76,13 +76,12 @@ smoke spec). Not pushed, no PR (the user's call).
   - event_reaction trades 2020-03-03 at the scheduled times.
 - Closed: the legacy hash. `main` and this branch both give `551d8074…` (the U12–U14 reference); U15's `f8e0617e…`
   was that session's environment. The U15 task chip can be dismissed.
-- Open: push `unit/16-mechanism-primaries` and open a PR? Delete merged branches / the stage-b worktree? (the user's
-  call)
+- Open: delete the remote `origin/unit/*` branches? (the user's call)
 - Noted for later units: the smoke spec lowers MIN_*_EVENTS and widens 5Min windows. U17 family cells should run
   the rules without the meta-model's event minimums (Phase 1 has no ML).
 
 ## Pick up here
-Merge U16 if the user approves, then start U17 (family-test tooling; PLAN2 U17, SPEC §17) on `unit/17-...` off
+Start U17 (family-test tooling; PLAN2 U17, SPEC §17) on `unit/17-...` off
 `main`. Primary inputs:
 - `primary_config` / spec cells;
 - the primary-only stream sized by `rule_size`;
