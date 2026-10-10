@@ -1,0 +1,43 @@
+# F4 — calendar and event drift (PLAN2 §F4, U18). Headline as PLAN2: long SPY over the FOMC window and the
+# turn-of-month window, flat otherwise; TLT over the month's last session as a separate instrument leg; auction fills.
+# Choices made at registration (U18):
+# - One SPY position over the union of the two windows (calendar_drift with a window list: entered at the closing
+#   auction before the first held session, rolled daily, never stacked when the windows overlap), so the stream is
+#   the overlay an account would run. 1Day bars: the FOMC window is t−1 close → t close. PLAN2's t 14:00 exit needs
+#   5Min bars and cannot be combined with a close-to-close window in one position; it is the fomc_1400 variant (FOMC
+#   window alone on 5Min, aux b: the drift accrues before 14:00).
+# - The TLT month-end leg is a per-instrument patch of the headline and stays the same in every variant.
+# - floors: min_net_ret 2 %/yr (PLAN2's overlay floor). F4 is long-only, so the default would be 0.8 × buy-and-hold,
+#   which a calendar overlay holding ~20 % of sessions cannot meet by construction (PLAN2 expects 2–5 %/yr).
+# - risk_profile none (see F1.yaml) and benchmark buy_and_hold_er.
+# - Variants: each leg alone, PLAN2's window definitions (TOM −2/+2) and the OPEX-week and CPI/NFP legs on.
+id: F4
+mechanism: >-
+  Scheduled flows and scheduled information concentrate returns on known days: the pre-FOMC announcement drift
+  (Lucca & Moench 2015), turn-of-month pension and payroll flows (Etula, Rinne, Suominen & Vaittinen 2020) and
+  month-end duration extension in Treasuries.
+instruments: [SPY, TLT]
+timeframe: 1Day
+headline:
+  primary: {name: calendar_drift, params: {window: [fomc_pre, tom]}}
+  per_instrument:
+    TLT: {primary: {params: {window: month_end}}}
+  cost_model: quotes
+  risk_profile: none
+variants:
+  - {label: fomc_only, primary.params.window: fomc_pre}
+  - {label: tom_only, primary.params.window: tom}
+  - {label: tom_2_2, primary.params.window: [fomc_pre, tom_2_2]}
+  - {label: plus_opex, primary.params.window: [fomc_pre, tom, opex_week]}
+  - {label: plus_cpi_nfp, primary.params.window: [fomc_pre, tom, cpi_nfp]}
+  - {label: fomc_1400, timeframe: 5Min, primary.params.window: fomc_pre}
+state_splits: [vix_tercile, macro_day]
+response: [sharpe, ret_ann, mean_per_trade_bp, hit_rate, max_dd, exposure]
+sample_splits:
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+  - {label: qqq_iwm, instruments: [QQQ, IWM]}
+benchmark: buy_and_hold_er
+floors: {min_net_ret: 0.02, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 10

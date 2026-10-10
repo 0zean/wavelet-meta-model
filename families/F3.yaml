@@ -1,0 +1,35 @@
+# F3 — overnight vs intraday return (PLAN2 §F3, U18). Headline as PLAN2: long SPY and QQQ from the closing auction to
+# the next opening auction every session, flat intraday, quotes-based auction costs.
+# Choices made at registration (U18):
+# - 5Min bars (the MOC entry checks that the session's last bar is its closing-auction bar). VOL_PROFILE stays "none":
+#   the rule reads no σ (no gate, no barrier), so the time-of-day profile would change nothing but the warm-up.
+# - risk_profile none (one full-size position per instrument cell; see F1.yaml) and benchmark buy_and_hold_er.
+# - PLAN2's state axis (all days vs VIX above / below median vs prior-day sign) is reported as state splits of the
+#   headline (vix_median, prior_day_sign), not run as variants. The variants are one gate and one fill-timing change:
+#   vix20 (flat when the previous VIX close > 20) and exit_0935 (exit at the 09:35 bar's open, off-auction, paying
+#   the regular spread plus slippage, instead of the opening auction).
+# - The intraday leg (aux b) has no primary; IWM / DIA (aux c) are a sample split.
+id: F3
+mechanism: >-
+  Almost all of the index return accrues from close to open while the intraday return is near zero or negative
+  (Lou, Polk & Skouras 2019); overnight information arrival met by intraday liquidity provision, clientele
+  differences and closing-auction pressure are the candidate drivers.
+instruments: [SPY, QQQ]
+timeframe: 5Min
+headline:
+  primary: {name: overnight, params: {}}
+  cost_model: quotes
+  risk_profile: none
+variants:
+  - {label: vix20, primary.params.vix_max: 20}
+  - {label: exit_0935, exit.params: {exit_time: "09:35", exit_session: 1}}
+state_splits: [vix_median, vix_tercile, prior_day_sign, day_of_week, macro_day]
+response: [sharpe, mean_per_trade_bp, hit_rate, max_dd, skew, exposure]
+sample_splits:
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+  - {label: iwm_dia, instruments: [IWM, DIA]}
+benchmark: buy_and_hold_er
+floors: {min_net_ret_vs_benchmark: 0.8, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 8

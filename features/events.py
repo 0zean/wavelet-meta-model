@@ -44,7 +44,9 @@ CLOSE_MINUTE = 16 * 60
 EARLY_CLOSE_MINUTE = 13 * 60
 AMC_NEXT_MAX_DAYS = 4
 _DEFAULTS = {"cusum": {}, "dc": {"dc_mult": DEFAULT_DC_MULT}, "schedule": {"entry_times": None, "days": "all",
-             "gate": None, "every": "session", "day_offset": 0}}  # fmt: skip
+             "gate": None, "every": "session", "day_offset": 0, "windows": None}}  # fmt: skip
+WINDOW_KEYS = ("days", "day_offset", "hold")
+WINDOW_DAYS = ("fomc", "cpi_nfp", "macro", "tom", "month_end", "opex")  # calendar predicates a window may use
 
 
 def parse_time(s: str) -> int:
@@ -104,7 +106,32 @@ def event_params(cfg: RunConfig) -> dict:
             raise ValueError(f"EVENT_PARAMS day_offset must be an integer >= 0, got {off!r}")
         if p["gate"] is not None and (not isinstance(p["gate"], str) or minutes is None):
             raise ValueError("EVENT_PARAMS gate must be a string expression over session columns (intraday only)")
+        if p["windows"] is not None:
+            _check_windows(p)
     return p
+
+
+def _check_windows(p: dict) -> None:
+    """`windows` (U18): a daily MOC schedule held over the union of calendar windows (see schedule_events)."""
+    ws = p["windows"]
+    if p["entry_times"] != ["close"] or p["every"] != "session" or p["days"] != "all" or p["day_offset"] != 0:
+        raise ValueError("EVENT_PARAMS windows needs entry_times ['close'], every 'session', days 'all', day_offset 0")
+    if not isinstance(ws, list) or len(ws) < 2:
+        raise ValueError(f"EVENT_PARAMS windows must be a list of at least two windows, got {ws!r}")
+    seen = set()
+    for w in ws:
+        if not isinstance(w, dict) or set(w) != set(WINDOW_KEYS):
+            raise ValueError(f"a window is {{days, day_offset, hold}}, got {w!r}")
+        if w["days"] not in WINDOW_DAYS:
+            raise ValueError(f"window days must be one of {WINDOW_DAYS}, got {w['days']!r}")
+        for k, lo in (("day_offset", 0), ("hold", 1)):
+            v = w[k]
+            if not (isinstance(v, int) and not isinstance(v, bool) and v >= lo):
+                raise ValueError(f"window {k} must be an integer >= {lo}, got {v!r}")
+        key = (w["days"], w["day_offset"], w["hold"])
+        if key in seen:
+            raise ValueError(f"duplicate window {w!r}")
+        seen.add(key)
 
 
 def entry_at_close(cfg: RunConfig) -> bool:
@@ -285,7 +312,10 @@ def schedule_events(
     session (1Day: the previous session). `every` keeps entry
     sessions that are the first of their week / month in the data. `days` keeps sessions whose session `day_offset`
     sessions later (in the data) is a calendar day known (available_at) by the decision time; `gate` is evaluated on
-    the session frame at the event bar (a NaN comparison is False).
+    the session frame at the event bar (a NaN comparison is False). `windows` (U18; MOC entries every session): a list
+    of {days, day_offset, hold}; the MOC entry of session x is kept iff some window's entry session e (selected as
+    `days` / `day_offset` would select it, known at e's decision) has e <= x < e + hold, so a time exit at the next
+    session's close holds the union of the windows (consecutive entries roll into one position).
     """
     from data.timeframes import get_timeframe
 
@@ -328,15 +358,28 @@ def schedule_events(
     entry = entry[period_starts(day[first_pos], p["every"])[sess[entry]]]
     t = entry - 1
     keep = np.ones(len(t), bool)
-    if p["days"] != "all":
-        target = sess[entry] + p["day_offset"]
+
+    def days_hit(days: str, offset: int) -> np.ndarray:
+        target = sess[entry] + offset
         ok = target < len(first_pos)
         tday = np.where(ok, day[first_pos[np.minimum(target, len(first_pos) - 1)]].astype(np.int64), _NO_DAY)
         tday = tday.astype("M8[D]")
         _check_calendar_years(tday)
-        kinds = "earnings" if p["days"] == "earnings" else _MACRO[p["days"]]
-        hit = _known_days(kinds, _decision_utc(df.index[t], minutes), tday, day, symbol)
+        kinds = "earnings" if days == "earnings" else _MACRO[days]
+        return _known_days(kinds, _decision_utc(df.index[t], minutes), tday, day, symbol)
+
+    if p["days"] != "all":
+        hit = days_hit(p["days"], p["day_offset"])
         keep &= ~hit if p["days"] == "non_macro" else hit
+    if p["windows"] is not None:
+        # a window's entry session e (its predicate tested day_offset sessions later, known at e's decision) holds
+        # e + 1 … e + hold; the daily MOC entry at session x (held to x + 1's close) is kept iff x + 1 is held by some
+        # window, i.e. x ∈ [e, e + hold). Consecutive kept entries roll (one position, no cost).
+        held = np.zeros(len(first_pos) + max(w["hold"] for w in p["windows"]), bool)
+        for w in p["windows"]:
+            for e in sess[entry][days_hit(w["days"], w["day_offset"])]:
+                held[e : e + w["hold"]] = True
+        keep &= held[sess[entry]]
     if p["gate"] is not None and len(t):
         from features.session import session_frame
 

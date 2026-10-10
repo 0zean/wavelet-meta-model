@@ -1,0 +1,42 @@
+# F2 — time-series momentum across ETFs (PLAN2 §F2, U18). Headline as PLAN2: sign of the 252-session return, size
+# min(1, 10 % / σ̂(63 sessions)) per asset, weekly rebalance at the week's first open, long/short, gross cap 1.0.
+# Choices made at registration (U18):
+# - The basket: 15 of the cached ETFs, spread over asset classes (6 equity, 4 bond / credit, 4 commodity, 1 dollar);
+#   the sector ETFs and DIA are left out as near-duplicates of SPY.
+# - risk_profile basket (risk/profiles.py): entries scaled pro-rata to gross ≤ 1.0 and each side ≤ 1.0, no other
+#   caps; shorts pay 50 bp/yr borrow. All 15 are assumed easy to borrow (true of these ETFs on Alpaca today; history
+#   is not checkable).
+# - benchmark buy_and_hold_er: the equal-risk buy-and-hold basket, so Δ measures the trend signal, not risk parity.
+# - Variants (PLAN2 axes): lookback 63 / 126; the causal MODWT smooth slope J = 6 / 7 as the trend estimator;
+#   long-only; monthly rebalance. The equity-only basket is a sample split. PLAN2's "blended" lookback has no
+#   implementation and is left out.
+id: F2
+mechanism: >-
+  Slow information diffusion, under-reaction and herding create 1–12 month return continuation within asset classes;
+  vol-scaling equalizes risk across assets (Moskowitz, Ooi & Pedersen 2012; Hurst, Ooi & Pedersen 2017).
+basket:
+  symbols: [SPY, QQQ, IWM, EFA, EEM, VNQ, TLT, IEF, LQD, HYG, GLD, SLV, DBC, USO, UUP]
+timeframe: 1Day
+headline:
+  primary:
+    name: tsmom
+    params: {lookback: 252, vol_window: 63, estimator: ret, sigma_target: 0.10, long_only: false, gross_cap: 1.0}
+  cost_model: quotes
+  risk_profile: basket
+variants:
+  - {label: lb63, primary.params.lookback: 63}
+  - {label: lb126, primary.params.lookback: 126}
+  - {label: modwt6, primary.params.estimator: modwt, primary.params.modwt_j: 6}
+  - {label: modwt7, primary.params.estimator: modwt, primary.params.modwt_j: 7}
+  - {label: long_only, primary.params.long_only: true}
+  - {label: monthly, sampler.params.every: month}
+state_splits: [vix_tercile, macro_day]
+response: [sharpe, ret_ann, vol_ann, max_dd, skew, crisis_return, exposure]
+sample_splits:
+  - {label: "2017_2019", start: 2017-01-03, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+  - {label: equity_only, instruments: [SPY, QQQ, IWM, EFA, EEM, VNQ]}
+benchmark: buy_and_hold_er
+floors: {min_net_ret: 0.02, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 12

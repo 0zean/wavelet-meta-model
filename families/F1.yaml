@@ -1,0 +1,38 @@
+# F1 — volatility-managed exposure (PLAN2 §F1, U18). The headline is PLAN2's as written on 2026-10-08. The U17 dry
+# run (families/dryrun/F1_spy_dryrun.yaml, SPY only, scratch ledger) used the same headline and was not used to
+# choose anything here.
+# Choices made at registration (U18):
+# - risk_profile none: the rule sizes itself (m = min(1, σ*/σ̂) ≤ 1 per instrument cell). The `standard` profile
+#   PLAN2 U18 names would cap a single position at 20 % of equity, throttle to flat after a 20 % drawdown and gate
+#   daily losses, i.e. replace the rule being tested.
+# - benchmark buy_and_hold_er: the pooled stream mixes the instruments with equal-risk weights, so the equal-risk
+#   buy-and-hold mix isolates the timing effect from the weighting.
+# - variants: the PLAN2 state axes (σ̂ ∈ 63d RV, EWM span 33, VIX; σ* ∈ 10 %, 20 %), one change each. The VIX variant
+#   starts later (vol_state's GARCH needs 500 sessions); coherence reads it on the headline's days.
+id: F1
+mechanism: >-
+  Variance is highly predictable at a one-month horizon while the equity premium is not proportionally higher when
+  variance is high (Moreira & Muir 2017); scaling exposure by sigma*/sigma_hat, capped at 1 for a retail account,
+  raises the Sharpe ratio and cuts drawdowns by de-risking in high-variance periods.
+instruments: [SPY, QQQ, IWM, DIA]
+timeframe: 1Day
+headline:
+  primary: {name: vol_target, params: {sigma_target: 0.15, window: 21, band: 0.10, vol_source: rv}}
+  cost_model: quotes
+  risk_profile: none
+variants:
+  - {label: rv63, primary.params.window: 63}
+  - {label: ewm33, primary.params.vol_source: ewm, primary.params.window: 33}
+  - {label: vix, primary.params.vol_source: vix}
+  - {label: target10, primary.params.sigma_target: 0.10}
+  - {label: target20, primary.params.sigma_target: 0.20}
+state_splits: [vix_tercile, macro_day, abs_move_tercile]
+response: [sharpe, max_dd, calmar, lpm2, skew, crisis_return, exposure]
+sample_splits:
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+  - {label: tlt_gld, instruments: [TLT, GLD]}
+benchmark: buy_and_hold_er
+floors: {min_net_ret_vs_benchmark: 0.8, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 10

@@ -1207,6 +1207,28 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   errored headline, a missing result file) enters Holm with p = 1, so a family cannot leave the multiplicity count
   by failing or being deleted.
 
+### §17.6 U18 additions (as built)
+
+- **Union of calendar windows.** `calendar_drift` takes `window` as one name or a list of two or more. A list is one
+  position, long on every session some window holds: the schedule's new `windows` key (a list of `{days, day_offset,
+  hold}`, needing `entry_times: ["close"]`, `every: session`, `days: all`) keeps the market-on-close entry of session
+  x iff some window's entry session e (selected as `days` / `day_offset` would select it, known at e's decision) has
+  e ≤ x < e + hold, and the time exit is the next session's close; consecutive entries roll (one order, no cost), so
+  overlapping windows never stack. Every window in a list must end at a close on the cell's timeframe (`fomc_pre`
+  ends 14:00 on 5Min and is refused there); two windows holding the same sessions are refused. A union whose extra
+  window is contained in another reproduces the single window's equity exactly (tested).
+- **`basket` risk profile.** For a self-sized basket in one portfolio cell (F2): max_gross 1.0, max_net 1.0 (each
+  side), borrow 50 bp/yr on shorts; no vol target, position / concurrency caps, drawdown tiers or loss gate. Entries
+  at one open are scaled pro-rata into the gross cap.
+- **Family spec keys.** `headline.per_instrument: {SYM: <partial headline>}` is deep-merged into that instrument's
+  cells (every variant, and sample splits naming SYM); it may not set `timeframe` or nest `per_instrument`, must name
+  an instrument of the family or of a sample split, and is refused for a basket. A variant may set `timeframe` (its
+  cells run on it; the benchmark and streams stay daily).
+- **Basket sample splits.** A basket family's instrument split is its own portfolio cell; its benchmark is
+  buy-and-hold of all the split's symbols (before U18 it used the first symbol only).
+- **Risk profile in Phase 1.** PLAN2 U18 names `standard`; its 20 % position cap, drawdown tiers and daily-loss gate
+  would replace the self-sized rules under test, so single-instrument families register `none` and F2 `basket`.
+
 ---
 
 ## §18 Forward test (U20)

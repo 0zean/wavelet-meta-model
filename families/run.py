@@ -262,13 +262,14 @@ def run_family(
 
     sample_streams = {}
     for label, cs in split_cells.items():
-        syms = [c.symbols[0] for c in cs]
+        syms = [x for c in cs for x in c.symbols]  # a basket split is one portfolio cell over all its symbols
         sbh = bh_returns(source, syms, fam.timeframe, start, end)
         sw = T.risk_weights(sbh)
         hs = [hashes[(c.stage, c.spec_json())] for c in cs]
         if all(rows_by_hash.get(h, {}).get("status") == "ok" for h in hs):
-            sample_streams[label] = (T.pool({c.symbols[0]: _stream(root, h) for c, h in zip(cs, hs)}, sw),
-                                     T.benchmark(fam.benchmark, sbh, sw))  # fmt: skip
+            r = (_stream(root, hs[0]).rename("ret") if fam.basket
+                 else T.pool({c.symbols[0]: _stream(root, h) for c, h in zip(cs, hs)}, sw))  # fmt: skip
+            sample_streams[label] = (r, T.benchmark(fam.benchmark, sbh, sw))
     qslice = None
     if quasi_cells:
         hs = [hashes[(c.stage, c.spec_json())] for c in quasi_cells]

@@ -16,6 +16,9 @@ Family specs (SPEC §17.1): `families/<id>.yaml` → a validated FamilySpec and 
       risk_profile: none
       sizer: rule_size                   # optional (fixed | rule_size)
       overrides: {VOL_PROFILE: tod}      # optional, any other RunConfig field
+      timeframe: 5Min                    # optional (U18): the cells' timeframe when it differs from the family's
+      per_instrument:                    # optional (U18): a partial headline deep-merged into one instrument's cells
+        TLT: {primary: {params: {window: month_end}}}
     variants:                            # reported only; 1 + len(variants) <= TRIAL_BUDGET
       - {label: no_cost, cost_model: slippage}
       - {label: tod, overrides.VOL_PROFILE: tod}   # dotted keys reach into the headline
@@ -69,7 +72,8 @@ RESPONSES = ("sharpe", "sortino", "calmar", "ret_ann", "vol_ann", "max_dd", "ske
 TOP_KEYS = {"id", "mechanism", "registered", "instruments", "basket", "timeframe", "window", "headline", "variants",
             "state_splits", "response", "sample_splits", "benchmark", "floors", "test", "overlay", "TRIAL_BUDGET",
             "notes"}  # fmt: skip
-HEADLINE_KEYS = {"primary", "exit", "sampler", "cost_model", "risk_profile", "sizer", "overrides"}
+HEADLINE_KEYS = {"primary", "exit", "sampler", "cost_model", "risk_profile", "sizer", "overrides", "timeframe",
+                 "per_instrument"}  # fmt: skip
 FLOOR_KEYS = {"min_net_ret": None, "min_net_ret_vs_benchmark": None, "min_edge_to_cost": None, "max_dd": None}
 TEST_DEFAULTS = {"alpha": 0.05, "block_days": 21, "n_boot": 2000, "coherence_share": 0.667, "seed": 0}
 HEADLINE = "headline"
@@ -146,11 +150,37 @@ def _primary_cls(name: str):
     return cls
 
 
+def _merge(base: dict, patch: dict) -> dict:
+    """`base` with `patch` deep-merged into it (mappings merge, anything else replaces)."""
+    out = copy.deepcopy(base)
+    for k, v in patch.items():
+        out[k] = _merge(out[k], v) if isinstance(out.get(k), dict) and isinstance(v, dict) else copy.deepcopy(v)
+    return out
+
+
+def for_symbol(config: dict, symbol: str | None) -> dict:
+    """A variant config as it runs on `symbol`: its `per_instrument[symbol]` patch merged in, the mapping dropped."""
+    per = config.get("per_instrument") or {}
+    if not isinstance(per, dict):
+        raise TypeError("per_instrument maps an instrument to a partial headline")
+    base = {k: v for k, v in config.items() if k != "per_instrument"}
+    patch = per.get(symbol) if symbol is not None else None
+    if patch is None:
+        return base
+    if not isinstance(patch, dict) or set(patch) - (HEADLINE_KEYS - {"per_instrument", "timeframe"}):
+        raise ValueError(f"per_instrument[{symbol}] is a partial headline without per_instrument / timeframe; "
+                         f"got {patch!r}")  # fmt: skip
+    return _merge(base, patch)
+
+
 def cell_raw(config: dict, symbols, timeframe: str, start: str, end: str) -> dict:
     """The runner cell (experiments.spec fields) of a variant config on `symbols` over [start, end)."""
     unknown = set(config) - HEADLINE_KEYS
     if unknown:
         raise ValueError(f"unknown headline / variant key(s) {sorted(unknown)}; expected {sorted(HEADLINE_KEYS)}")
+    if config.get("per_instrument"):
+        raise ValueError("cell_raw takes a config resolved for its symbol (for_symbol)")
+    timeframe = str(config.get("timeframe") or timeframe)
     prim = config.get("primary")
     if isinstance(prim, str):
         prim = {"name": prim, "params": {}}
@@ -196,9 +226,12 @@ def make_cells(fam: FamilySpec, config: dict, start: str, end: str, symbols=None
     """Stage-F cells of one configuration: one per instrument, or the basket's one portfolio cell."""
     syms = list(symbols or fam.instruments)
     groups = [syms] if fam.basket else [[s] for s in syms]
+    if fam.basket and config.get("per_instrument"):
+        raise ValueError("per_instrument is for pooled instruments; a basket is one portfolio cell")
     cells = []
     for g in groups:
-        cell = Cell(normalize(cell_raw(config, g, fam.timeframe, start, end)), RULE_STAGE)
+        cfg = for_symbol(config, None if fam.basket else g[0])
+        cell = Cell(normalize(cell_raw(cfg, g, fam.timeframe, start, end)), RULE_STAGE)
         cell.config()  # validate the RunConfig now
         cells.append(cell)
     return cells
@@ -316,6 +349,12 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         else:
             s["start"], s["end"] = _date(s.get("start", window[0])), _date(s.get("end", window[1]))
         samples.append(s)
+    known = set(instruments) | {x for s in samples for x in s.get("instruments", ())}
+    for v in variants:
+        stray = set(v.config.get("per_instrument") or {}) - known
+        if stray:
+            raise ValueError(f"variant {v.label!r}: per_instrument names {sorted(stray)}, not an instrument of the "
+                             "family or of a sample split")  # fmt: skip
     reg = doc.get("registered")
     fam = FamilySpec(fid, doc, Path(path) if path else None, instruments, basket, tf, window, variants, bench,
                      floors, test, states, response, samples, budget, reg)  # fmt: skip
