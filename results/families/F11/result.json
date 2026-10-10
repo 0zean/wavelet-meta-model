@@ -1,0 +1,685 @@
+{
+  "accounting": {
+    "family_budget": 4,
+    "family_trials": 4,
+    "max_families": 8,
+    "max_trials": 112,
+    "program_families": 8,
+    "program_trials": 44
+  },
+  "basket": false,
+  "benchmark": "buy_and_hold_er",
+  "code_hash": "e331b316c440f14c2b29ae896645b4cd502819be5e09d833b2d00a62f46cc471",
+  "described": {
+    "per_instrument": {
+      "QQQ": {
+        "sharpe": -0.13862645410537608,
+        "sharpe_js": -0.13862645410537608
+      },
+      "SPY": {
+        "sharpe": -0.43327214714747675,
+        "sharpe_js": -0.43327214714747675
+      },
+      "XLK": {
+        "sharpe": 0.2506337775242491,
+        "sharpe_js": 0.2506337775242491
+      }
+    },
+    "quasi_holdout": {
+      "bench_sharpe": 1.1969161631844012,
+      "ci_bp": [
+        -2.060272693380762,
+        2.7043670745268527
+      ],
+      "max_dd": -0.024340896735875694,
+      "mean_bp": 0.32204719057304526,
+      "n_days": 237,
+      "note": "quasi-holdout 2025-10-01 \u2192 2026-09-30: contaminated (the U11 holdout exposed these days' buy-and-hold outcomes before the families were chosen); a robustness slice, never a gate",
+      "ret": 0.007158563652908345,
+      "sharpe": 0.24864059412925052
+    },
+    "responses": {
+      "headline": {
+        "exposure": 0.9535714285714286,
+        "hit_rate": null,
+        "max_dd": -0.1984746803032097,
+        "mean_per_trade_bp": null,
+        "sharpe": -0.3042876500065661,
+        "skew": -0.8225302774897862
+      },
+      "hourly": {
+        "exposure": 0.7791666666666667,
+        "hit_rate": null,
+        "max_dd": -0.14966835868835493,
+        "mean_per_trade_bp": null,
+        "sharpe": -0.1633935955511708,
+        "skew": -1.6286664934598376
+      },
+      "hourly_plain": {
+        "exposure": 0.8404761904761905,
+        "hit_rate": null,
+        "max_dd": -0.1299902006985606,
+        "mean_per_trade_bp": null,
+        "sharpe": -0.05392569544592566,
+        "skew": 0.004491098074585113
+      },
+      "plain_sigma": {
+        "exposure": 0.9279761904761905,
+        "hit_rate": null,
+        "max_dd": -0.22518457118388435,
+        "mean_per_trade_bp": null,
+        "sharpe": 0.0920391605152559,
+        "skew": -0.32720896892010337
+      }
+    },
+    "sample_splits": {
+      "2016_2019": {
+        "bench_sharpe": 2.576594338756268,
+        "ci_bp": [
+          -3.9739666497580615,
+          1.3383387849092296
+        ],
+        "max_dd": -0.059645065861956614,
+        "mean_bp": -1.317813932424416,
+        "n_days": 250,
+        "ret": -0.0330020897231289,
+        "sharpe": -0.9432037041783696
+      },
+      "2020_2025": {
+        "bench_sharpe": 0.8303292589575257,
+        "ci_bp": [
+          -2.450403354443045,
+          1.2394720001762483
+        ],
+        "max_dd": -0.19847468030320992,
+        "mean_bp": -0.6054656771333982,
+        "n_days": 1430,
+        "ret": -0.09295580092534395,
+        "sharpe": -0.2454897385102062
+      }
+    },
+    "state_splits": {
+      "day_of_week": {
+        "groups": [
+          {
+            "ci_bp": [
+              -3.792103119169451,
+              3.7828606137922853
+            ],
+            "group": "Friday",
+            "mean_bp": -0.004621252688582954,
+            "n_days": 337,
+            "sharpe": -0.002007257539875629
+          },
+          {
+            "ci_bp": [
+              -3.842830398632238,
+              2.7372058251562335
+            ],
+            "group": "Monday",
+            "mean_bp": -0.5528122867380022,
+            "n_days": 313,
+            "sharpe": -0.2712857056067819
+          },
+          {
+            "ci_bp": [
+              -4.83588305273621,
+              3.1448146110716757
+            ],
+            "group": "Thursday",
+            "mean_bp": -0.8455342208322676,
+            "n_days": 338,
+            "sharpe": -0.35338871451163223
+          },
+          {
+            "ci_bp": [
+              -7.868196912111541,
+              0.9079249994204573
+            ],
+            "group": "Tuesday",
+            "mean_bp": -3.480135956345542,
+            "n_days": 348,
+            "sharpe": -1.3696133076767572
+          },
+          {
+            "ci_bp": [
+              -2.7532629855506876,
+              5.521844880595676
+            ],
+            "group": "Wednesday",
+            "mean_bp": 1.3842909475224947,
+            "n_days": 344,
+            "sharpe": 0.5857730777230291
+          }
+        ]
+      },
+      "vix_tercile": {
+        "groups": [
+          {
+            "ci_bp": [
+              -4.063292164598692,
+              4.476489331893259
+            ],
+            "group": "high",
+            "mean_bp": 0.2065985836472833,
+            "n_days": 560,
+            "sharpe": 0.058497397224233014
+          },
+          {
+            "ci_bp": [
+              -3.6907761185060233,
+              -0.8128061596193524
+            ],
+            "group": "low",
+            "mean_bp": -2.251791139062688,
+            "n_days": 560,
+            "sharpe": -1.9792362855101056
+          },
+          {
+            "ci_bp": [
+              -2.181261411149981,
+              2.002827231241992
+            ],
+            "group": "mid",
+            "mean_bp": -0.08921708995399447,
+            "n_days": 560,
+            "sharpe": -0.05492620817870715
+          }
+        ]
+      }
+    }
+  },
+  "evaluation": {
+    "variants": {
+      "headline": {
+        "compare": {
+          "alpha": {
+            "alpha": -6.787821596660066e-05,
+            "alpha_ann": -0.017105310423583365,
+            "alpha_p": 0.42807579122221107,
+            "alpha_t": -0.7924886773865994,
+            "beta": -0.003618362043605953,
+            "beta_t": -0.24122158496973883,
+            "lags": 5
+          },
+          "bench_sharpe": 0.9855793792205683,
+          "ci_ann": [
+            -2.3416424448346698,
+            -0.23885973454132634
+          ],
+          "delta_ann": -1.2902510896879982,
+          "lw": {
+            "block": 21,
+            "ci_ann": [
+              -2.3416424448346698,
+              -0.23885973454132634
+            ],
+            "delta": -0.08127817886058424,
+            "delta_ann": -1.2902510896879982,
+            "n_boot": 2000,
+            "n_obs": 1680,
+            "p": 0.018490754622688656,
+            "se": 0.03237265156508156,
+            "se_ann": 0.5138999119257103,
+            "t": -2.5107050220209377
+          },
+          "n_days": 1680,
+          "p": 0.018490754622688656,
+          "sharpe": -0.3042876500065661
+        },
+        "costs": {
+          "cost_paid": 0.4569132028175026,
+          "pnl": -0.10283783200433341,
+          "traded_notional": 3900.2758578246476
+        },
+        "delta_common": -1.2898670292271344,
+        "floors": {
+          "min_edge_to_cost": {
+            "cost_bp": 1.1714894522161898,
+            "gross_edge_bp": 0.9078213534635787,
+            "ok": false,
+            "threshold": 3.0,
+            "value": 0.7749291739214456
+          },
+          "min_net_ret": {
+            "ok": false,
+            "threshold": 0.02,
+            "value": -0.019476294349426437
+          },
+          "ok": false
+        },
+        "psr0": 0.21440911256402362,
+        "start": "2019-01-04",
+        "stats": {
+          "calmar": -0.0981298688561811,
+          "max_dd": -0.1984746803032097,
+          "n_obs": 1680,
+          "psr": 0.21440911256402362,
+          "ret_ann": -0.019476294349426437,
+          "sharpe": -0.3042876500065661,
+          "sortino": -0.408481987190552,
+          "sr_kurt": 14.110346205231165,
+          "sr_skew": -0.8225302774897862,
+          "vol_ann": 0.05892135622565053
+        }
+      },
+      "hourly": {
+        "compare": {
+          "alpha": {
+            "alpha": -2.830473103587738e-05,
+            "alpha_ann": -0.0071327922210411,
+            "alpha_p": 0.6712396940344656,
+            "alpha_t": -0.4244472140415761,
+            "beta": 0.00035795081055862423,
+            "beta_t": 0.05031263695857983,
+            "lags": 5
+          },
+          "bench_sharpe": 0.9855793792205683,
+          "ci_ann": [
+            -2.25252324337995,
+            -0.046106924118109835
+          ],
+          "delta_ann": -1.14931508374903,
+          "lw": {
+            "block": 21,
+            "ci_ann": [
+              -2.25252324337995,
+              -0.046106924118109835
+            ],
+            "delta": -0.07240004499179299,
+            "delta_ann": -1.14931508374903,
+            "n_boot": 2000,
+            "n_obs": 1680,
+            "p": 0.0399800099950025,
+            "se": 0.033524131982323506,
+            "se_ann": 0.5321790968672088,
+            "t": -2.1596396598715173
+          },
+          "n_days": 1680,
+          "p": 0.0399800099950025,
+          "sharpe": -0.1633935955511708
+        },
+        "costs": {
+          "cost_paid": 0.18693592260051892,
+          "pnl": -0.061909382463749295,
+          "traded_notional": 1801.8188272341577
+        },
+        "delta_common": -1.148972974771739,
+        "floors": {
+          "min_edge_to_cost": {
+            "cost_bp": 1.0374845671219386,
+            "gross_edge_bp": 0.6938907411056908,
+            "ok": false,
+            "threshold": 3.0,
+            "value": 0.6688203016172054
+          },
+          "min_net_ret": {
+            "ok": false,
+            "threshold": 0.02,
+            "value": -0.007953104320078452
+          },
+          "ok": false
+        },
+        "start": "2019-01-04",
+        "stats": {
+          "calmar": -0.05313818090728652,
+          "max_dd": -0.14966835868835493,
+          "n_obs": 1680,
+          "psr": 0.33533087526181543,
+          "ret_ann": -0.007953104320078452,
+          "sharpe": -0.1633935955511708,
+          "sortino": -0.21024768868047833,
+          "sr_kurt": 17.595864510358936,
+          "sr_skew": -1.6286664934598376,
+          "vol_ann": 0.04315532477667682
+        }
+      },
+      "hourly_plain": {
+        "compare": {
+          "alpha": {
+            "alpha": -1.694603097509972e-05,
+            "alpha_ann": -0.004270399805725129,
+            "alpha_p": 0.8413424969789798,
+            "alpha_t": -0.20017656202726072,
+            "beta": 0.005839265572726004,
+            "beta_t": 0.24214028706693205,
+            "lags": 5
+          },
+          "bench_sharpe": 0.9855793792205683,
+          "ci_ann": [
+            -2.2133667401881754,
+            0.13373756146843557
+          ],
+          "delta_ann": -1.0398145893598698,
+          "lw": {
+            "block": 21,
+            "ci_ann": [
+              -2.2133667401881754,
+              0.13373756146843557
+            ],
+            "delta": -0.06550216221578486,
+            "delta_ann": -1.0398145893598698,
+            "n_boot": 2000,
+            "n_obs": 1680,
+            "p": 0.07796101949025487,
+            "se": 0.03465248441646124,
+            "se_ann": 0.5500911364589857,
+            "t": -1.890258759763524
+          },
+          "n_days": 1680,
+          "p": 0.07796101949025487,
+          "sharpe": -0.05392569544592566
+        },
+        "costs": {
+          "cost_paid": 0.1411909838366231,
+          "pnl": -0.022852767437428107,
+          "traded_notional": 1594.5093788687846
+        },
+        "delta_common": -1.039505074666494,
+        "floors": {
+          "min_edge_to_cost": {
+            "cost_bp": 0.8854823038845355,
+            "gross_edge_bp": 0.7421606794382692,
+            "ok": false,
+            "threshold": 3.0,
+            "value": 0.8381428699167375
+          },
+          "min_net_ret": {
+            "ok": false,
+            "threshold": 0.02,
+            "value": -0.00441781918958184
+          },
+          "ok": false
+        },
+        "start": "2019-01-04",
+        "stats": {
+          "calmar": -0.03398578635805398,
+          "max_dd": -0.1299902006985606,
+          "n_obs": 1680,
+          "psr": 0.4446497175682643,
+          "ret_ann": -0.00441781918958184,
+          "sharpe": -0.05392569544592566,
+          "sortino": -0.074693593707776,
+          "sr_kurt": 12.514580734659765,
+          "sr_skew": 0.004491098074585113,
+          "vol_ann": 0.05453938171851382
+        }
+      },
+      "plain_sigma": {
+        "compare": {
+          "alpha": {
+            "alpha": 9.556387140760098e-06,
+            "alpha_ann": 0.0024082095594715447,
+            "alpha_p": 0.9185611088982528,
+            "alpha_t": 0.10224638732780722,
+            "beta": 0.013098692982121877,
+            "beta_t": 1.012397093052139,
+            "lags": 5
+          },
+          "bench_sharpe": 0.9855793792205683,
+          "ci_ann": [
+            -2.143546291364013,
+            0.3559337472161493
+          ],
+          "delta_ann": -0.893806272073932,
+          "lw": {
+            "block": 21,
+            "ci_ann": [
+              -2.143546291364013,
+              0.3559337472161493
+            ],
+            "delta": -0.05630450276612761,
+            "delta_ann": -0.893806272073932,
+            "n_boot": 2000,
+            "n_obs": 1680,
+            "p": 0.16141929035482258,
+            "se": 0.038139973173511664,
+            "se_ann": 0.6054533041667208,
+            "t": -1.4762596321182333
+          },
+          "n_days": 1680,
+          "p": 0.16141929035482258,
+          "sharpe": 0.0920391605152559
+        },
+        "costs": {
+          "cost_paid": 0.34507082063911537,
+          "pnl": 0.005482061197147785,
+          "traded_notional": 3070.9535813297875
+        },
+        "delta_common": -0.8935402187053123,
+        "floors": {
+          "min_edge_to_cost": {
+            "cost_bp": 1.1236601645072488,
+            "gross_edge_bp": 1.141511496518506,
+            "ok": false,
+            "threshold": 3.0,
+            "value": 1.0158867712633433
+          },
+          "min_net_ret": {
+            "ok": false,
+            "threshold": 0.02,
+            "value": 0.0036815947189940967
+          },
+          "ok": false
+        },
+        "start": "2019-01-04",
+        "stats": {
+          "calmar": 0.016349231653121247,
+          "max_dd": -0.22518457118388435,
+          "n_obs": 1680,
+          "psr": 0.5938028841134838,
+          "ret_ann": 0.0036815947189940967,
+          "sharpe": 0.0920391605152559,
+          "sortino": 0.1284582393452868,
+          "sr_kurt": 10.909952548913761,
+          "sr_skew": -0.32720896892010337,
+          "vol_ann": 0.05856382129888834
+        }
+      }
+    },
+    "verdict": {
+      "ci_ann": [
+        -2.3416424448346698,
+        -0.23885973454132634
+      ],
+      "coherence": {
+        "coherent": false,
+        "median_floors_ok": false,
+        "median_variant": "hourly_plain",
+        "n_variants": 3,
+        "same_sign": [
+          "plain_sigma",
+          "hourly",
+          "hourly_plain"
+        ],
+        "share": 1.0
+      },
+      "delta_ann": -1.2902510896879982,
+      "dsr": 7.102926543554214e-05,
+      "dsr_n": 44,
+      "dsr_v": 0.0010746747475198408,
+      "floors_ok": false,
+      "p": 0.018490754622688656,
+      "positive": false
+    }
+  },
+  "git_sha": "509f5f766cd73ba3c7922715c8c9a84162baebdd",
+  "id": "F11",
+  "instruments": [
+    "QQQ",
+    "SPY",
+    "XLK"
+  ],
+  "members": {
+    "headline": [
+      "1a8d774bc8afacfe",
+      "851214322067bfff",
+      "350a82ee3c607054"
+    ],
+    "hourly": [
+      "0de117c08a2bf752",
+      "658d8c7891486a45",
+      "74da2dedb61b6f75"
+    ],
+    "hourly_plain": [
+      "514e526950ee7641",
+      "fd5220a7a08402c9",
+      "24761cee20cbf3a8"
+    ],
+    "plain_sigma": [
+      "1cb511c8e5b1b3ce",
+      "828486ec9536253a",
+      "7c30e3f684efd4a8"
+    ]
+  },
+  "quasi_hashes": [
+    "d2a266a146cae350",
+    "0cfb046c39d13c3d",
+    "0e4185152cfe7a23"
+  ],
+  "registered": {
+    "date": "2026-10-10",
+    "sha": "ce5dcd212158b1db4e8d02554eee667d42816222"
+  },
+  "repo": "C:\\Users\\Nick\\Desktop\\Code\\Python Projects\\wavelet-meta-model",
+  "run_at": "2026-10-10T07:14:24.099736+00:00",
+  "skipped_segments": {},
+  "spec": {
+    "TRIAL_BUDGET": 4,
+    "benchmark": "buy_and_hold_er",
+    "floors": {
+      "min_edge_to_cost": 3.0,
+      "min_net_ret": 0.02
+    },
+    "headline": {
+      "cost_model": "quotes",
+      "feature_groups": [
+        "wavelet_core",
+        "trend",
+        "mean_reversion",
+        "volatility",
+        "microstructure",
+        "intraday",
+        "fracdiff"
+      ],
+      "meta_train": "oof",
+      "model": {
+        "meta": "rf_ldp_fast",
+        "primary": "legacy"
+      },
+      "overrides": {
+        "VOL_PROFILE": "tod"
+      },
+      "per_instrument": {
+        "XLK": {
+          "feature_groups": [
+            "wavelet_core",
+            "trend",
+            "mean_reversion",
+            "volatility",
+            "microstructure",
+            "intraday",
+            "fracdiff",
+            "wavelet_ext",
+            "structural",
+            "calendar"
+          ],
+          "overrides": {
+            "FEATURE_SELECTION": "cmda"
+          },
+          "sizer": "linear"
+        }
+      },
+      "primary": {
+        "name": "donchian_breakout",
+        "params": {}
+      },
+      "pwfo": {
+        "is_grid": [
+          504,
+          756
+        ],
+        "oos_grid": [
+          21
+        ]
+      },
+      "risk_profile": "none",
+      "seed": 42,
+      "sizer": "fixed"
+    },
+    "id": "F11",
+    "instruments": [
+      "QQQ",
+      "SPY",
+      "XLK"
+    ],
+    "mechanism": "The ISOM time-of-day seasonality (Kablan 2009) makes a plain bar volatility wrong by a factor of several across the session, so CUSUM event timing and triple-barrier widths at 15Min\u20131Hour were mis-scaled in U11; if that labelling error hid an edge, deseasonalizing volatility should reveal it in the best-evidenced U11 cells.",
+    "registered": {
+      "date": "2026-10-10",
+      "sha": "ce5dcd212158b1db4e8d02554eee667d42816222"
+    },
+    "response": [
+      "sharpe",
+      "mean_per_trade_bp",
+      "hit_rate",
+      "max_dd",
+      "skew",
+      "exposure"
+    ],
+    "sample_splits": [
+      {
+        "end": "2020-01-01",
+        "label": "2016_2019",
+        "start": "2016-01-04"
+      },
+      {
+        "end": "2025-10-01",
+        "label": "2020_2025",
+        "start": "2020-01-01"
+      }
+    ],
+    "state_splits": [
+      "vix_tercile",
+      "day_of_week"
+    ],
+    "test": {
+      "alpha": 0.05,
+      "block_days": 21,
+      "coherence_share": 0.667,
+      "n_boot": 2000,
+      "seed": 0
+    },
+    "timeframe": "30Min",
+    "variants": [
+      {
+        "label": "plain_sigma",
+        "overrides.VOL_PROFILE": "none"
+      },
+      {
+        "label": "hourly",
+        "timeframe": "1Hour"
+      },
+      {
+        "label": "hourly_plain",
+        "overrides.VOL_PROFILE": "none",
+        "timeframe": "1Hour"
+      }
+    ]
+  },
+  "spec_path": "C:\\Users\\Nick\\Desktop\\Code\\Python Projects\\wavelet-meta-model\\families\\F11.yaml",
+  "variant_hashes": {
+    "headline": "c6554a5576e4e96b",
+    "hourly": "56f4a7cef9d2d39b",
+    "hourly_plain": "a2958aa1219cf992",
+    "plain_sigma": "a4e861d4a488f062"
+  },
+  "weights": {
+    "QQQ": 0.3158125290011968,
+    "SPY": 0.39180254876535797,
+    "XLK": 0.29238492223344525
+  },
+  "window": [
+    "2016-01-04",
+    "2025-10-01"
+  ]
+}

@@ -998,6 +998,130 @@ decision; cost model under-estimation for the two-fills-a-day families.
 **Cost.** Compute: F1/F3/F4 minutes; F2 < 1 h; F5/F7/F8 ≈ 1–3 h each (5Min bars, 4–14 instruments, no
 model fits). 1 session of orchestration.
 
+**Status (2026-10-10).** ✅ Complete: F1–F5, F7, F8 and F11 registered and run; all eight fail. Branch `unit/18-family-dev-tests`.
+
+**First round (F1–F4).**
+- **Tooling added** (SPEC §17.6): union of calendar windows (`calendar_drift` window list; schedule `windows`), the
+  `basket` risk profile, `per_instrument` patches and per-variant `timeframe` in family specs, basket sample splits
+  with their own cell and benchmark. Fixes: registration decoded `git show` with the Windows codec, refusing an
+  unchanged spec with non-ASCII text (found after registering, before any run); the program summary recomputes DSR
+  with the program's trials at summary time; the summary shows the coherence verdict; per-trade responses count a
+  rolled chain as one position. 764 tests pass (15 in `tests/test_u18.py`); ruff clean.
+- **Registered** `families/F1–F4.yaml` at e19b44f (commit 847e183), after the user approved the specs and the
+  equal-risk benchmark. Deviations from this plan's text, stated in each spec header: risk profile `none` (`basket`
+  for F2) instead of `standard`; benchmark `buy_and_hold_er`; F4 as one SPY position over the union of its windows on
+  1Day (the 14:00 FOMC exit is a 5Min variant) with a 2 %/yr floor; F2's 15-ETF basket.
+- **Runs** on `results/ledger.jsonl`, in order F1, F3, F4, F2 (`results/families/`). All four fail:
+
+| family | Sharpe vs benchmark | Δ (95 % CI) | p (Holm) | floors | coherence | DSR (N 23) |
+|---|---|---|---|---|---|---|
+| F1 vol-managed | 0.92 vs 0.83 | +0.09 (−0.22 … 0.40) | 0.55 (1.00) | net return 11.5 % < 0.8 × 15.0 % → fail | 0.80, coherent | 0.86 |
+| F3 overnight | 0.72 vs 0.90 | −0.18 (−0.72 … 0.36) | 0.50 (1.00) | net return 8.6 % < 13.8 % → fail; edge/cost 7.3 ok | 1.00, median variant fails floors → no | 0.70 |
+| F4 calendar | 0.57 vs 0.67 | −0.10 (−0.91 … 0.71) | 0.81 (1.00) | 2.2 %/yr ≥ 2 % ok | 0.67, median variant fails floors → no | 0.52 |
+| F2 TSMOM | 0.23 vs 0.86 | −0.63 (−1.65 … 0.38) | 0.21 (0.83) | net return 1.3 % < 2 % → fail | 1.00, median variant fails floors → no | 0.17 |
+
+  Trials: 23 / 112, 4 / 8 families.
+- **Adversarial review** (F1–F4): every headline statistic, floor, coherence and Holm value reproduced; registration
+  chain clean; the union sampler's held sessions match the event calendar exactly on real data (514 / 514).
+  - SEVERE, F2 construction: tsmom's m = min(1, σ*/σ̂) with pro-rata scaling to gross 1 caps the low-vol assets at
+    m = 1 (IEF, UUP, HYG, LQD in 84–94 % of weeks), so the bond / credit / dollar sleeve carries ~0.6–0.7 of the
+    other assets' risk: the registered headline is not the equal-risk basket F2's claim describes. The spec header
+    states the formula; the verdict stands as registered. Whether to amend is open (below).
+  - SEVERE, fixed: the summary's DSR used each family's run-time N (F1 0.992 at N 6); now recomputed at N 23.
+  - MINOR: the quasi-holdout cells fetched 2026-09-28 … 30 and rewrote the DIA, IWM, QQQ, GLD, TLT caches; TLT's
+    whole history was re-adjusted for a dividend (×0.996), so F1's tlt_gld split and F4's dev TLT leg ran on the old
+    vintage and F4's benchmark and F2 on the new (Sharpe moves at the 3rd–4th decimal). The new caches are
+    committed with the results.
+  - MINOR, disclosed: the status-only smoke run before registration computed (unprinted) full-window statistics on a
+    scratch ledger; every configuration matched the registered run. F4's 2 % floor was chosen before it; F4's
+    headline clears it by 0.2 pp and would fail the long-only default (F4 fails on p and coherence regardless).
+  - MINOR, fixed for later runs: per-trade responses of a daily-rolled union were per day (F4's report predates the
+    fix). Deferred: borrow is charged for bars held + 1 (≈ 20 % over on a weekly short; ~0.03 %/yr).
+- **F2 decision (user, 2026-10-10):** not amended; F2 stays closed as registered.
+
+**Second round (F5, F7, F8).**
+- **Tooling:** `legs` in family specs (SPEC §17.6): one cell per instrument and leg, an instrument's stream the sum
+  of its legs' streams, and the run refuses legs whose positions on one symbol overlap (rule cells' trades.csv now
+  carry entry_time / exit_time). Used by F8 (FOMC and CPI / NFP legs).
+- **Order:** specs committed unregistered (dd8228d); a status-only smoke run on 2016-01-04 → 2016-09-01 only, after
+  that commit; the user approved the specs; registered at dd8228d (commit f984d64); runs F5, F7, F8. Choices in each
+  spec header: risk profile `none`, benchmark `buy_and_hold_er`, PLAN2 default floors (2 %/yr, 3 × cost); F5 with
+  VOL_PROFILE `tod` and a plain-σ variant; F7 and F8 with `none` (their rules read no time-of-day σ).
+- **Results.** All three fail:
+
+| family | Sharpe vs benchmark | Δ (95 % CI) | p (Holm) | floors | coherence |
+|---|---|---|---|---|---|
+| F5 intraday momentum | −0.12 vs 0.83 | −0.95 (−2.00 … 0.10) | 0.071 (0.43) | net −0.4 %/yr; edge / cost 0.81 → fail | 1.00, median variant fails floors → no |
+| F7 gap fade (index) | −0.69 vs 0.87 | −1.55 (−2.55 … −0.56) | 0.0055 (0.039) | net −1.8 %/yr; gross edge negative → fail | 1.00, median variant fails floors → no |
+| F8 macro reaction | −0.29 vs 0.71 | −0.99 (−2.06 … 0.07) | 0.072 (0.43) | net −0.3 %/yr; gross edge negative → fail | 1.00, median variant fails floors → no |
+
+  F5: only the 15:00 entry variant is positive (Sharpe 0.41); gross edge per unit turnover is 0.64 bp, below 3 ×
+  cost even without slippage. F7: significantly worse than buy-and-hold, not a significant continuation effect — the
+  loss is SPY's −4.9 bp gross per trade plus ≈ 2.6 bp round-trip cost (QQQ and IWM ≈ −0.1 bp gross). F8: the CPI /
+  NFP leg is negative, FOMC alone ≈ 0.
+- **Program (`results/families/program_summary.md`; published as a private artifact,
+  https://claude.ai/artifact/5ca2XK2Zc4uGoUdcbLMF5v):** 7 families tested, 40 / 112 trials, 7 / 8 families; no family
+  passes. DSR at N = 40 is ≤ 0.22 for every headline (F1 0.218).
+- **Adversarial review** (F5, F7, F8): no BREAKING or SEVERE. Every headline stream rebuilt from its member cells
+  (max difference 1e-16), Δ / p / Holm / floors / trial count reproduced; F7's 1,466 trades rebuilt by hand from bars
+  (side = −sign(gap), 09:35 open → 10:30 open, no macro days): the sign is right; F5's 4,706 trades and its tod gate
+  (1,121 vs 1,120 SPY entries) and F8's 550 trades (event days, release-bar reaction, fills) match. Registration
+  clean; the smoke run postdates the spec commit.
+  - MINOR, fixed: the legs overlap check missed two same-bar cases (positions now hold their entry and exit bars).
+  - MINOR, disclosed: `SIZE_STEP` 0.1 rounds rule magnitudes, so m < 0.05 is never traded — 12 % of F8's release
+    events (e.g. 2020-03-03), and F5's thr0 is an implicit 0.05 σ threshold; P&L effect negligible (those bets are
+    < 0.05 of full size). Not in the spec headers.
+  - MINOR, disclosed: `abs_move_tercile` groups days by the same day's |benchmark move|, which contains the traded leg
+    (F5's last 30 minutes), so its F5 / F7 pattern is partly mechanical. Reported only; not evidence for an amendment.
+  - MINOR, disclosed: close fills ("MOC") are the 15:55 bar's close, the last continuous trade before 16:00, not the
+    closing-auction print (the 16:00 cross is outside the cached bars); F3, F4, F5 all use it. Direction of the bias
+    unknown; U20's reconciliation of modelled vs actual MOC fills measures it.
+  - MINOR, disclosed: on early closes F5's 15:30 entry maps to the last bar (a 5-minute hold; ~9 trades per
+    instrument; SPEC §13 behaviour).
+  - Note: the program DSR uses V over every counted trial, so a family's DSR moves when unrelated families run.
+- **Not run:** F10 (the cross-sectional rank is not built).
+
+**Third round (F11, at the user's request).**
+- **Tooling** (SPEC §17.6): model cells in family tests (stage F holds model cells; family-stage cells count 0 trials;
+  family specs take `model`, `feature_groups`, `pwfo`, `meta_train`, `seed`; WFO / PWFO rows carry the edge floor's
+  cash totals). U12 parity PASS (8/8) after the change.
+- **Spec** `families/F11.yaml`: the three U11 Stage C finalists with donchian_breakout / rf_ldp_fast (QQQ, SPY, XLK
+  30Min, each with its U11 sizer, feature groups and feature selection) under today's engine (PWFO `average` over IS
+  504 / 756 × OOS 21) with VOL_PROFILE `tod`; 2 × 2 trials: tod / plain σ (the U11-labelling control) at 30Min /
+  1Hour. Committed unregistered (ce5dcd2); status-only smoke runs on 2016-01 → 2018-09 (every cell failed: no full
+  IS-756 window) and → 2019-03 (all ok); the user approved; registered at ce5dcd2 (commit 509f5f7); run.
+- **Result: fail.**
+
+| trial | Sharpe vs benchmark | Δ (95 % CI) | p | floors |
+|---|---|---|---|---|
+| headline (30Min, tod) | −0.30 vs 0.99 | −1.29 (−2.34 … −0.24) | 0.019 (Holm 0.13) | net −1.9 %/yr; edge / cost 0.78 → fail |
+| plain_sigma (30Min, plain σ) | 0.09 | −0.89 (−2.14 … 0.36) | 0.16 | fail |
+| hourly (1Hour, tod) | −0.16 | −1.15 (−2.25 … −0.05) | 0.040 | fail |
+| hourly_plain (1Hour, plain σ) | −0.05 | −1.04 (−2.21 … 0.13) | 0.078 | fail |
+
+  Not coherent (the median variant fails the floors). PLAN2's question gets its expected answer: deseasonalizing
+  volatility reveals no edge in these cells, so the U11 null was not a labelling artefact. The paired comparison
+  (reported, not a registered test; Ledoit–Wolf on the same days) is tod − plain σ = −0.40 (−1.13 … 0.34), p 0.29 at
+  30Min and −0.11 (−0.81 … 0.59), p 0.77 at 1Hour: tod is not significantly worse either. The stream runs 2019-01-04 →
+  2025-09-10 (IS-756 burn-in; last full OOS window), so the "2016_2019" split is 2019 only.
+- **Program:** 8 / 8 families, 44 / 112 trials; no family passes. Holm (8 families): F7 0.044 (on the losing side),
+  F11 0.13, the rest ≥ 0.43.
+- **Adversarial review** (F11): no BREAKING or SEVERE. Each cell's RunConfig matches its U11 Stage C cell except
+  VOL_PROFILE, the PWFO grid and the inert TEST / PWFO_DEFAULT; the tod profile is fitted on in-sample bars only and
+  changes the labelling (QQQ: 8,120 vs 6,173 events, median barrier 0.41 % vs 0.69 %); the dev and quasi cells give
+  identical per-combo returns on shared days (no full-series look-ahead); a QQQ cell re-run is byte-identical; trial
+  keys of every registered spec re-parse identically under HEAD.
+  - MINOR, fixed: families sort naturally in the summary (F11 sorted between F1 and F2).
+  - MINOR, disclosed: PWFO cost totals cover each combo's full OOS span, the stream only the common span (edge /
+    cost ≈ 0.70 instead of 0.78 on the common span; every variant stays far below 3).
+  - MINOR, disclosed: XLK's linear-sized stream (0.85 % vol) carries ~4 % of the pooled risk, so the pooled test is
+    in effect QQQ + SPY (the program's equal-risk weights come from buy-and-hold volatility).
+  - MINOR, disclosed: PWFO members write no trades.csv, so mean_per_trade_bp and hit_rate are "—".
+  - MINOR, deferred: the quasi slice's benchmark drops 2025-10-01 (`bh_returns` from the slice start loses its first
+    day; every family's quasi slice), and F11's quasi stream ends 2026-09-11 (last full OOS window). Reported slices
+    only.
+- 772 tests pass (23 in `tests/test_u18.py`); ruff clean.
+
 ### U19 — Phase 2: meta-labeling overlay on passing families
 
 **Goal.** Answer one question per passing family: does a meta-model that decides which of the family's
@@ -1089,7 +1213,7 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
   flat sides, `rule_size`; status note under U16).
 - U17 — ✅ complete 2026-10-10 (branch `unit/17-family-tests`; rule pass, `families/` test, registration, budgets,
   reports; status note under U17).
-- U18 — not started (family specs not yet registered).
+- U18 — ✅ complete 2026-10-10 (branch `unit/18-family-dev-tests`; F1–F5, F7, F8, F11 registered and run, all fail; no family goes to U19; status note under U18).
 - U19 — not started.
 - U20 — not started.
 - U21 — not started (gated).

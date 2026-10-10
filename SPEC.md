@@ -1207,6 +1207,50 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   errored headline, a missing result file) enters Holm with p = 1, so a family cannot leave the multiplicity count
   by failing or being deleted.
 
+### §17.6 U18 additions (as built)
+
+- **Union of calendar windows.** `calendar_drift` takes `window` as one name or a list of two or more. A list is one
+  position, long on every session some window holds: the schedule's new `windows` key (a list of `{days, day_offset,
+  hold}`, needing `entry_times: ["close"]`, `every: session`, `days: all`) keeps the market-on-close entry of session
+  x iff some window's entry session e (selected as `days` / `day_offset` would select it, known at e's decision) has
+  e ≤ x < e + hold, and the time exit is the next session's close; consecutive entries roll (one order, no cost), so
+  overlapping windows never stack. Every window in a list must end at a close on the cell's timeframe (`fomc_pre`
+  ends 14:00 on 5Min and is refused there); two windows holding the same sessions are refused. A union whose extra
+  window is contained in another reproduces the single window's equity exactly (tested).
+- **`basket` risk profile.** For a self-sized basket in one portfolio cell (F2): max_gross 1.0, max_net 1.0 (each
+  side), borrow 50 bp/yr on shorts; no vol target, position / concurrency caps, drawdown tiers or loss gate. Entries
+  at one open are scaled pro-rata into the gross cap.
+- **Family spec keys.** `headline.per_instrument: {SYM: <partial headline>}` is deep-merged into that instrument's
+  cells (every variant, and sample splits naming SYM); it may not set `timeframe` or nest `per_instrument`, must name
+  an instrument of the family or of a sample split, and is refused for a basket. A variant may set `timeframe` (its
+  cells run on it; the benchmark and streams stay daily).
+- **Basket sample splits.** A basket family's instrument split is its own portfolio cell; its benchmark is
+  buy-and-hold of all the split's symbols (before U18 it used the first symbol only).
+- **Risk profile in Phase 1.** PLAN2 U18 names `standard`; its 20 % position cap, drawdown tiers and daily-loss gate
+  would replace the self-sized rules under test, so single-instrument families register `none` and F2 `basket`.
+- **Legs.** `headline.legs: {label: <partial headline>}` (≥ 1; a variant may replace the mapping): one cell per
+  instrument and leg, built as base → `per_instrument[SYM]` → the leg's patch (legs in label order); two legs that
+  build the same cell are refused, and legs are refused for a basket. An instrument's stream is the SUM of its legs'
+  daily streams (each leg trades at full size on its own capital), then pooled with the equal-risk weights; cost
+  totals add over legs with their symbol's weight. Legs must be disjoint in time: rule cells' trades.csv carry
+  entry_time / exit_time (bar stamps), and the run raises when two legs' positions on one symbol share any bar.
+- **Model cells in a family (F11).** A headline with `model: {meta: ...}` builds model cells (a WFO, or a PWFO with
+  `pwfo`) in stage F, with any registered primary and the keys `feature_groups`, `pwfo`, `meta_train`, `seed`; rule
+  cells stay stage F only. Every family-stage cell counts 0 trials (the variant row counts 1). WFO rows and `average`
+  PWFO rows carry pnl / cost_paid / traded_notional / init_cash for the edge floor: a PWFO row's are the mean over its
+  run combos of each combo's stitched-OOS totals (ComboStats.summary oos_pnl_frac / oos_cost_frac /
+  oos_notional_frac) — the combos' full OOS spans, while the `average` stream covers only their common span (for F11
+  the IS-504 combo's first ~250 OOS days enter the totals, not the stream; edge / cost moves by ≈ ±0.1). PWFO members
+  write no trades.csv, so per-trade responses are not available for them. A PWFO stream starts after the longest
+  IS's burn-in and ends at the last full OOS window (PWFO_PARTIAL_LAST false).
+- **Order.** Families sort naturally (F1, F1.v2, F2, …, F10, F11) in the program verdict and summary.
+- **Program DSR** is recomputed by `families summary` with the program's counted trials at that time (N, and V over
+  their latest per-period Sharpes), so it moves as families are added.
+- **Caveats found in the U18 review** (reported, not changed): rule magnitudes go through SIZE_STEP (0.1) rounding,
+  so m < 0.05 is not traded; `abs_move_tercile` uses the same day's |benchmark move| (outcome-conditioned for
+  intraday legs inside the day); close fills price at the last 5Min bar's close (the last continuous trade before
+  16:00), not the closing-auction print.
+
 ---
 
 ## §18 Forward test (U20)

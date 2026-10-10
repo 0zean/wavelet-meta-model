@@ -12,7 +12,7 @@ year of returns, no σ of earlier gaps). The side of event t uses bars <= t only
     vol_target          F1  1Day   daily at the open → next open (held, rolled)   +1, m = min(1, σ*/σ̂) with a band
     tsmom               F2  1Day   weekly at the open → next week's open          sign(trailing return | MODWT slope)
     overnight           F3  5Min   MOC → next MOO                                 +1 (flat when VIX > vix_max)
-    calendar_drift      F4  1Day   calendar window (MOC → MOC / 14:00)            +1
+    calendar_drift      F4  1Day   calendar window(s) (MOC → MOC / 14:00)         +1
     intraday_momentum   F5  5Min   15:30 → MOC, gate |predictor| > k·σ_day        sign(open→now | first 30 min)
     gap_fade            F7  5Min   09:35 → 10:30 (or hysteresis), |gap| > k·σ_on  −sign(gap) (+ on news days)
     event_reaction      F8  5Min   release + 15 min → + 90 min, FOMC | CPI/NFP    sign(post-release return)
@@ -368,19 +368,42 @@ CALENDAR_WINDOWS = {
 
 @primary("calendar_drift")
 class CalendarDrift(MechanismPrimary):
-    """Long over one calendar window (CALENDAR_WINDOWS; one window per cell: a family pools its windows' streams)."""
+    """
+    Long over one calendar window (CALENDAR_WINDOWS), or over the union of several (`window` a list, U18): one
+    position long on every session some window holds, entered at the closing auction before the first held session
+    and rolled daily (the schedule's `windows`, a time exit at the next close), so overlapping windows never stack.
+    A union needs every window to end at a close on the cell's timeframe (fomc_pre ends 14:00 on 5Min).
+    """
 
     TIMEFRAMES = ("1Day", "5Min")
     LONG_ONLY = True
     DEFAULTS: ClassVar[dict] = {"window": "fomc_pre"}
 
     def validate(self):
-        _check(self.name, self.params["window"] in CALENDAR_WINDOWS, f"window must be one of {list(CALENDAR_WINDOWS)}")
+        w = self.params["window"]
+        ws = w if isinstance(w, list) else [w]
+        ok = all(isinstance(x, str) and x in CALENDAR_WINDOWS for x in ws)
+        _check(self.name, ok, f"window must be one of {list(CALENDAR_WINDOWS)} or a list of them")
+        if isinstance(w, list):
+            _check(self.name, len(w) >= 2 and len(set(w)) == len(w), "a window list holds two or more distinct windows")
 
     def config_overrides(self, timeframe):
-        ev, daily, intra = CALENDAR_WINDOWS[self.params["window"]]
-        return {"EVENT_SAMPLER": "schedule", "EVENT_PARAMS": {"entry_times": ["close"], **ev}, "EXIT_MODEL": "time",
-                "EXIT_PARAMS": dict(daily if timeframe == "1Day" else intra)}  # fmt: skip
+        w = self.params["window"]
+        if not isinstance(w, list):
+            ev, daily, intra = CALENDAR_WINDOWS[w]
+            return {"EVENT_SAMPLER": "schedule", "EVENT_PARAMS": {"entry_times": ["close"], **ev},
+                    "EXIT_MODEL": "time", "EXIT_PARAMS": dict(daily if timeframe == "1Day" else intra)}  # fmt: skip
+        windows = []
+        for name in w:
+            ev, daily, intra = CALENDAR_WINDOWS[name]
+            ex = daily if timeframe == "1Day" else intra
+            _check(self.name, ex["exit_time"] == "close", f"window {name!r} ends at {ex['exit_time']} on {timeframe}: "
+                   "a union holds whole sessions (close to close)")  # fmt: skip
+            win = {"days": ev["days"], "day_offset": ev["day_offset"], "hold": ex["exit_session"]}
+            _check(self.name, win not in windows, f"window {name!r} holds the same sessions as another in the list")
+            windows.append(win)
+        return {"EVENT_SAMPLER": "schedule", "EVENT_PARAMS": {"entry_times": ["close"], "windows": windows},
+                "EXIT_MODEL": "time", "EXIT_PARAMS": {"exit_time": "close", "exit_session": 1}}  # fmt: skip
 
     def rule(self, df, X, cfg):
         return np.ones(len(X)), np.ones(len(X))

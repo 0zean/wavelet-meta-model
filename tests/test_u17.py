@@ -78,14 +78,17 @@ def test_rule_pass_configuration_is_validated():
         primary_config("overnight", "5Min", META_MODEL="none", SIZER="linear")
 
 
-def test_stage_f_cells_and_only_they_are_rule_cells():
+def test_rule_cells_are_stage_f_only_and_family_cells_count_no_trials():
+    from experiments.runner import cell_trials
+
     raw = {"symbols": "SPY", "timeframe": "5Min", "start": "2024-01-02", "end": "2024-06-01", "primary": "overnight",
            "model": {"meta": "none"}}  # fmt: skip
-    Cell(normalize(raw), "F")
+    assert cell_trials(Cell(normalize(raw), "F")) == 0
     with pytest.raises(ValueError, match="rule cells"):
         Cell(normalize(raw), "A")
-    with pytest.raises(ValueError, match="rule cells"):
-        Cell(normalize({**raw, "model": {"meta": "logit_l2"}}), "F")
+    # U18 (F11): a model cell may be a family member (stage F) and then counts no trials; elsewhere it counts its grid
+    model = {**raw, "model": {"meta": "logit_l2"}, "pwfo": {"is_grid": [504, 756], "oos_grid": [21]}}
+    assert cell_trials(Cell(normalize(model), "F")) == 0 and cell_trials(Cell(normalize(model), "C")) == 2
     with pytest.raises(ValueError, match="family stage"):
         expand({"stage": "F", "defaults": raw, "grid": {"symbols": ["SPY"]}})
 

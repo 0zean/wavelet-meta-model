@@ -9,6 +9,8 @@ responses are computed by `describe` and never enter a verdict. No variant can r
 the spec's first variant by construction (families/spec.py) and every function here takes it by label.
 """
 
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -214,9 +216,23 @@ def responses(r: pd.Series, trades: pd.DataFrame | None, names: list[str]) -> di
             if trades is None or not len(trades):
                 out[n] = np.nan
             else:
-                p = trades["pnl_pct"].to_numpy(dtype=float)
+                p = position_returns(trades)
                 out[n] = float(p.mean() * 1e4) if n == "mean_per_trade_bp" else float((p > 0).mean())
     return out
+
+
+def position_returns(trades: pd.DataFrame) -> np.ndarray:
+    """Per-unit return of each position: a chain of rolled trades (a trade with `rolled` continues its symbol's
+    previous one, held through a rebalance) is one position, its trades' returns compounded. Without the column, every
+    trade is a position."""
+    t = trades.reset_index(drop=True)
+    if "rolled" not in t or "sym" not in t:
+        return t["pnl_pct"].to_numpy(dtype=float)
+    order = t.sort_values(["sym", "entry_b"], kind="stable") if "entry_b" in t else t
+    rolled = order["rolled"].astype(str).str.lower().isin(("true", "1")).to_numpy()
+    chain = np.cumsum(~rolled)
+    g = (1.0 + order["pnl_pct"].astype(float)).groupby([order["sym"].to_numpy(), chain]).prod() - 1.0
+    return g.to_numpy(dtype=float)
 
 
 def _groups(kind: str, days: pd.DatetimeIndex, state: pd.DataFrame, bench: pd.Series) -> pd.Series | None:
@@ -322,6 +338,11 @@ def _slice(r: pd.Series, b: pd.Series, fam: FamilySpec) -> dict:
 # ── Program verdict (SPEC §17.3) ─────────────────────────────────────────────
 
 
+def family_order(fid: str) -> list:
+    """Natural sort key: F2 before F11, an amendment after its family (F1, F1.v2, F2, ..., F11)."""
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", fid)]
+
+
 def program_verdict(families: dict[str, dict], alpha: float = 0.05) -> pd.DataFrame:
     """
     Holm over the families' headline p-values; a family passes iff its Holm-adjusted p < alpha, its headline clears
@@ -332,7 +353,7 @@ def program_verdict(families: dict[str, dict], alpha: float = 0.05) -> pd.DataFr
 
     if not families:
         return pd.DataFrame(columns=["family", "p", "p_holm", "floors_ok", "coherent", "positive", "passes"])
-    ids = sorted(families)
+    ids = sorted(families, key=family_order)
     p = np.array([families[f]["p"] for f in ids], dtype=float)
     adj = holm(np.nan_to_num(p, nan=1.0))
     rows = []

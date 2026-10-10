@@ -332,6 +332,10 @@ def combo_stats(df: pd.DataFrame, run: ComboRun, cfg: RunConfig, cost_data=None)
             "is_oos_spearman": rho,
             "n_trades": int(win["n_oos_trades"].sum()),
             "turnover": float(eq.attrs.get("turnover", 0.0)) * TRADING_DAYS / max(len(oos_daily), 1),
+            # cash totals of the stitched OOS backtest per unit of INIT_CASH (the family edge floor, SPEC §17.6)
+            "oos_pnl_frac": float(eq.iloc[-1] / cfg.INIT_CASH - 1.0),
+            "oos_cost_frac": float(eq.attrs.get("cost_paid", 0.0)) / cfg.INIT_CASH,
+            "oos_notional_frac": float(eq.attrs.get("traded_notional", 0.0)) / cfg.INIT_CASH,
         },
         name=combo.label,
     )

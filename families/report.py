@@ -260,13 +260,25 @@ def program_summary(out_dir, alpha: float = 0.05, ledger=None) -> dict:
 
     out_dir = Path(out_dir)
     results = {}
-    for p in sorted(out_dir.glob("*/result.json")):
+    from families.test import family_order
+
+    for p in sorted(out_dir.glob("*/result.json"), key=lambda p: family_order(p.parent.name)):
         r = json.loads(p.read_text(encoding="utf-8"))
         results[r["id"]] = r
     in_ledger = set()
     if ledger is not None:
         in_ledger = {r["family"] for r in ledger.rows() if r.get("kind") == KIND and r.get("stage") == "F"}
-    verdicts = {k: r["evaluation"]["verdict"] for k, r in results.items() if "evaluation" in r}
+    verdicts = {k: dict(r["evaluation"]["verdict"]) for k, r in results.items() if "evaluation" in r}
+    dsr_n = None
+    if ledger is not None:  # DSR with the program's trials now, not those counted when each family ran
+        from families.run import program_dsr
+
+        rows_ = ledger.rows()
+        for k, v in verdicts.items():
+            f = out_dir / k / "streams.csv"
+            if f.exists():
+                h = pd.read_csv(f, index_col=0, parse_dates=True)[HEADLINE].dropna()
+                v["dsr"], dsr_n, _ = program_dsr(rows_, h)
     untested = sorted((set(results) | in_ledger) - set(verdicts))
     verdicts |= {k: dict(UNTESTED) for k in untested}
     table = program_verdict(verdicts, alpha)
@@ -291,10 +303,14 @@ def program_summary(out_dir, alpha: float = 0.05, ledger=None) -> dict:
         rows.append({"family": t["family"], "sharpe": _f(h["sharpe"], 2), "bench": _f(h["bench_sharpe"], 2),
                      "Δ": _f(t["delta_ann"], 2), "CI": f"{_f(h['ci_ann'][0], 2)} … {_f(h['ci_ann'][1], 2)}",
                      "p": _f(t["p"], 4), "p_holm": _f(t["p_holm"], 4), "floors": _f(bool(t["floors_ok"])),
-                     "coherence": _f(r["evaluation"]["verdict"]["coherence"].get("share"), 2),
+                     "coherence": (f"{_f(r['evaluation']['verdict']['coherence'].get('share'), 2)} "
+                                   f"({'yes' if r['evaluation']['verdict']['coherence'].get('coherent') else 'no'})"),
                      "DSR": _f(t["dsr"], 3), "verdict": "PASS" if t["passes"] else "fail"})  # fmt: skip
     md += [_table(rows, ["family", "sharpe", "bench", "Δ", "CI", "p", "p_holm", "floors", "coherence", "DSR",
                          "verdict"]), ""]  # fmt: skip
+    md += [("Coherence: share of variants with the headline's sign (coherent or not: the median variant must also "
+            "clear the floors). DSR: " + (f"N = {dsr_n} program trials now (SPEC §17.3)." if dsr_n else
+                                          "as recorded when each family ran.")), ""]  # fmt: skip
     md += ["Per-family reports: " + ", ".join(f"[{k}]({k}/report.md)" for k in results), ""]
     text = "\n".join(md)
     (out_dir / "program_summary.md").write_text(text, encoding="utf-8")

@@ -1,0 +1,42 @@
+# F8 — macro-announcement reaction continuation (PLAN2 §F8, exploratory; U18). Headline as PLAN2: on FOMC days observe
+# 14:00 → 14:15, enter at 14:15 in that direction, exit 15:45; on CPI / NFP days (08:30, pre-market) observe the first
+# 15 RTH minutes 09:30 → 09:45, enter 09:45, exit 11:15; SPY and TLT, pooled with equal-risk weights.
+# Choices made at registration (U18):
+# - The two releases are legs (families/spec.py `legs`, U18): one cell per instrument and release, and an
+#   instrument's stream is the SUM of its legs' (each leg trades at full size; their positions never overlap in
+#   time, which the run checks).
+# - Size: the rule's magnitude m = min(1, |reaction| / σ_day) (U16 as built). VOL_PROFILE none: the rule has no gate
+#   and reads plain σ_day.
+# - risk_profile none (see F5.yaml); benchmark buy_and_hold_er; floors the PLAN2 defaults (2 %/yr, 3 × cost).
+# - Variants (PLAN2 axes): observe 30 minutes with the same exit times (hold 75); hold 60; each release alone.
+#   QQQ, IWM, GLD (auxiliary instruments) are a sample split.
+id: F8
+registered: {sha: 'dd8228d0abeafdf6f2f45ed621fd5ab81279fa1b', date: '2026-10-10'}
+mechanism: >-
+  After scheduled macro releases (FOMC statements at 14:00; CPI and NFP at 08:30) prices under-react for one to two
+  hours as information is absorbed across asset classes and dealers' inventory constraints slow the adjustment, so the
+  first 15-minute reaction predicts the next 90 minutes.
+instruments: [SPY, TLT]
+timeframe: 5Min
+headline:
+  primary: {name: event_reaction, params: {observe_min: 15, hold_min: 90}}
+  legs:
+    fomc: {primary: {params: {release: fomc}}}
+    cpi_nfp: {primary: {params: {release: cpi_nfp}}}
+  cost_model: quotes
+  risk_profile: none
+variants:
+  - {label: obs30, primary.params.observe_min: 30, primary.params.hold_min: 75}
+  - {label: hold60, primary.params.hold_min: 60}
+  - {label: fomc_only, legs: {fomc: {primary: {params: {release: fomc}}}}}
+  - {label: cpi_nfp_only, legs: {cpi_nfp: {primary: {params: {release: cpi_nfp}}}}}
+state_splits: [vix_tercile, abs_move_tercile, day_of_week]
+response: [sharpe, mean_per_trade_bp, hit_rate, max_dd, skew, exposure]
+sample_splits:
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+  - {label: qqq_iwm_gld, instruments: [QQQ, IWM, GLD]}
+benchmark: buy_and_hold_er
+floors: {min_net_ret: 0.02, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 8

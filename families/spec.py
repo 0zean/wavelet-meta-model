@@ -16,6 +16,15 @@ Family specs (SPEC §17.1): `families/<id>.yaml` → a validated FamilySpec and 
       risk_profile: none
       sizer: rule_size                   # optional (fixed | rule_size)
       overrides: {VOL_PROFILE: tod}      # optional, any other RunConfig field
+      timeframe: 5Min                    # optional (U18): the cells' timeframe when it differs from the family's
+      per_instrument:                    # optional (U18): a partial headline deep-merged into one instrument's cells
+        TLT: {primary: {params: {window: month_end}}}
+      model: {meta: rf_ldp_fast}         # optional (U18, F11): a meta-model makes the cells model cells (a walk-forward,
+      pwfo: {is_grid: [504, 756], oos_grid: [21]}   # or PWFO with `pwfo`), any registered primary; feature_groups,
+      feature_groups: [wavelet_core, trend]          # meta_train and seed as in experiment cells. Default: rule cells.
+      legs:                              # optional (U18): one cell per instrument and leg (a partial headline each);
+        fomc: {primary: {params: {release: fomc}}}         # an instrument's stream is the SUM of its legs' streams,
+        cpi_nfp: {primary: {params: {release: cpi_nfp}}}   # so legs must never hold positions at the same time
     variants:                            # reported only; 1 + len(variants) <= TRIAL_BUDGET
       - {label: no_cost, cost_model: slippage}
       - {label: tod, overrides.VOL_PROFILE: tod}   # dotted keys reach into the headline
@@ -69,7 +78,9 @@ RESPONSES = ("sharpe", "sortino", "calmar", "ret_ann", "vol_ann", "max_dd", "ske
 TOP_KEYS = {"id", "mechanism", "registered", "instruments", "basket", "timeframe", "window", "headline", "variants",
             "state_splits", "response", "sample_splits", "benchmark", "floors", "test", "overlay", "TRIAL_BUDGET",
             "notes"}  # fmt: skip
-HEADLINE_KEYS = {"primary", "exit", "sampler", "cost_model", "risk_profile", "sizer", "overrides"}
+HEADLINE_KEYS = {"primary", "exit", "sampler", "cost_model", "risk_profile", "sizer", "overrides", "timeframe",
+                 "per_instrument", "legs", "model", "feature_groups", "pwfo", "meta_train", "seed"}  # fmt: skip
+PATCH_KEYS = HEADLINE_KEYS - {"per_instrument", "timeframe", "legs"}  # what a per-instrument or leg patch may set
 FLOOR_KEYS = {"min_net_ret": None, "min_net_ret_vs_benchmark": None, "min_edge_to_cost": None, "max_dd": None}
 TEST_DEFAULTS = {"alpha": 0.05, "block_days": 21, "n_boot": 2000, "coherence_share": 0.667, "seed": 0}
 HEADLINE = "headline"
@@ -136,14 +147,59 @@ def _set_dotted(d: dict, key: str, value) -> None:
     _set_dotted(sub, rest, value)
 
 
-def _primary_cls(name: str):
+def _primary_cls(name: str, rule: bool = True):
+    """The primary's class; a rule cell (no meta-model) needs a mechanism primary (SPEC §16)."""
     from primaries import REGISTRY
     from primaries.mechanism import MechanismPrimary
 
     cls = REGISTRY.get(name)
-    if not (isinstance(cls, type) and issubclass(cls, MechanismPrimary)):
-        raise TypeError(f"a family's primary must be a mechanism primary (SPEC §16), not {name!r}")
+    if cls is None:
+        raise TypeError(f"unknown primary {name!r}")
+    if rule and not (isinstance(cls, type) and issubclass(cls, MechanismPrimary)):
+        raise TypeError(f"a family's rule primary must be a mechanism primary (SPEC §16), not {name!r}; a family "
+                        "headline with a meta-model (`model`) may use any primary")  # fmt: skip
     return cls
+
+
+def _model(config: dict) -> dict:
+    m = config.get("model") or {}
+    if not isinstance(m, dict) or set(m) - {"meta", "primary"}:
+        raise ValueError(f"model takes meta and primary; got {m!r}")
+    return {"meta": m.get("meta", "none"), "primary": m.get("primary", "legacy")}
+
+
+def _merge(base: dict, patch: dict) -> dict:
+    """`base` with `patch` deep-merged into it (mappings merge, anything else replaces)."""
+    out = copy.deepcopy(base)
+    for k, v in patch.items():
+        out[k] = _merge(out[k], v) if isinstance(out.get(k), dict) and isinstance(v, dict) else copy.deepcopy(v)
+    return out
+
+
+def _patch(patch, what: str) -> dict:
+    if not isinstance(patch, dict) or set(patch) - PATCH_KEYS:
+        raise ValueError(f"{what} is a partial headline without per_instrument / legs / timeframe; got {patch!r}")
+    return patch
+
+
+def for_symbol(config: dict, symbol: str | None) -> list[dict]:
+    """
+    A variant config as it runs on `symbol`, one config per leg (one without `legs`): the base, then its
+    `per_instrument[symbol]` patch, then the leg's patch (legs in label order); the mappings are dropped.
+    """
+    per = config.get("per_instrument") or {}
+    if not isinstance(per, dict):
+        raise TypeError("per_instrument maps an instrument to a partial headline")
+    legs = config.get("legs")
+    if legs is not None and (not isinstance(legs, dict) or not legs):
+        raise ValueError(f"legs maps a leg label to a partial headline (at least one); got {legs!r}")
+    base = {k: v for k, v in config.items() if k not in ("per_instrument", "legs")}
+    patch = per.get(symbol) if symbol is not None else None
+    if patch is not None:
+        base = _merge(base, _patch(patch, f"per_instrument[{symbol}]"))
+    if legs is None:
+        return [base]
+    return [_merge(base, _patch(legs[k], f"leg {k!r}")) for k in sorted(legs)]
 
 
 def cell_raw(config: dict, symbols, timeframe: str, start: str, end: str) -> dict:
@@ -151,14 +207,25 @@ def cell_raw(config: dict, symbols, timeframe: str, start: str, end: str) -> dic
     unknown = set(config) - HEADLINE_KEYS
     if unknown:
         raise ValueError(f"unknown headline / variant key(s) {sorted(unknown)}; expected {sorted(HEADLINE_KEYS)}")
+    if config.get("per_instrument") or config.get("legs"):
+        raise ValueError("cell_raw takes a config resolved for its symbol and leg (for_symbol)")
+    timeframe = str(config.get("timeframe") or timeframe)
     prim = config.get("primary")
     if isinstance(prim, str):
         prim = {"name": prim, "params": {}}
     if not isinstance(prim, dict) or "name" not in prim:
         raise ValueError(f"headline.primary needs a name; got {prim!r}")
     prim = {"name": prim["name"], "params": dict(prim.get("params") or {})}
-    p = _primary_cls(prim["name"])(**prim["params"])
-    default = p.config_overrides(timeframe)
+    from primaries.mechanism import MechanismPrimary
+
+    mm = _model(config)
+    rule = mm["meta"] == "none"
+    cls = _primary_cls(prim["name"], rule)
+    mech = isinstance(cls, type) and issubclass(cls, MechanismPrimary)
+    if rule and any(config.get(k) is not None for k in ("pwfo", "feature_groups", "meta_train")):
+        raise ValueError("pwfo, feature_groups and meta_train need a meta-model (`model.meta`); a rule cell has none")
+    p = cls(**prim["params"]) if mech else None
+    default = p.config_overrides(timeframe) if mech else {}
     over = dict(config.get("overrides") or {})
     for owned in ("COST_MODEL", "EXIT_MODEL", "EXIT_PARAMS", "EVENT_PARAMS"):
         if owned in over:
@@ -183,24 +250,37 @@ def cell_raw(config: dict, symbols, timeframe: str, start: str, end: str) -> dic
         "timeframe": timeframe,
         "start": start,
         "end": end,
-        "feature_groups": ["wavelet_core", *[g for g in p.needs_groups() if g != "wavelet_core"]],
+        "feature_groups": (
+            list(config["feature_groups"])
+            if config.get("feature_groups") is not None
+            else ["wavelet_core", *[g for g in (p.needs_groups() if mech else ()) if g != "wavelet_core"]]
+        ),
         "primary": prim,
-        "model": {"meta": "none", "primary": "legacy"},
-        "sizer": config.get("sizer", "rule_size"),
+        "model": mm,
+        "meta_train": config.get("meta_train", "oof"),
+        "sizer": config.get("sizer", "rule_size" if mech else "fixed"),
         "risk_profile": config.get("risk_profile", "none"),
+        "pwfo": None if config.get("pwfo") is None else {"expanding": False, **config["pwfo"]},
+        "seed": config.get("seed", 42),
         "overrides": over,
     }
 
 
 def make_cells(fam: FamilySpec, config: dict, start: str, end: str, symbols=None) -> list[Cell]:
-    """Stage-F cells of one configuration: one per instrument, or the basket's one portfolio cell."""
+    """Stage-F cells of one configuration: one per instrument (and leg), or the basket's one portfolio cell."""
     syms = list(symbols or fam.instruments)
     groups = [syms] if fam.basket else [[s] for s in syms]
+    if fam.basket and (config.get("per_instrument") or config.get("legs")):
+        raise ValueError("per_instrument and legs are for pooled instruments; a basket is one portfolio cell")
     cells = []
     for g in groups:
-        cell = Cell(normalize(cell_raw(config, g, fam.timeframe, start, end)), RULE_STAGE)
-        cell.config()  # validate the RunConfig now
-        cells.append(cell)
+        for cfg in for_symbol(config, None if fam.basket else g[0]):
+            cell = Cell(normalize(cell_raw(cfg, g, fam.timeframe, start, end)), RULE_STAGE)
+            cell.config()  # validate the RunConfig now
+            cells.append(cell)
+    keys = [c.spec_json() for c in cells]
+    if len(set(keys)) != len(keys):
+        raise ValueError("two legs of one instrument run the same cell: a leg must change the configuration")
     return cells
 
 
@@ -272,9 +352,9 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         raise ValueError(f"unknown floor(s) {sorted(extra)}; expected {sorted(FLOOR_KEYS)}")
     given = dict(doc.get("floors") or {})
     cls = _primary_cls((headline.get("primary") or {}).get("name") if isinstance(headline.get("primary"), dict)
-                       else headline.get("primary"))  # fmt: skip
+                       else headline.get("primary"), _model(headline)["meta"] == "none")  # fmt: skip
     prim_params = headline["primary"].get("params") or {} if isinstance(headline["primary"], dict) else {}
-    long_only = bool(cls.LONG_ONLY or prim_params.get("long_only", False))
+    long_only = bool(getattr(cls, "LONG_ONLY", False) or prim_params.get("long_only", False))
     if "min_net_ret" not in given and "min_net_ret_vs_benchmark" not in given:  # PLAN2 U17 defaults
         given["min_net_ret_vs_benchmark" if long_only else "min_net_ret"] = 0.8 if long_only else 0.02
     given.setdefault("min_edge_to_cost", 3.0)
@@ -316,6 +396,12 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         else:
             s["start"], s["end"] = _date(s.get("start", window[0])), _date(s.get("end", window[1]))
         samples.append(s)
+    known = set(instruments) | {x for s in samples for x in s.get("instruments", ())}
+    for v in variants:
+        stray = set(v.config.get("per_instrument") or {}) - known
+        if stray:
+            raise ValueError(f"variant {v.label!r}: per_instrument names {sorted(stray)}, not an instrument of the "
+                             "family or of a sample split")  # fmt: skip
     reg = doc.get("registered")
     fam = FamilySpec(fid, doc, Path(path) if path else None, instruments, basket, tf, window, variants, bench,
                      floors, test, states, response, samples, budget, reg)  # fmt: skip
@@ -342,7 +428,10 @@ class RegistrationError(RuntimeError):
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=check)
+    # UTF-8, as the spec files are read: the locale's codec (cp1252 on Windows) would make a non-ASCII spec (an en
+    # dash in a mechanism) differ from its own registered version
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8",
+                          check=check)  # fmt: skip
 
 
 def _strip(doc: dict) -> dict:

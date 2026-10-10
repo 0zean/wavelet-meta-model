@@ -1,0 +1,45 @@
+# F5 — market intraday momentum and close-flow continuation (PLAN2 §F5, F6 folded in; U18). Headline as PLAN2: at
+# 15:30 (decided at the 15:25 bar's close) go in the direction of the open → 15:25 return when |return| > 0.5 × the
+# day's expected σ in time-of-day units (VOL_PROFILE tod, SPEC §14), exit at the closing auction; SPY, QQQ, IWM, DIA
+# pooled with equal-risk weights.
+# Choices made at registration (U18):
+# - Size: the rule's magnitude m = min(1, |predictor| / σ_day) (U16 as built; plain σ_day).
+# - risk_profile none, not PLAN2's `standard`: its 20 % position cap would scale the overlay's return (and the 2 %/yr
+#   floor) by 0.2 per instrument cell, and its drawdown tiers and loss gate would replace the rule under test.
+# - benchmark buy_and_hold_er (as F1–F4, user-approved); floors the PLAN2 defaults for a long/short overlay
+#   (net return ≥ 2 %/yr, gross edge ≥ 3 × cost).
+# - Variants, one PLAN2 axis each (the full 2 × 3 × 3 grid would exceed the budget): predictor first30 (F6, aux a);
+#   entry 15:00 / 15:45; threshold 0 / 1σ; plain_sigma = VOL_PROFILE none (the threshold in plain σ units: tests that
+#   the ISOM time-of-day structure is load-bearing).
+# - Not measured here: aux b (reversion over the next 1–3 days) and the gamma-proxy split (no proxy; SPEC §17.5);
+#   `path_monotone` is not built. Sector ETFs (aux d: absent there) are a sample split.
+id: F5
+registered: {sha: 'dd8228d0abeafdf6f2f45ed621fd5ab81279fa1b', date: '2026-10-10'}
+mechanism: >-
+  Gamma hedging by option market makers and leveraged-ETF rebalancing buy into rises and sell into falls near the close
+  (Baltussen, Da, Lammers & Martens 2021; Cheng & Madhavan 2009), and late-informed traders act on the morning's
+  information (Gao, Han, Li & Zhou 2018), so the last half hour continues the direction of the day.
+instruments: [SPY, QQQ, IWM, DIA]
+timeframe: 5Min
+headline:
+  primary: {name: intraday_momentum, params: {entry: "15:30", predictor: open_to_now, threshold_sigma: 0.5}}
+  cost_model: quotes
+  risk_profile: none
+  overrides: {VOL_PROFILE: tod}
+variants:
+  - {label: first30, primary.params.predictor: first30}
+  - {label: entry_1500, primary.params.entry: "15:00"}
+  - {label: entry_1545, primary.params.entry: "15:45"}
+  - {label: thr0, primary.params.threshold_sigma: 0.0}
+  - {label: thr1, primary.params.threshold_sigma: 1.0}
+  - {label: plain_sigma, overrides.VOL_PROFILE: none}
+state_splits: [vix_tercile, macro_day, abs_move_tercile, day_of_week]
+response: [sharpe, mean_per_trade_bp, hit_rate, max_dd, skew, exposure]
+sample_splits:
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+  - {label: sector_etfs, instruments: [XLE, XLF, XLK, XLV]}
+benchmark: buy_and_hold_er
+floors: {min_net_ret: 0.02, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 12

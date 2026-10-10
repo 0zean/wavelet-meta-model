@@ -21,7 +21,8 @@ default sampler and exit (config_overrides) into `overrides`, under the cell's o
 configuration; its sizer defaults to `rule_size` (when the cell and the defaults set none), and a feature group its
 rule reads (vol_state for a VIX source / gate) must be listed. Every cell's RunConfig is built at load time, so an invalid spec fails before anything runs.
 `model.meta: none` is a rule cell (SPEC §17): the rule pass with no meta-model, stage F only; stages F / G / H are built
-by the family runner (families/run.py), never from an experiment spec.
+by the family runner (families/run.py), never from an experiment spec. Since U18 (F11) stage F also holds model cells
+(a family whose headline has a meta-model); every cell of a family stage counts 0 trials (the variant row counts).
 """
 
 import copy
@@ -40,7 +41,7 @@ from utils.config import DEFAULT_FEATURE_GROUPS, RunConfig
 STAGES = ("U6", "U7", "U8", "U9", "U10", "A", "B", "C", "D", "E", "F", "G", "H")
 FAMILY_STAGES = ("F", "G", "H")
 FINAL_STAGE = "E"
-RULE_STAGE = "F"  # the stage of rule cells (META_MODEL "none": Phase 1 has no machine learning), and only of them
+RULE_STAGE = "F"  # the stage of rule cells (META_MODEL "none": Phase 1 has no machine learning)
 
 DEFAULT_CELL = {
     "symbols": None,
@@ -80,9 +81,9 @@ class Cell:
     stage: str
 
     def __post_init__(self):
-        if self.is_rule != (self.stage == RULE_STAGE):
-            raise ValueError(f"stage {RULE_STAGE} cells and only they are rule cells (model.meta 'none'); got a "
-                             f"{'rule' if self.is_rule else 'model'} cell in stage {self.stage!r}")  # fmt: skip
+        if self.is_rule and self.stage != RULE_STAGE:
+            raise ValueError(f"rule cells (model.meta 'none') are stage {RULE_STAGE} only; got one in stage "
+                             f"{self.stage!r}")  # fmt: skip
 
     @property
     def is_rule(self) -> bool:

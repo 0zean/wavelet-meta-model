@@ -81,6 +81,11 @@ PROFILES: dict[str, RiskProfile] = {
         dd_tiers=((0.10, 0.5), (0.20, 0.0)),
         daily_loss=0.02,
     ),
+    # U18 (PLAN2 F2): a self-sized multi-asset basket in one portfolio cell. The rule sizes each asset (tsmom:
+    # min(1, σ*/σ̂)); entries are scaled pro-rata so gross ≤ 1.0 (the retail cap) and each side ≤ 1.0. No vol target,
+    # position / concurrency caps, drawdown tiers or loss gate: they would override the rule's own sizing. Shorts pay
+    # 50 bp/yr borrow (conservative for easy-to-borrow ETFs).
+    "basket": RiskProfile("basket", max_gross=1.0, max_net=1.0, borrow_bps=50.0),
 }
 
 
