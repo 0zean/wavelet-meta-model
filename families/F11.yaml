@@ -15,6 +15,7 @@
 #   and by the headline vs plain_sigma comparison, both reported; the program verdict is the usual family test.
 # - risk_profile none; benchmark buy_and_hold_er; floors the PLAN2 defaults for a long/short strategy (2 %/yr, 3 × cost).
 id: F11
+registered: {sha: 'ce5dcd212158b1db4e8d02554eee667d42816222', date: '2026-10-10'}
 mechanism: >-
   The ISOM time-of-day seasonality (Kablan 2009) makes a plain bar volatility wrong by a factor of several across the
   session, so CUSUM event timing and triple-barrier widths at 15Min–1Hour were mis-scaled in U11; if that labelling
