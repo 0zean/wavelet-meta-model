@@ -1,11 +1,18 @@
-# Session Handoff — U17 family-test tooling (branch, not merged)
+# Session Handoff — U17 family-test tooling (merged) + XGBoost thread fix (PR open)
 
 ## Where it started
 The user asked me to review `handoff.md` (U16 merged as PR #18) and begin U17 per PLAN2.md and SPEC §17.
 
 U17 was built on `unit/17-family-tests` and adversarially reviewed. The BREAKING and SEVERE findings are fixed, and it
-was re-verified: full suite, U12 parity, the legacy run vs a clean `main` worktree, and the registered dry run. The
-branch is committed locally; it is **not pushed and has no PR yet** (the user's call).
+was re-verified: full suite, U12 parity, the legacy run vs a clean `main` worktree, and the registered dry run. At
+the user's request it was pushed and merged as PR #19 (merge commit baa052e), including the SPY 5Min data-cache
+extension to 2026-09-30.
+
+The user then asked about the environment-dependent legacy hash. It was not the MacBook (that is a third value,
+`402ef202…`). XGBoost's thread count followed the session's environment: OMP_NUM_THREADS = 1 gave `551d8074…` and the
+default 32 threads gave `f8e0617e…`, with real differences (23 primary direction flips, 161 trade decisions out of
+754). Fixed on `fix/xgb-single-thread`: `_XGB_BASE` sets `n_jobs: 1`. The legacy run is now `551d8074…` at any thread
+setting, parity PASS, 749 tests. Pushed as a PR, **not merged** (the user's call).
 
 ## Decisions locked + what shipped
 - **Phase-1 cells are rule cells.** `META_MODEL: none` with stage F only, no meta-model and no WFO
@@ -42,9 +49,12 @@ branch is committed locally; it is **not pushed and has no PR yet** (the user's 
 
 ## Running state
 - Background processes: none. The review agent finished.
-- Branch `unit/17-family-tests`: 5 commits on `main`. Scratch `main` worktree removed.
-- **Uncommitted:** `data/cache/sip/all/5Min/SPY.{json,npz}`. The dry run's quasi-holdout cell made the data layer
-  fetch SPY 5Min 2026-09-26 … 09-30 (pre-holdout). Commit it or `git checkout` it, the user's call.
+- `main` has U17 (PR #19 merged; the local `unit/17-family-tests` branch is deleted, the remote kept). The SPY 5Min
+  cache extension (2026-09-26 … 09-30, fetched by the dry run's quasi-holdout cell) is committed.
+- Branch `fix/xgb-single-thread` (1 commit, pushed, PR open) is checked out locally.
+- Scratch `main` worktree removed.
+- More scratch: `hash/` (legacy at 1 / 32 / default threads before the fix) and `hashfix/` (after the fix, with
+  parity).
 - Scratch (disposable) in the session scratchpad:
   - `dryrun17b/` (the dry-run ledger, root and report);
   - `parity17/`, `legacy17/`, `legacy_main17/`, `review17/` (the reviewer's probes);
@@ -54,8 +64,9 @@ branch is committed locally; it is **not pushed and has no PR yet** (the user's 
 - `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q` — 748 passed (~4.5 min).
 - `uvx ruff check . && uvx ruff format --check .` — clean.
 - U12 parity — PASS (8/8), same three commands as before.
-- Legacy run: outputs are identical to `main` in the same environment. Today `wfo_signals.csv` sha1 is `f8e0617e…`
-  on both; it differs across sessions (environment), so compare against `main` and not against a recorded hash.
+- Legacy run: `PYTHONIOENCODING=utf-8 MPLBACKEND=Agg uv run python wavelet_meta_model.py data/data.csv --out R`.
+  With the XGBoost fix, `wfo_signals.csv` sha1 is `551d8074…` whatever OMP_NUM_THREADS is. Before the fix (U17's
+  merged `main`), it is `551d8074…` only with OMP_NUM_THREADS=1.
 - Dry run:
   1. `LOKY_MAX_CPU_COUNT=1 uv run python -m families --ledger S/ledger.jsonl --root S/root --out S/out run families/dryrun/F1_spy_dryrun.yaml --jobs 4`
   2. `... summary` with the same --ledger / --out.
@@ -72,7 +83,7 @@ branch is committed locally; it is **not pushed and has no PR yet** (the user's 
   - push the branch and open a PR / merge;
   - the data-cache change;
   - delete the remote `origin/unit/*` branches (carried over);
-  - whether the legacy-hash instability (environment-dependent) deserves its own investigation.
+  - merge the XGBoost thread fix PR (`fix/xgb-single-thread`).
 
 ## Pick up here
 Merge U17 if the user approves, then start U18 on `unit/18-...` off `main`:

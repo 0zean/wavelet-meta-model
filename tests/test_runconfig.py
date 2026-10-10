@@ -318,3 +318,13 @@ def test_days_mode_purge_and_embargo_keep_fitting_targets_causal(df, monkeypatch
     monkeypatch.setattr(eng, "purged", lambda labels, start, end, embargo=0: purge(labels, start, end))
     with pytest.raises(AssertionError):
         _assert_fit_unaffected(base, cfg, monkeypatch)
+
+
+def test_every_xgboost_fit_is_pinned_to_one_thread():
+    """XGBoost's default thread count comes from the environment (OMP_NUM_THREADS, else every CPU), and a multithreaded
+    hist build grows different trees from the same seed: the legacy CSV run gave two hashes on one PC. Every XGBoost
+    parameter set (the legacy primary classifier / regressor and meta-model, and the zoo `xgb` built from them) pins
+    n_jobs = 1, through every RunConfig constructor."""
+    for cfg in (RunConfig(), RunConfig.for_timeframe("1Day"), RunConfig.legacy_5min(), RunConfig().replace(SEED=7)):
+        for name in ("CLF_PARAMS", "REG_PARAMS", "META_PARAMS"):
+            assert getattr(cfg, name)["n_jobs"] == 1, name
