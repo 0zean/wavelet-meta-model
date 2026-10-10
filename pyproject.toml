@@ -27,7 +27,7 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.15.2"]
 
 [tool.ruff]
-exclude = [".venv"]
+exclude = [".venv", "scripts/plan3_diagnostics"]  # plan3_diagnostics: one-off evidence scripts (PLAN3 §0–§1), not maintained code
 respect-gitignore = true
 line-length = 120
 lint.ignore = ["F403"]
