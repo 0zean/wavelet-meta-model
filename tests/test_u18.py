@@ -437,3 +437,43 @@ def test_a_legs_family_runs_end_to_end_and_overlapping_window_legs_fail_loudly(t
         run_family(_write(tmp_path / "F4_bad.yaml", bad), ledger=L.Ledger(tmp_path / "l2.jsonl"),
                    root=tmp_path / "root", out_dir=tmp_path / "out", source=src, repo=tmp_path,
                    check_registration=False, program=prog, quasi=False)  # fmt: skip
+
+
+# ── Model cells in a family (F11): PWFO members, 0 trials each, cost totals for the edge floor ──
+
+
+def test_a_family_with_a_meta_model_runs_pwfo_members_that_count_no_trials(tmp_path):
+    doc = {
+        "id": "F11_like",
+        "mechanism": "A U11 cell family re-run under another volatility model.",
+        "instruments": ["AAA", "BBB"],
+        "timeframe": "1Day",
+        "window": {"start": "2019-01-02"},
+        "headline": {"primary": {"name": "sma_cross", "params": {}}, "model": {"meta": "logit_l2"},
+                     "feature_groups": ["wavelet_core"], "pwfo": {"is_grid": [504], "oos_grid": [63]},
+                     "overrides": {"MIN_TRAIN_EVENTS": 40, "MIN_VAL_EVENTS": 10}},
+        "variants": [{"label": "oos21", "pwfo.oos_grid": [21]}],
+        "test": {"n_boot": 199},
+    }  # fmt: skip
+    fam = parse(doc)
+    cells = fam.cells[HEADLINE]
+    assert all(c.stage == "F" and not c.is_rule and c.is_pwfo for c in cells)
+    assert fam.floors["min_net_ret"] == 0.02  # a long/short primary: the overlay floor
+    prog = tmp_path / "program.yaml"
+    prog.write_text("max_families: 8\nmax_trials: 112\n", encoding="utf-8")
+    ledger = L.Ledger(tmp_path / "ledger.jsonl")
+    res = run_family(_write(tmp_path / "F11_like.yaml", doc), ledger=ledger, root=tmp_path / "root",
+                     out_dir=tmp_path / "out", source=TrendSource(), repo=tmp_path, check_registration=False,
+                     program=prog, quasi=False)  # fmt: skip
+    rows = ledger.rows()
+    members = [r for r in rows if r.get("kind") == "pwfo"]
+    assert len(members) == 4 and all(r["status"] == "ok" and r["n_trials"] == 0 for r in members)
+    assert all(r["traded_notional"] > 0 and r["cost_paid"] > 0 and r["init_cash"] > 0 for r in members)
+    variants = [r for r in rows if r.get("kind") == "family_variant"]
+    assert len(variants) == 2 and L.n_trials(rows, "F") == 2
+    fl = res["evaluation"]["variants"][HEADLINE]["floors"]["min_edge_to_cost"]
+    assert fl["cost_bp"] > 0 and abs(fl["value"]) < 1e6
+    with pytest.raises(ValueError, match="need a meta-model"):
+        parse({**doc, "headline": {"primary": {"name": "overnight", "params": {}}, "pwfo": {"is_grid": [252]}}})
+    with pytest.raises(TypeError, match="mechanism primary"):
+        parse({**doc, "headline": {"primary": {"name": "sma_cross", "params": {}}}})

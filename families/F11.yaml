@@ -1,0 +1,53 @@
+# F11 — re-test of the U11 intraday primaries under deseasonalized volatility (PLAN2 §F11, optional closure; U18).
+# PLAN2: one pre-registered re-run of the best-evidenced U11 cell family, donchian_breakout / rf_ldp_fast on QQQ, SPY,
+# XLK at 30Min and 1Hour, with VOL_PROFILE "tod", to close the question of whether the U11 null was partly a labelling
+# artefact. PLAN2's expected answer: no.
+# Choices made at registration (U18):
+# - Cells: the three U11 Stage C finalists with that primary and meta-model (QQQ 30Min, SPY 30Min, XLK 30Min), each
+#   with its own U11 configuration: QQQ and SPY the default feature groups and the fixed sizer; XLK the extended
+#   groups, cmda feature selection and the linear sizer (a per-instrument patch). Pooled with equal-risk weights.
+# - Engine: today's defaults (SPEC §11.2: PWFO_COMBINE average over the default grid IS 504 / 756 × OOS 21, fixed
+#   rf_ldp_fast parameters, rolling calibration, quotes costs), not U11's 16-combo nested search, which PLAN2 retired.
+# - Trials (budget 4, a 2 × 2 design): headline = 30Min with VOL_PROFILE tod (the sampler's and the barriers' σ in
+#   time-of-day units, the profile fitted per fold); plain_sigma = the same cells with VOL_PROFILE none (the U11
+#   labelling under today's engine, the control); hourly / hourly_plain = the same at 1Hour (PLAN2's "30Min and
+#   1Hour"; no U11 finalist had this pairing at 1Hour). The question PLAN2 asks is answered by the headline's test
+#   and by the headline vs plain_sigma comparison, both reported; the program verdict is the usual family test.
+# - risk_profile none; benchmark buy_and_hold_er; floors the PLAN2 defaults for a long/short strategy (2 %/yr, 3 × cost).
+id: F11
+mechanism: >-
+  The ISOM time-of-day seasonality (Kablan 2009) makes a plain bar volatility wrong by a factor of several across the
+  session, so CUSUM event timing and triple-barrier widths at 15Min–1Hour were mis-scaled in U11; if that labelling
+  error hid an edge, deseasonalizing volatility should reveal it in the best-evidenced U11 cells.
+instruments: [QQQ, SPY, XLK]
+timeframe: 30Min
+headline:
+  primary: {name: donchian_breakout, params: {}}
+  model: {meta: rf_ldp_fast, primary: legacy}
+  meta_train: oof
+  feature_groups: [wavelet_core, trend, mean_reversion, volatility, microstructure, intraday, fracdiff]
+  sizer: fixed
+  pwfo: {is_grid: [504, 756], oos_grid: [21]}
+  seed: 42
+  cost_model: quotes
+  risk_profile: none
+  overrides: {VOL_PROFILE: tod}
+  per_instrument:
+    XLK:
+      sizer: linear
+      feature_groups: [wavelet_core, trend, mean_reversion, volatility, microstructure, intraday, fracdiff,
+                       wavelet_ext, structural, calendar]
+      overrides: {FEATURE_SELECTION: cmda}
+variants:
+  - {label: plain_sigma, overrides.VOL_PROFILE: none}
+  - {label: hourly, timeframe: 1Hour}
+  - {label: hourly_plain, timeframe: 1Hour, overrides.VOL_PROFILE: none}
+state_splits: [vix_tercile, day_of_week]
+response: [sharpe, mean_per_trade_bp, hit_rate, max_dd, skew, exposure]
+sample_splits:
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+benchmark: buy_and_hold_er
+floors: {min_net_ret: 0.02, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 4

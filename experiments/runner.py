@@ -48,7 +48,7 @@ import pandas as pd
 
 from data.bars import HOLDOUT_START, HoldoutError
 from experiments import ledger as L
-from experiments.spec import FINAL_STAGE, Cell
+from experiments.spec import FAMILY_STAGES, FINAL_STAGE, Cell
 from features import cache as feature_cache
 from utils.config import RunConfig
 
@@ -306,8 +306,11 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
         "n_trades": int(m["Num Trades"]),
         "turnover": float(m["Turnover (x/yr)"]),
         "max_dd": float(m["Max Drawdown (%)"]) / 100,  # bar-level drawdown (the daily one misses intraday troughs)
-        "n_trials": 1,
+        "n_trials": cell_trials(cell),
     }
+    if "cost_paid" in eq.attrs:  # the family edge floor's totals (portfolio-simulator paths)
+        row |= {"pnl": float(eq.iloc[-1] - cfg.INIT_CASH), "traded_notional": float(eq.attrs["traded_notional"]),
+                "cost_paid": float(eq.attrs["cost_paid"]), "init_cash": float(cfg.INIT_CASH)}  # fmt: skip
     row["calmar"] = row["ret_ann"] / abs(row["max_dd"]) if row["max_dd"] < 0 else np.nan
     return row
 
@@ -398,6 +401,13 @@ def _pwfo_row(cell: Cell, cfg: RunConfig, res, out: Path) -> dict:
     live.to_csv(out / "daily_returns.csv")
     st, summ = res.stats, res.summary
     nested = cfg.PWFO_COMBINE == "nested"
+    totals = {}
+    run = summ[summ["n_ok_windows"] > 0] if "oos_cost_frac" in summ else summ.iloc[:0]
+    if len(run) and not nested:  # average: the run combos' equal-weight mix (the edge floor's totals, SPEC §17.6)
+        totals = {"pnl": float(run["oos_pnl_frac"].mean() * cfg.INIT_CASH),
+                  "cost_paid": float(run["oos_cost_frac"].mean() * cfg.INIT_CASH),
+                  "traded_notional": float(run["oos_notional_frac"].mean() * cfg.INIT_CASH),
+                  "init_cash": float(cfg.INIT_CASH)}  # fmt: skip
     default = Combo(*cfg.PWFO_DEFAULT, 0).label
     combos = [
         {"combo": c, "sharpe": s.get("oos_sharpe"), "wfe": s.get("wfe"), "n_oos_windows": int(s["n_oos_windows"]),
@@ -407,7 +417,8 @@ def _pwfo_row(cell: Cell, cfg: RunConfig, res, out: Path) -> dict:
     return {
         "kind": "pwfo",
         **daily_stats(live),
-        "n_trials": int(st["n_combos"]),  # every grid combo is a trial (SPEC §6), fitted or not
+        # every grid combo is a trial (SPEC §6), fitted or not; a family member counts 0 (its variant row counts)
+        "n_trials": cell_trials(cell),
         "n_trades": int(summ["n_trades"].fillna(0).sum()),
         # nested: the default combo's windows (U9–U11); average: every combo's (all of them are traded)
         "n_oos_windows": int(summ.loc[default, "n_oos_windows"] if nested else summ["n_oos_windows"].sum()),
@@ -420,6 +431,7 @@ def _pwfo_row(cell: Cell, cfg: RunConfig, res, out: Path) -> dict:
         "picks": st.get("picks"),
         "combos": combos,
         **holdout,
+        **totals,
     }
 
 
@@ -532,7 +544,7 @@ def finish_pwfo_cell(cell: Cell, chash: str, final: bool, root, grid: list, resu
 
 
 def cell_trials(cell: Cell) -> int:
-    if cell.is_rule:  # a family member: the family variant row is the counted trial (families/run.py)
+    if cell.stage in FAMILY_STAGES:  # a family member: the family variant row is the counted trial (families/run.py)
         return 0
     return len(cell.spec["pwfo"]["is_grid"]) * len(cell.spec["pwfo"]["oos_grid"]) if cell.is_pwfo else 1
 
@@ -630,8 +642,6 @@ def run(
     Cells of the family stages (F / G / H) run only with `family=True` (families/run.py, which counts and budgets
     their trials); without it they are refused before anything runs.
     """
-    from experiments.spec import FAMILY_STAGES
-
     fam = sorted({c.stage for c in cells} & set(FAMILY_STAGES))
     if fam and not family:
         raise ValueError(f"stage(s) {fam} are family stages: run them through `python -m families run` (budgets)")
