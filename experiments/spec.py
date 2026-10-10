@@ -20,6 +20,8 @@ or null = one expanding WFO), seed, overrides (any other RunConfig field). A mec
 default sampler and exit (config_overrides) into `overrides`, under the cell's own, so the recorded cell is the run
 configuration; its sizer defaults to `rule_size` (when the cell and the defaults set none), and a feature group its
 rule reads (vol_state for a VIX source / gate) must be listed. Every cell's RunConfig is built at load time, so an invalid spec fails before anything runs.
+`model.meta: none` is a rule cell (SPEC §17): the rule pass with no meta-model, stage F only; stages F / G / H are built
+by the family runner (families/run.py), never from an experiment spec.
 """
 
 import copy
@@ -33,9 +35,12 @@ import yaml
 
 from utils.config import DEFAULT_FEATURE_GROUPS, RunConfig
 
-# Stage order for trial counting: N for a stage = trials of that stage and every earlier one (SPEC §9).
-STAGES = ("U6", "U7", "U8", "U9", "U10", "A", "B", "C", "D", "E")
+# Stage order for trial counting: N for a stage = trials of that stage and every earlier one (SPEC §9). F, G, H (SPEC
+# §11.1): family dev tests, overlays, forward test; they run through `python -m families`, not an experiment spec.
+STAGES = ("U6", "U7", "U8", "U9", "U10", "A", "B", "C", "D", "E", "F", "G", "H")
+FAMILY_STAGES = ("F", "G", "H")
 FINAL_STAGE = "E"
+RULE_STAGE = "F"  # the stage of rule cells (META_MODEL "none": Phase 1 has no machine learning), and only of them
 
 DEFAULT_CELL = {
     "symbols": None,
@@ -73,6 +78,16 @@ class Cell:
 
     spec: dict
     stage: str
+
+    def __post_init__(self):
+        if self.is_rule != (self.stage == RULE_STAGE):
+            raise ValueError(f"stage {RULE_STAGE} cells and only they are rule cells (model.meta 'none'); got a "
+                             f"{'rule' if self.is_rule else 'model'} cell in stage {self.stage!r}")  # fmt: skip
+
+    @property
+    def is_rule(self) -> bool:
+        """A rule cell: a fixed rule with no meta-model, run as one pass (wfo/rule_pass.py; SPEC §17)."""
+        return self.spec["model"]["meta"] == "none"
 
     @property
     def symbols(self) -> tuple[str, ...]:
@@ -159,6 +174,8 @@ def normalize(raw: dict) -> dict:
         c["pwfo"] = p
         if len(c["symbols"]) != 1:
             raise ValueError("a PWFO cell takes one symbol (multi-symbol PWFO is deferred to U11 Stage D)")
+        if c["model"]["meta"] == "none":
+            raise ValueError("a rule cell (model.meta 'none') has nothing to walk forward: pwfo must be null")
     owned = _CELL_OWNED & set(c["overrides"])
     if owned:
         raise ValueError(f"overrides may not set {sorted(owned)}: use the cell's own fields")
@@ -201,6 +218,8 @@ def expand(doc: dict) -> list[Cell]:
         raise ValueError(f"unknown spec key(s) {sorted(extra)}")
     stage = str(doc.get("stage", ""))
     stage_rank(stage)
+    if stage in FAMILY_STAGES:  # their trials are family variants, counted and budgeted by the family runner
+        raise ValueError(f"stage {stage!r} is a family stage: run it with `python -m families run <family spec>`")
     defaults = doc.get("defaults") or {}
     grid = doc.get("grid") or {}
     for k, v in grid.items():

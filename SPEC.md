@@ -1072,6 +1072,116 @@ bootstrap: the choice between the ≤ 2 overlay configurations is re-run on 100 
 sets and the adopted configuration's advantage must exceed the 95th percentile of the bootstrapped
 advantages. Adopted overlays replace the headline in the registry; others are discarded.
 
+### §17.5 Implementation (U17, as built)
+
+- **Rule pass** (`wfo/rule_pass.py`; `RunConfig.META_MODEL = "none"`). A Phase-1 cell runs its fixed rule once over the
+  window: no meta-model, no walk-forward fitting. Every sampled event with a barrier width gets the rule's side and
+  magnitude, and the frame keeps run_wfo's signal columns: trade_signal = signed_dir, meta_prob NaN, bet_size =
+  magnitude (`rule_size`) or 1 (`fixed`, the only other sizer allowed), 0 on flat sides. Only the groups the rule
+  reads are built (FeatureSet `require_core=False`), and an event with a NaN there is dropped.
+  - State that must be fit — `VOL_PROFILE = "tod"` (the sampler's σ) or a per-fold group (vol_state's GARCH) — is
+    fit causally per segment. The segments are wfo_folds' test windows (TEST sessions each, after INITIAL_TRAIN + VAL
+    sessions of warm-up), and each segment's state is fit on every bar before it less EMBARGO sessions. Otherwise
+    the pass is one segment over the whole window.
+  - The stream starts at the first segment's first bar (`live_start`). RunConfig refuses `none` with a non-rule
+    primary, a meta sizer or POSITION_MODE "average".
+- **Rule cells** (`experiments/runner._run_rule_cell`).
+  - Model.meta "none" is allowed only in stage F, and stage F only takes rule cells (`Cell.__post_init__`).
+    Experiment specs may not use stages F / G / H (`expand` refuses them); they run through `python -m families`.
+  - Each symbol's rule pass goes through the signals cache, and the cell is simulated by
+    `risk.portfolio.simulate_portfolio` from the earliest live bar (one or many symbols, the cell's risk profile and
+    cost model).
+  - The row is kind "rule" with n_trials 0 (`cell_trials` 0 for a no_fit too): a rule cell is a family member.
+  - The row also carries `traded_notional` and `cost_paid` (new equity attrs of simulate_portfolio: Σ shares traded
+    × reference price, and Σ one-way costs, over every fill; a rolled exit trades nothing and a roll's entry only
+    its traded shares), `pnl`, `live_start`, `n_sided` and `skipped_segments`.
+  - The cell also writes trades.csv.
+  - `run(..., on_hash=)` reports every cell's hash, run or skipped.
+- **U16 fix found here:** the VIX rules (vol_target `vix`, overnight `vix_max`) read the column `vix`, but the
+  feature set names it `vol_state__vix`, so they raised inside a real WFO. `_x_col` now reads the prefixed name, and a
+  bare name (hand-built X) still works.
+- **Family spec** (`families/spec.py`): the §17.1 schema with these choices.
+  - `id` = the file's stem, and an amendment is `<id>.v<k>`.
+  - Exactly one of `instruments` (one cell per instrument) or `basket: {symbols}` (one portfolio cell).
+  - `window` defaults to the development window and may not pass its end.
+  - The headline keys are `primary`, `exit {model, params}` (params merge over the primary's default exit when the
+    model is the default's), `sampler {params}` (merge over the default EVENT_PARAMS), `cost_model`, `risk_profile`,
+    `sizer` and `overrides`. COST_MODEL / EXIT_* / EVENT_PARAMS may not be set through overrides.
+  - Variants are a label plus dotted changes to the headline. Labels must be YAML strings (an unquoted `2016_2019`
+    is the integer 20162019), and other instruments are a sample split, not a variant.
+  - 1 + #variants ≤ TRIAL_BUDGET (default 12).
+  - `benchmark` ∈ buy_and_hold_ew | buy_and_hold_er | cash.
+  - `floors` take min_net_ret, min_net_ret_vs_benchmark (the long-only "0.8 × benchmark"), min_edge_to_cost and
+    max_dd (a magnitude). `test` takes alpha, block_days, n_boot, coherence_share and seed.
+  - Named state splits: vix_tercile, vix_median, macro_day, abs_move_tercile, prior_day_sign, day_of_week and
+    gamma_sign (reported "unavailable": no gamma proxy).
+  - Named responses: sharpe, sortino, calmar, ret_ann, vol_ann, max_dd, skew, lpm2, mean_per_trade_bp, hit_rate,
+    crisis_return (2020-02-19 → 03-24, 2022-01-03 → 10-13) and exposure. `path_monotone` is not built: a spec naming
+    it is refused.
+  - Sample splits are `{label, instruments}` (the headline on other instruments) or `{label, start, end}` (a slice
+    of the headline stream).
+  - Every variant's cells are built and their RunConfigs validated at load.
+- **Registration.**
+  - `python -m families register <file>` writes `registered: {sha: HEAD, date}` into a committed, clean spec. The
+    next commit records it.
+  - The runner refuses the spec when: it has no `registered`; the file is untracked or dirty; the sha is not an
+    ancestor of HEAD; or the file at that sha (without `registered`) differs from the file now.
+- **Run** (`families/run.py`, `python -m families run <file> --jobs N`).
+  - Budgets are checked before any cell runs. A trial key is `<base id>/<label>`. The counted keys are those of
+    family-variant rows with status ok / no_fit in stages F / G. A family (with its amendments) may have at most
+    TRIAL_BUDGET keys, and the program at most `families/program.yaml`'s 8 families / 112 trials.
+  - The runner refuses a ledger that already has rows of this id under another registered sha.
+  - One runner batch runs:
+    - the variants' cells over the window;
+    - the headline on each instrument sample split;
+    - the headline over [window start, 2026-10-01) for the quasi-holdout slice.
+  - Pooled stream: the members' daily streams on the union of their days (an instrument without a day is flat:
+    0), weighted by equal risk. The weights ∝ 1/σ of each instrument's buy-and-hold daily returns (last close per
+    session from the same bars) over the window. A basket's stream is its portfolio cell's.
+  - One ledger row per variant, appended once per (hash, status):
+    - kind "family_variant", n_trials 1, hash = sha(id, label, member hashes, the families/*.py source)[:16];
+    - trial_key, family / base_family, registered_sha and members;
+    - the pooled stream's daily statistics and the members' summed pnl / cost_paid / traded_notional.
+    Its daily_returns.csv and result.json go under `<root>/cells/<hash>/`. So the ledger's N for stage F counts
+    variants, not cells.
+  - Outputs in `<out>/<id>/`: result.json, streams.csv (each variant and the benchmark), report.md / .html and
+    spec_curve.png.
+- **Test** (`families/stats.py`, `families/test.py`).
+  - Ledoit–Wolf: Δ = SR_a − SR_b of the moment vector y_t = (a, b, a², b²), delta-method s.e., and Ψ̂ = the
+    Bartlett HAC with bandwidth = the block. In each circular block resample of ⌊T/b⌋ blocks, Ψ* = the block-sum
+    estimator (LW 2008 §3.2). p = (1 + #{|Δ*−Δ̂|/s* ≥ |Δ̂|/ŝ}) / (M + 1), with the studentized interval. The
+    `cash` benchmark runs the one-sample version (H0: SR = 0).
+  - Measured size: 4.3 % (T = 1,000) and 4.8 % (T = 2,500) over 1,000 null simulations. Power on a 0.3 gap
+    (ρ = 0.95, T = 2,520): 0.86.
+  - Alpha: OLS with Newey–West (Bartlett, lag 5).
+  - Floors:
+    - net return = the annualized compounded return of the stream;
+    - vs benchmark: ≥ k × the benchmark's on the same days;
+    - edge to cost: (Σ pnl + Σ cost_paid) / Σ traded_notional ≥ k × Σ cost_paid / Σ traded_notional. A stream that
+      never trades fails it.
+    - max_dd: on the daily stream.
+  - Coherence: over the non-headline variants, the share with the headline's sign on Δ must be ≥ coherence_share
+    (to 3 decimals: 0.667 = two thirds). The lower-median variant by Δ must clear every floor. A variant that did
+    not run counts as not sharing the sign and failing the floors. With no variants the check is vacuous.
+  - Passing: Holm over the families' headline p; a family passes iff p_holm < α, its floors hold, it is coherent
+    **and Δ > 0** (the test is two-sided, so a significant shortfall is not a pass).
+  - DSR: N = the program's counted trial keys (stages F / G), V = the variance of their latest rows' per-period
+    Sharpes.
+  - Reported, never in a verdict: responses per variant; state splits of the headline (per group: days, mean bp
+    with a Newey–West 95 % interval, Sharpe; VIX = the previous session's close, macro = FOMC / CPI / NFP dates);
+    sample splits; the quasi-holdout slice (2025-10-01 →, with its contamination note); and per-instrument Sharpes
+    with positive-part James–Stein shrinkage toward the family mean (k ≥ 4, else raw).
+- **Report** (`families/report.py`). The per-family report covers:
+  - the headline test, floors and coherence;
+  - the specification curve (every variant's Δ and CI, sorted, the headline highlighted);
+  - the responses and the splits;
+  - the trial accounting;
+  - the registered-vs-run diff (`git diff <registered sha> HEAD -- <spec>`: only the `registered` line when they
+    agree).
+
+  `python -m families summary` writes `program_summary.md / .html / .csv` with the verdict over every result in
+  the output directory.
+
 ---
 
 ## §18 Forward test (U20)

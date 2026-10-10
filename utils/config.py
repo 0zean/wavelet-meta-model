@@ -127,7 +127,8 @@ class RunConfig:
     SELECTION_METRIC: Literal["neg_log_loss", "brier"] = "neg_log_loss"
 
     # Model zoo (SPEC §4, U6; models/zoo.py). "legacy" = the pre-U6 fixed-parameter XGBoost (no search, no
-    # calibration); any other zoo model runs its purged-CV HP search + calibration inside its fitting rows.
+    # calibration); any other zoo model runs its purged-CV HP search + calibration inside its fitting rows. "none" =
+    # no meta-model and no walk-forward: the rule pass of a fixed rule (Phase-1 family cells, SPEC §17, wfo/rule_pass.py).
     META_MODEL: str = "legacy"
     # Direction classifier of the ml_xgb primary; must stay "legacy" for rule primaries (they fit nothing).
     PRIMARY_MODEL: str = "legacy"
@@ -273,8 +274,20 @@ class RunConfig:
         from models.zoo import REGISTRY as ZOO
 
         for name in ("META_MODEL", "PRIMARY_MODEL"):
-            if getattr(self, name) not in ZOO:
+            if getattr(self, name) not in ZOO and not (name == "META_MODEL" and self.META_MODEL == "none"):
                 raise ValueError(f"{name} must be one of {sorted(ZOO)}, got {getattr(self, name)!r}")
+        if self.META_MODEL == "none":  # the rule pass (SPEC §17, wfo/rule_pass.py): a fixed rule, no model at all
+            from primaries import REGISTRY as _PRIMARIES
+            from primaries.rules import RulePrimary
+
+            cls = _PRIMARIES.get(self.PRIMARY)
+            if not (isinstance(cls, type) and issubclass(cls, RulePrimary)):
+                raise ValueError(f"META_MODEL='none' runs a fixed rule primary, not {self.PRIMARY!r}")
+            if self.SIZER not in ("fixed", "rule_size"):
+                raise ValueError(f"META_MODEL='none' has no meta-probability to size by: SIZER must be 'fixed' or "
+                                 f"'rule_size', got {self.SIZER!r}")  # fmt: skip
+            if self.POSITION_MODE != "single":
+                raise ValueError("META_MODEL='none' (the rule pass) simulates POSITION_MODE='single' only")
         if self.PRIMARY_MODEL != "legacy" and self.PRIMARY != "ml_xgb":
             raise ValueError(f"PRIMARY_MODEL applies only to the ml_xgb primary (PRIMARY={self.PRIMARY!r})")
         if self.META_TRAIN not in ("val", "oof"):

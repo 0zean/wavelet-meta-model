@@ -131,9 +131,11 @@ def _banded(target: np.ndarray, band: float) -> np.ndarray:
 
 
 def _x_col(X: pd.DataFrame, col: str, name: str, group: str) -> np.ndarray:
-    if col not in X:
-        raise ValueError(f"primary {name!r} reads feature {col!r}: add the {group!r} group to FEATURE_GROUPS")
-    return X[col].to_numpy(dtype=float)
+    """The group's column `col` of X: as the feature set names it (`<group>__<col>`), or bare (a hand-built X)."""
+    for c in (f"{group}__{col}", col):
+        if c in X:
+            return X[c].to_numpy(dtype=float)
+    raise ValueError(f"primary {name!r} reads feature {col!r}: add the {group!r} group to FEATURE_GROUPS")
 
 
 def _check(name: str, ok: bool, msg: str) -> None:
