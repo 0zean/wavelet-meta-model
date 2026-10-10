@@ -38,6 +38,17 @@ without `costs`, else the symbol's per-bar cost for the kind of fill (risk.costs
 for entries, gap exits, gate flattening and trims, `intra` for intrabar barrier exits, `close` for vertical exits.
 Short borrow at profile.borrow_bps (annual) is charged at exit on the entry notional for the union bars held.
 
+Scheduled entries (SPEC §16, U16):
+- Under a market-on-close schedule (features.events.entry_at_close) every entry fills at the CLOSE of its entry bar
+  (cost kind `close`), after that bar's exits; it is decided at close[b−1] like every other entry.
+- A held position whose exit at bar b is known at the decision time (a `time` / `hysteresis` fill at the open, decided
+  at close[b−1] at the latest, or a scheduled `vertical` close fill; never a triple-barrier touch) and comes at or
+  before the new entry's fill does not block the symbol. When it exits at the same fill as the new entry (a
+  rebalance: hold to the next scheduled entry), the two are one order: the old position closes at the reference price
+  without cost, and the new one pays the fill's cost on the traded shares |side·q_new − side_old·q_old| only (booked in
+  its entry fill). A new bet on the same side with the same committed fraction keeps the old shares (q_new = q_old):
+  an unchanged position is held through the rebalance, untraded and at no cost.
+
 With profile "none" on one symbol this is bit-identical to wfo.backtest.simulate_trades + equity_curve.
 """
 
@@ -46,6 +57,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from features.events import entry_at_close
 from features.exits import exit_phase
 from risk.profiles import RiskProfile
 from utils.config import RunConfig
@@ -173,6 +185,15 @@ def simulate_portfolio(
     b_exit_px = bets["exit_px"].to_numpy(dtype=float) if len(bets) else np.array([])
     b_phase = bets["exit_phase"].to_numpy() if len(bets) else np.array([], int)
     b_sym = bets["sym"].to_numpy() if len(bets) else np.array([], object)
+    b_barrier = bets["barrier"].to_numpy() if len(bets) else np.array([], object)
+    close_entry = entry_at_close(cfg)
+    entry_phase = 2 if close_entry else 0
+
+    def known_exit(bet: int, b: int) -> bool:
+        """The bet's exit falls at bar b, at or before this run's entry fill, and is known at close[b−1]."""
+        if b_exit_b[bet] != b or b_phase[bet] > entry_phase:
+            return False
+        return b_barrier[bet] in ("time", "hysteresis") or (b_barrier[bet] == "vertical" and cfg.EXIT_MODEL == "time")
 
     cash = float(cfg.INIT_CASH)
     lots: dict[str, _Lot] = {}
@@ -192,20 +213,24 @@ def simulate_portfolio(
     def unrealized(sym_px: dict[str, float]) -> float:
         return sum(lt.side * lt.qty * (sym_px[s] - lt.entry_fill) for s, lt in lots.items())
 
-    def close_lot(s: str, b: int, px: float, reason: str, kind: str, frac_of_lot: float = 1.0) -> None:
-        """Sell (part of) a lot at reference price px with adverse costs (fill kind `kind`); realize P&L into cash."""
+    def close_lot(
+        s: str, b: int, px: float, reason: str, kind: str, frac_of_lot: float = 1.0, rolled: bool = False
+    ) -> None:
+        """Sell (part of) a lot at reference price px with adverse costs (fill kind `kind`; none when `rolled` into a
+        new position at the same fill, which pays the traded shares' cost); realize P&L into cash."""
         nonlocal cash, turnover
         lt = lots[s]
         q = lt.qty if frac_of_lot == 1.0 else lt.qty * frac_of_lot
         # equity with this lot marked at px (the others at their marks), before the fill's cost
         marks = {k: (px if k == s else mark[k]) for k in lots}
         E = cash + unrealized(marks)
-        c = cost(s, b, kind)
+        c = 0.0 if rolled else cost(s, b, kind)
         fill = px * (1.0 - lt.side * c)
         pnl = lt.side * q * (fill - lt.entry_fill)
         if profile.borrow_bps and lt.side < 0:
             pnl -= q * lt.entry_fill * profile.borrow_bps * 1e-4 * (b - lt.entry_b + 1) / cfg.bars_per_year
-        turnover += q * fill / E
+        if not rolled:
+            turnover += q * fill / E
         cash += pnl
         info = open_info[s]
         info["pnl"] += pnl
@@ -222,12 +247,51 @@ def simulate_portfolio(
                     "exit_fill": fill,
                     "exit_cost_bp": c * 1e4,
                     "exit_reason": reason if reason != "barrier" else bets.at[i, "barrier"],
+                    "rolled": rolled,
                 }
             )
         else:
             lt.qty -= q
             info["frac"] *= 1.0 - frac_of_lot
             info["trimmed"] = True
+
+    def enter(f: float, s: str, i: int, b: int, px: float, kind: str, E_dec: float, roll: bool) -> None:
+        """Open bet i at reference price px of bar b (fill kind `kind`) with f of the decision-time equity E_dec;
+        `roll`: the symbol's position exiting at this fill is rolled into it (cost on the traded shares only)."""
+        nonlocal turnover
+        side = int(b_side[i])
+        c_in = cost(s, b, kind)
+        fill = px * (1.0 + side * c_in)
+        qty = f * E_dec / fill
+        if roll:
+            old = lots[s]
+            if side == old.side and abs(f - open_info[s]["frac"]) <= 1e-12:
+                qty = old.qty  # the same committed fraction: the position is held as it is (no order)
+            traded = abs(side * qty - old.side * old.qty)
+            close_lot(s, b, px, "barrier", kind, rolled=True)
+            c_in = c_in * traded / qty  # the traded shares' cost, per share of the new position
+            fill = px * (1.0 + side * c_in)
+            turnover += traded * px / E_dec
+        else:
+            turnover += qty * fill / E_dec
+        lots[s] = _Lot(s, i, side, qty, fill, b)
+        busy_until[s] = int(b_exit_pos[i])
+        open_info[s] = {
+            "bet": i,
+            "event": bets.at[i, "event"],
+            "sym": s,
+            "side": side,
+            "size": b_size[i],
+            "frac": f,
+            "entry_b": b,
+            "entry_px": px,
+            "entry_fill": fill,
+            "entry_cost_bp": c_in * 1e4,
+            "qty": qty,
+            "pnl": 0.0,
+            "exit_notional": 0.0,
+            "trimmed": False,
+        }
 
     for b in range(n):
         here = [s for s in syms if has[s][b]]
@@ -239,8 +303,10 @@ def simulate_portfolio(
         E_dec = prev_eq
         in_bar = bool(lots)
         held_dec = set(lots)
+        freed = {s for s, lt in lots.items() if s in here and known_exit(lt.bet, b) and s not in flatten}
         gated = {s for s in here if s in flatten and s in lots}
-        expo = {s: lt.side * lt.qty * mark[s] / E_dec for s, lt in lots.items() if s not in gated}
+        leaving = {s for s in freed if b_phase[lots[s].bet] == 0}  # gone at this open: no trims for or against it
+        expo = {s: lt.side * lt.qty * mark[s] / E_dec for s, lt in lots.items() if s not in gated | leaving}
         scale = dict.fromkeys(expo, 1.0)
         if expo and profile.active:
             # drift trims (only symbols with a bar at b can trade; the others are trimmed at their next bar)
@@ -264,12 +330,13 @@ def simulate_portfolio(
                     for s, e in expo.items():
                         if s in here and np.sign(e) == sgn:
                             scale[s] *= min(1.0, k)
-        held = [expo[s] * scale[s] for s in expo if scale[s] > 0]  # positions after the open, as decided
+        # positions after the entries' fill, as decided (a freed position has exited by then)
+        held = [expo[s] * scale[s] for s in expo if scale[s] > 0 and s not in freed]
         cand = []
         blocked = blocked_session is not None and session[b] == blocked_session
         for i in entries_at.get(b, ()):
             s = b_sym[i]
-            if s in held_dec or b_entry_pos[i] <= busy_until[s] or blocked:
+            if ((s in held_dec or b_entry_pos[i] <= busy_until[s]) and s not in freed) or blocked:
                 continue
             f = cfg.SIZE * b_size[i]
             if profile.active:
@@ -291,11 +358,13 @@ def simulate_portfolio(
                     k = min(k, (profile.max_net - sum(abs(v) for v in held if np.sign(v) == sgn)) / new)
             k = max(0.0, k)
             cand = [(f * k, s, i) for f, s, i in cand] if k < 1.0 else cand
+        # a freed position exiting at the entries' own fill is rolled into the new one (one order)
+        rolls = {s for f, s, _ in cand if f > 0 and s in freed and b_phase[lots[s].bet] == entry_phase}
         # ── execution at open[b] ──────────────────────────────────────────────────────────────────
         # (1) gap exits at the open
         for s in here:
             lt = lots.get(s)
-            if lt is not None and b_exit_b[lt.bet] == b and b_phase[lt.bet] == 0:
+            if lt is not None and b_exit_b[lt.bet] == b and b_phase[lt.bet] == 0 and s not in rolls:
                 close_lot(s, b, b_exit_px[lt.bet], "barrier", "open")
         # (2) gate flattening at this symbol's next open
         for s in here:
@@ -305,40 +374,17 @@ def simulate_portfolio(
                     close_lot(s, b, opn[s][b], "gate", "open")
                     busy_until[s] = int(np.searchsorted(loc[s], b))
         # (3) drift trims (a position that already gapped out at this open has nothing left to trim)
-        for s in [s for s in scale if scale[s] < 1.0 and s in lots]:
+        for s in [s for s in scale if scale[s] < 1.0 and s in lots and s not in rolls]:
             if scale[s] <= 0:
                 close_lot(s, b, opn[s][b], "trim", "open")
                 busy_until[s] = int(np.searchsorted(loc[s], b))
             else:
                 close_lot(s, b, opn[s][b], "trim", "open", frac_of_lot=1.0 - scale[s])
-        # (4) entries
-        if cand:
+        # (4) entries at the open
+        if cand and not close_entry:
             for f, s, i in cand:
-                if f <= 0:
-                    continue
-                side = int(b_side[i])
-                c_in = cost(s, b, "open")
-                fill = opn[s][b] * (1.0 + side * c_in)
-                qty = f * E_dec / fill
-                turnover += qty * fill / E_dec
-                lots[s] = _Lot(s, i, side, qty, fill, b)
-                busy_until[s] = int(b_exit_pos[i])
-                open_info[s] = {
-                    "bet": i,
-                    "event": bets.at[i, "event"],
-                    "sym": s,
-                    "side": side,
-                    "size": b_size[i],
-                    "frac": f,
-                    "entry_b": b,
-                    "entry_px": opn[s][b],
-                    "entry_fill": fill,
-                    "entry_cost_bp": c_in * 1e4,
-                    "qty": qty,
-                    "pnl": 0.0,
-                    "exit_notional": 0.0,
-                    "trimmed": False,
-                }
+                if f > 0:
+                    enter(f, s, i, b, opn[s][b], "open", E_dec, s in rolls)
         # post-open exposure on decision-time marks (entries at their committed fraction)
         if lots:
             ex = [
@@ -353,8 +399,14 @@ def simulate_portfolio(
         for phase in (1, 2):
             for s in sorted((s for s in here if s in lots), key=lambda s: lots[s].bet):
                 lt = lots[s]
-                if b_exit_b[lt.bet] == b and b_phase[lt.bet] == phase:
+                if b_exit_b[lt.bet] == b and b_phase[lt.bet] == phase and not (phase == 2 and s in rolls):
                     close_lot(s, b, b_exit_px[lt.bet], "barrier", "intra" if phase == 1 else "close")
+        # (7) market-on-close entries at the close
+        if cand and close_entry:
+            for f, s, i in cand:
+                if f > 0:
+                    enter(f, s, i, b, cls[s][b], "close", E_dec, s in rolls)
+            in_bar |= bool(lots)
         # ── close: marks, equity, drawdown, gate ────────────────────────────────────────────────────
         for s in here:
             mark[s] = cls[s][b]
@@ -389,7 +441,8 @@ def simulate_portfolio(
         tr.loc[whole, "pnl_pct"] = tr["pnl"] / (tr["qty"] * tr["entry_fill"])
         tr["bars_held"] = tr["exit_b"] - tr["entry_b"] + 1
         tr["cost_bp"] = tr["entry_cost_bp"] + tr["exit_cost_bp"]  # round trip, one-way costs at the two fills
+        tr["rolled"] = tr["rolled"].astype(bool)
         tr = tr.set_index("event").sort_values(["entry_b", "sym"], kind="stable")
     else:
-        tr = pd.DataFrame(columns=["sym", "side", "size", "frac", "pnl", "pnl_pct", "bars_held", "cost_bp"])
+        tr = pd.DataFrame(columns=["sym", "side", "size", "frac", "pnl", "pnl_pct", "bars_held", "cost_bp", "rolled"])
     return out, tr, pd.DataFrame(log, index=union)

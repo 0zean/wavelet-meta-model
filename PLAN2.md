@@ -747,6 +747,86 @@ early closes.
 
 **Cost.** 2 sessions. Depends on U13, U14.
 
+**Status (2026-10-09).** ✅ Complete (adversarial review done: the BREAKING and SEVERE findings fixed, the MINORs fixed
+or deferred below). 712 tests pass (94 in `tests/test_u16.py`; the U4 registry-wide tests in `tests/test_primaries.py`
+now cover the U4 rules, the mechanism primaries have their own); ruff clean. Branch `unit/16-mechanism-primaries`.
+As-built notes and deviations in SPEC §16 "Implementation (U16, as built)".
+- **Primaries** (`primaries/mechanism.py`, one per family): `vol_target` (F1), `tsmom` (F2), `overnight` (F3),
+  `calendar_drift` (F4, one window per cell: fomc_pre, fomc_day, tom, tom_2_2, month_end, opex_week, cpi_nfp),
+  `intraday_momentum` (F5), `gap_fade` (F7, fade / follow-on-news, 10:30 or hysteresis exit), `event_reaction` (F8,
+  FOMC or CPI / NFP), `weekly_reversal` (F10, time-series form). Each declares its timeframes and its default
+  sampler and exit; `primary_config()` builds the RunConfig and an experiment cell records them in its overrides.
+  `vix_carry` is U21.
+- **Harness pieces they needed:**
+  - MOC entries: decided at the 15:50 bar's close, filled at the 15:55 close (closing-auction cost); none when the
+    auction bar is missing. This settles the U14 MOC deferral: an entry-at-close fill model, not a 15:55-open entry.
+  - Periodic schedules (`every`), calendar offsets (`day_offset`; new predicates macro / month_end / opex),
+    multi-session time exits (`exit_session`) and hold-to-next-rebalance exits (`exit_time: next`).
+  - The portfolio simulator lets a known scheduled exit free its symbol and rolls a same-fill exit into the new
+    entry, with cost on the traded shares only. An unchanged position is held untraded: with m ≡ 1, vol_target on SPY
+    is buy-and-hold less one 0.25 bp entry over 2,395 rebalances.
+  - Flat sides (never traded, meta-fitted, calibrated on or scored), the `rule_size` sizer, and the primary stream
+    sized by `magnitude` under it.
+  - This also settles the U14 `width` deferral (M2): each primary fixes its hold and size, and `width` is read only
+    by the risk layer's vol target.
+- **Causality — met.** Every primary and variant (25 configurations): (a) bars perturbed after two fixed cuts and (b) a
+  strict per-event cut (every bar after the event bar replaced, six events across the sample) leave the events and
+  their sides / magnitudes unchanged; (b) catches a planted one-bar peek (tsmom σ̂, intraday_momentum predictor) that
+  (a) misses on sparse schedules. The reviewer's independent per-event probe (15 configurations) found no change.
+- **Synthetic sanity — met.** intraday_momentum long on a planted morning rally and short on a selloff (both
+  predictors; a flat day gated out); gap_fade shorts a planted +3 % gap on a non-macro Tuesday, skips it on the
+  2024-05-01 FOMC day, and the follow leg buys it there; the hysteresis exit fills at the next open once the gap is
+  filled; event_reaction follows a planted post-14:00 drop on FOMC day only; vol_target scales with σ and holds within
+  its band; tsmom follows the trailing year, is flat in its warm-up and long-only flat in a downtrend; overnight is
+  long every session and flat above vix_max; calendar windows land on hand-checked 2024 sessions.
+- **Hand-computed trades on real SPY 5Min bars — met** (`tests/test_u16.py`, cached bars, fills against the OHLC and
+  a known cost table): overnight 2024-03-05 15:55 close → 03-06 09:30 open; intraday_momentum (15:30 open → 15:55
+  close, side = sign(open → 15:25 close)); gap_fade (09:35 open → 10:30 open, side −sign(gap), non-macro day);
+  event_reaction 2024-03-20 (14:15 open → 15:45 open, side = sign(14:00 open → 14:10 close)); pre-FOMC 2024-03-19
+  15:55 close → 03-20 14:00 open.
+- **WFO runs — met.** `experiments/specs/u16_smoke.yaml` (scratch ledger, stage U10): every primary on SPY, plus TLT
+  for calendar_drift (month_end) and event_reaction (FOMC), 1Day and 5Min, 14 / 14 `ok`; every cell's signals keep
+  the WFO columns (`scripts/u16_primaries.py --smoke` → `results/u16/smoke_cells.json`). `rule_size` reproduces
+  `fixed` bit for bit through `run_wfo` and the backtest when the magnitude is 1 (unit test).
+- **Per-slot diagnostics — met** (`scripts/u16_primaries.py` → `results/families/u16_slot_diagnostics.{csv,json}`,
+  SPY 5Min dev window, fold-free signals of the fixed rules, net of 2 bp): F5 at 15:00 / 15:30 / 15:45 for both
+  predictors (open_to_now: 1,301 / 1,349 / 1,369 events, ≈ 0.55 per session; first30: 407 each); F7 fade at 09:35 /
+  09:45 / 10:00 (≈ 486 each, 0.20 per session) and the news-day follow leg (90). A diagnostic only: the headline entries
+  were fixed in this plan before it existed, and no variant is chosen from it.
+- **Regression — met.** Legacy CSV run: all five outputs byte-identical to `main`. `wfo_signals.csv` is sha1
+  `551d8074…` on both, the value recorded after U12–U14, so U15's `f8e0617e…` was that session's environment, not the
+  code; the open question is closed. U12 parity (no new switches): PASS, all 8 hashes, before and after the review fixes.
+- **Behaviour change (documented):** a time / hysteresis exit at the open no longer blocks an entry at that open. A
+  daily 09:30 → next-09:30 schedule used to trade every other day. Triple-barrier paths are unchanged (parity), and
+  run_backtest now sends time / hysteresis exits through the portfolio simulator whatever the cost model.
+- **Review fixes:**
+  - B1: flat test events entered the rolling-calibration history as label-0 pairs (229 of 448 in a long-only tsmom
+    probe; approved trades 53 vs 72). They are dropped there now.
+  - S1: the ledger's meta diagnostics scored flats as failures (log-loss / Brier looked better than they were).
+    `meta_outcomes` drops them now.
+  - S2: experiment cells did not default to `rule_size` or check the feature groups a rule reads (a vol_target cell
+    without `sizer:` was buy-and-hold). They do now.
+  - M: the strict per-event causality test (above).
+  - M: a test that a position exiting at the close still blocks an entry at that bar's open.
+  - M: CPCV (`models/compare`) refuses flat sides (it scored them as shorts).
+  - M: a window left with fewer than MIN_VAL_EVENTS sided rows is skipped (the minimums counted flats).
+- **Deferred:**
+  - Calendar windows and weekly rebalances count the data's sessions. A session the data layer dropped (SPY 1Day
+    2019-08-12) stretches that month's opex_week to six exchange sessions and moves that week's rebalance to Tuesday.
+    The fix is to count exchange-calendar sessions (`data.bars.get_calendar`); the live loop (U20) must anyway.
+  - `weekly_reversal`'s cross-sectional rank within the sector-ETF set needs a basket cell (U17 portfolio cells); the
+    primary is the time-series form with m = 1.
+  - `vol_target` with `vol_source: vix` runs its band path over the events passed, so it restarts at each WFO window
+    (rv / ewm run over the bars and do not).
+  - MOC decisions at 15:55 are inside NYSE Arca's 15:59 and at Nasdaq's 15:55 cutoff, but after NYSE's 15:50 for
+    single stocks. No U16 rule that enters MOC uses intraday information, so the orders would be the same. A stock
+    MOC family would need the event bar one bar earlier.
+  - A held position is a chain of rolled trades, so `n_trades` counts rebalances (turnover is exact).
+  - Events in the first VOL_SPAN bars have no barrier width and are dropped by every exit model (U14 behaviour).
+  - event_reaction trades the 2020-03-03 unscheduled FOMC cut (10:00) at the scheduled 14:00 / 14:15 times. The
+    U15 deferral on releases on non-session days stays a family-spec choice for F8 (U17).
+  - Gamma proxy / SKEW / VVIX (U15 note) not taken up here.
+
 ### U17 — Family-test tooling and report
 
 **Goal.** One pre-registered, pooled, magnitude-floored, coherence-checked test per family, with
@@ -919,7 +999,8 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
   status note under U14).
 - U15 — ✅ complete 2026-10-09 (branch `unit/15-state-features`; `vol_state`, `calendar_events`, `rates_credit`,
   `cross_asset` sector / lags, point-in-time `Exo` view, runner context; status note under U15).
-- U16 — not started.
+- U16 — ✅ complete 2026-10-09 (branch `unit/16-mechanism-primaries`; eight mechanism primaries, MOC entries, rolls,
+  flat sides, `rule_size`; status note under U16).
 - U17 — not started.
 - U18 — not started (family specs not yet registered).
 - U19 — not started.

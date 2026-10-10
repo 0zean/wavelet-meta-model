@@ -115,8 +115,10 @@ def meta_outcomes(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig) -> pd
     """
     Post-hoc meta-label of every OOS event (1 = the primary's side beat META_MIN_RET, same barrier rules as the
     backtest) next to its meta_prob. Events of folds whose meta-model was skipped (signals.attrs
-    "meta_skipped_folds") are flagged `scored=False`: their meta_prob is a placeholder 0, not a prediction.
+    "meta_skipped_folds") are flagged `scored=False`: their meta_prob is a placeholder 0, not a prediction. Flat events
+    (side 0, SPEC §16) take no position and are left out.
     """
+    signals = signals[signals["signed_dir"] != 0]
     out = exit_frame(df, signals.index, signals["width"], cfg, side=signals["signed_dir"])
     sig = signals.loc[out.index]
     skipped = signals.attrs.get("meta_skipped_folds", [])

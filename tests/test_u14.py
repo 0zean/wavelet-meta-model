@@ -603,5 +603,6 @@ def test_run_wfo_with_a_schedule_and_time_exits_end_to_end():
                     EXIT_MODEL="time", EXIT_PARAMS={"exit_time": "close"}, MIN_TRAIN_EVENTS=20, MIN_VAL_EVENTS=10)  # fmt: skip
     sig = engine.run_wfo(df, cfg)
     assert set(hhmm(sig.index)) <= {"09:55", "11:55", "13:55", "15:25"}
-    _, trades = run_backtest(df.loc[sig.index[0] :], sig, cfg)["Primary only"]
-    assert len(trades) > 0 and set(hhmm(trades["t1"])) == {"15:55"}
+    oos = df.loc[sig.index[0] :]
+    _, trades = run_backtest(oos, sig, cfg)["Primary only"]  # time exits: the portfolio simulator (U16)
+    assert len(trades) > 0 and set(hhmm(oos.index[trades["exit_b"]])) == {"15:55"}

@@ -36,6 +36,7 @@ from risk.costs import fill_costs
 from risk.portfolio import simulate_portfolio
 from risk.profiles import PROFILES, get_profile
 from utils.config import RunConfig
+from wfo.backtest import primary_size_col
 from wfo.wfo_engine import run_wfo
 from wfo.wfo_metrics import signal_diagnostics, strategy_metrics
 
@@ -141,7 +142,8 @@ def main() -> None:
         costs = None
         if cfg.COST_MODEL != "slippage":
             costs = {s: fill_costs(bars[s].index, cfg, cost_data[s]) for s in syms}
-        for strat, side, size in (("meta", "trade_signal", "bet_size"), ("primary", "signed_dir", None)):
+        streams = (("meta", "trade_signal", "bet_size"), ("primary", "signed_dir", primary_size_col(cfg)))
+        for strat, side, size in streams:
             eq, trades, log = simulate_portfolio(bars, sigs, cfg, profile, side_col=side, size_col=size, costs=costs)
             label = f"{strat} | {name}"
             m = strategy_metrics(eq, trades, cfg.bars_per_year)

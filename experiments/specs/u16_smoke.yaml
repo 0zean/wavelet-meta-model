@@ -1,0 +1,40 @@
+# U16 smoke run: every mechanism primary (SPEC §16) in a runner cell on cached Alpaca data (stage U10, the runner's
+# smoke stage; development window; run on a scratch ledger). Each primary's sampler and exit come from its defaults
+# (experiments/spec.py puts them in the cell's overrides); the windows and event minimums are lowered so the sparse
+# schedules (FOMC days, weekly rebalances) fill the WFO's train / val splits. This checks that the WFO completes with
+# the signal schema unchanged; it is not a family test (U17 / U18) and its returns are not a result.
+stage: U10
+name: u16_smoke
+defaults:
+  symbols: SPY
+  timeframe: 1Day
+  start: 2016-01-04
+  end: 2025-10-01
+  model: {meta: logit_l2}
+  meta_train: oof
+  sizer: rule_size
+  risk_profile: none
+  feature_groups: [wavelet_core, trend, volatility]
+  overrides: {MIN_TRAIN_EVENTS: 20, MIN_VAL_EVENTS: 10}
+cells:
+  - {primary: vol_target}
+  - {primary: tsmom}
+  - {primary: weekly_reversal}
+  - {primary: overnight}
+  - {primary: {name: calendar_drift, params: {window: fomc_pre}}}
+  - {primary: {name: calendar_drift, params: {window: tom}}}
+  - {primary: {name: calendar_drift, params: {window: month_end}}, symbols: TLT}
+  - {primary: overnight, timeframe: 5Min,
+     overrides: {INITIAL_TRAIN: 252, VAL: 126, TEST: 63, MIN_TRAIN_EVENTS: 20, MIN_VAL_EVENTS: 10}}
+  - {primary: intraday_momentum, timeframe: 5Min,
+     overrides: {INITIAL_TRAIN: 252, VAL: 126, TEST: 63, MIN_TRAIN_EVENTS: 20, MIN_VAL_EVENTS: 10}}
+  - {primary: gap_fade, timeframe: 5Min,
+     overrides: {INITIAL_TRAIN: 504, VAL: 252, TEST: 63, MIN_TRAIN_EVENTS: 20, MIN_VAL_EVENTS: 10}}
+  - {primary: {name: calendar_drift, params: {window: fomc_pre}}, timeframe: 5Min, symbols: [SPY],
+     overrides: {INITIAL_TRAIN: 1008, VAL: 504, TEST: 126, MIN_TRAIN_EVENTS: 20, MIN_VAL_EVENTS: 10}}
+  - {primary: {name: event_reaction, params: {release: fomc}}, timeframe: 5Min,
+     overrides: {INITIAL_TRAIN: 1008, VAL: 504, TEST: 126, MIN_TRAIN_EVENTS: 20, MIN_VAL_EVENTS: 10}}
+  - {primary: {name: event_reaction, params: {release: fomc}}, timeframe: 5Min, symbols: TLT,
+     overrides: {INITIAL_TRAIN: 1008, VAL: 504, TEST: 126, MIN_TRAIN_EVENTS: 20, MIN_VAL_EVENTS: 10}}
+  - {primary: {name: event_reaction, params: {release: cpi_nfp}}, timeframe: 5Min,
+     overrides: {INITIAL_TRAIN: 504, VAL: 252, TEST: 63, MIN_TRAIN_EVENTS: 20, MIN_VAL_EVENTS: 10}}

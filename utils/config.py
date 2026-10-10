@@ -345,7 +345,20 @@ class RunConfig:
         from features.exits import exit_params
 
         ev = event_params(self)
-        exit_params(self)
+        xp = exit_params(self)
+        if self.EVENT_SAMPLER == "schedule" and ev["entry_times"] == ["close"]:  # SPEC §16: market-on-close entries
+            if self.EXIT_MODEL != "time" or xp["hold_bars"] is not None:
+                raise ValueError("a market-on-close entry (entry_times ['close']) needs EXIT_MODEL='time' with an "
+                                 "exit_time")  # fmt: skip
+            if xp["exit_time"] not in ("open", "next") and not xp["exit_session"]:
+                raise ValueError("a market-on-close entry exits in a later session: set EXIT_PARAMS exit_session >= 1")
+            if self.POSITION_MODE != "single":
+                raise ValueError("market-on-close entries are simulated with POSITION_MODE='single' only")
+        from primaries import REGISTRY as PRIMARIES
+
+        allowed_tf = getattr(PRIMARIES.get(self.PRIMARY), "TIMEFRAMES", None)
+        if allowed_tf is not None and self.TIMEFRAME not in allowed_tf:
+            raise ValueError(f"primary {self.PRIMARY!r} runs on {list(allowed_tf)}, not {self.TIMEFRAME!r}")
         if (self.EVENT_SAMPLER == "schedule" and self.TIMEFRAME != "1Day" and not self.HOLD_OVERNIGHT
                 and self.EXIT_MODEL != "time" and any(t in ("open", "09:30") for t in ev["entry_times"])):  # fmt: skip
             raise ValueError(f"a 09:30 schedule entry decides at the previous session's close: EXIT_MODEL="

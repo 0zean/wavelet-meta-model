@@ -1,7 +1,10 @@
 """
 Primary-signal protocol and registry (SPEC §4).
 
-A primary gives every event a side {-1, +1}; the meta-model then decides whether to take it.
+A primary gives every event a side {-1, +1}; the meta-model then decides whether to take it. A primary whose class
+sets ALLOW_FLAT (the mechanism primaries, SPEC §16) may also give 0 = flat: no position for that holding period (a
+long-only rule's short signal, a gate, a warm-up); flat events are never traded nor fitted on. A primary whose
+`long_only` attribute is true must give no short side.
 `signal` returns the full primary frame (PRIMARY_COLUMNS), which is also the primary's
 input to the meta-model; `side` is its `signed_dir` column.
 
@@ -77,16 +80,21 @@ def side(p: Primary, df: pd.DataFrame, X: pd.DataFrame, cfg: RunConfig) -> pd.Se
     return p.signal(df, X, cfg)["signed_dir"]
 
 
-def check_signal(frame: pd.DataFrame, X: pd.DataFrame, name: str) -> pd.DataFrame:
-    """Raise unless `frame` is a complete primary frame for X's events with sides in {-1, +1}."""
+def check_signal(frame: pd.DataFrame, X: pd.DataFrame, primary: "str | Primary") -> pd.DataFrame:
+    """Raise unless `frame` is a complete primary frame for X's events with sides in {-1, +1} ({-1, 0, +1} for an
+    ALLOW_FLAT primary, {0, +1} for a long-only one). `primary` = the primary instance (or its name: no flat sides)."""
+    name = primary if isinstance(primary, str) else primary.name
+    allowed = (-1, 0, 1) if getattr(primary, "ALLOW_FLAT", False) else (-1, 1)
+    if getattr(primary, "long_only", False):
+        allowed = tuple(v for v in allowed if v >= 0)
     if tuple(frame.columns) != PRIMARY_COLUMNS:
         raise ValueError(f"primary {name!r} returned columns {list(frame.columns)}, expected {list(PRIMARY_COLUMNS)}")
     if not frame.index.equals(X.index):
         raise ValueError(f"primary {name!r} returned a frame not indexed like its events")
     sides = frame["signed_dir"].to_numpy()
-    if not np.isin(sides, (-1, 1)).all():
-        bad = frame.index[~np.isin(sides, (-1, 1))]
-        raise ValueError(f"primary {name!r} gave {len(bad)} events a side outside {{-1, +1}} (first {bad[0]})")
+    if not np.isin(sides, allowed).all():
+        bad = frame.index[~np.isin(sides, allowed)]
+        raise ValueError(f"primary {name!r} gave {len(bad)} events a side outside {set(allowed)} (first {bad[0]})")
     return frame
 
 

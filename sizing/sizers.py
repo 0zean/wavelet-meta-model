@@ -1,7 +1,8 @@
 """
 Bet sizers (SPEC §7, U7): calibrated meta-probability p → bet size m ∈ [0, 1] (the side comes from the primary).
 
-Every sizer returns m = 0 for p < τ (`META_THRESH`) and is non-decreasing in p. Sizers that learn from data
+Every sizer returns m = 0 for p < τ (`META_THRESH`) and is non-decreasing in p, except `rule_size` (SPEC §16), which
+passes the primary's own size hint (its `magnitude` column, in [0, 1]) through on every approved bet. Sizers that learn from data
 (`ecdf`, `kelly_capped`) are fit per WFO fold on the **train-window** out-of-fold meta-probabilities of the
 meta-model's fitting events (`models.meta_model.oof_meta_prob`) and those events' side returns — never on test
 events. A sizer that cannot be fit (no approved OOF events, no win or no loss) raises `SizerFitError`; the WFO then
@@ -63,13 +64,15 @@ class Sizer:
     def _m(self, p: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
-    def size(self, p) -> np.ndarray:
+    def size(self, p, hint=None) -> np.ndarray:
+        """Bet size per event from its meta-probability p; `hint` = the primary's magnitude (read by rule_size)."""
         p_in = np.asarray(p)
         # threshold in p's own dtype, exactly as meta_predict's trade_signal (float32 legacy probabilities)
         approved = p_in >= self.tau
         p = p_in.astype(float)
         if np.isnan(p).any():
             raise ValueError(f"{self.name}: NaN meta-probability")
+        self._hint = hint
         return np.where(approved, np.clip(self._m(p), 0.0, 1.0), 0.0)
 
 
@@ -79,6 +82,20 @@ class Fixed(Sizer):
 
     def _m(self, p):
         return np.ones_like(p)
+
+
+@sizer("rule_size")
+class RuleSize(Sizer):
+    """m = the primary's magnitude (its rule's size hint in [0, 1]) on every approved bet; equals `fixed` when the
+    magnitude is 1."""
+
+    def _m(self, p):
+        if self._hint is None:
+            raise ValueError("rule_size needs the primary's magnitude (size(p, hint=magnitude))")
+        m = np.asarray(self._hint, dtype=float)
+        if m.shape != p.shape or np.isnan(m).any() or (m < 0).any() or (m > 1).any():
+            raise ValueError("rule_size: the primary's magnitude must be in [0, 1] for every event")
+        return m
 
 
 @sizer("linear")

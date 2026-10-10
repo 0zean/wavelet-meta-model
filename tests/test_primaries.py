@@ -12,6 +12,7 @@ from features.feature_builder import build_features
 from features.triple_barrier_labels import average_uniqueness, barrier_exits, triple_barrier_labels
 from primaries import PRIMARY_COLUMNS, REGISTRY, base, check_signal, make_primary, side
 from primaries.diagnostics import primary_diagnostics
+from primaries.mechanism import MECHANISM
 from primaries.rules import RulePrimary
 from utils.config import RunConfig
 from utils.data_loader import load_ohlcv
@@ -19,7 +20,8 @@ from wfo.wfo_engine import purged, run_wfo, wfo_folds
 
 CFG5 = RunConfig.for_timeframe("5Min")
 CFGD = RunConfig.for_timeframe("1Day")
-RULES = sorted(n for n in REGISTRY if n != "ml_xgb")
+# the U4 rules; the SPEC §16 mechanism primaries (flat sides, their own samplers) are covered by tests/test_u16.py
+RULES = sorted(n for n in REGISTRY if n != "ml_xgb" and n not in MECHANISM)
 GROUPS = ["wavelet_core", "trend", "volatility"]  # static groups only: no per-fold fit needed
 WFO_COLUMNS = [*PRIMARY_COLUMNS, "meta_prob", "trade_signal", "width", "fold", "primary", "bet_size"]
 
@@ -200,7 +202,10 @@ def test_ml_primary_learns_a_planted_side():
 
 
 def test_registry_and_params():
-    assert set(REGISTRY) == {"ml_xgb", "sma_cross", "bollinger_mr", "wavelet_trend", "donchian_breakout"}
+    assert set(REGISTRY) == {"ml_xgb", "sma_cross", "bollinger_mr", "wavelet_trend", "donchian_breakout",
+                             *MECHANISM}  # fmt: skip
+    assert set(MECHANISM) == {"vol_target", "tsmom", "overnight", "calendar_drift", "intraday_momentum", "gap_fade",
+                              "event_reaction", "weekly_reversal"}  # fmt: skip
     assert RunConfig().PRIMARY == "ml_xgb" and RunConfig.legacy_5min().PRIMARY == "ml_xgb"
     with pytest.raises(ValueError, match="unknown primary"):
         make_primary(CFG5.replace(PRIMARY="astrology"))
@@ -252,7 +257,7 @@ def daily() -> pd.DataFrame:
     return synthetic_daily(1400)
 
 
-@pytest.mark.parametrize("name", sorted(REGISTRY))
+@pytest.mark.parametrize("name", ["ml_xgb", *RULES])
 def test_wfo_runs_with_every_primary(daily, name):
     cfg = RunConfig.for_timeframe("1Day", PRIMARY=name, **WFO_CFG)
     sig = run_wfo(daily, cfg)

@@ -919,6 +919,93 @@ rule's size hint in [0, 1] (the `rule_size` sizer passes it through; `fixed` ign
 Diagnostics add per-slot precision and ISOM counts. Invariant: every primary passes §8 causality and a
 synthetic sanity test; `rule_size` with magnitude ≡ 1 equals `fixed` bit for bit.
 
+Implementation (U16, as built):
+- `primaries/mechanism.py`. `MechanismPrimary(RulePrimary)` declares `TIMEFRAMES`, `LONG_ONLY`, `ALLOW_FLAT = True`,
+  `FEATURE_GROUPS` it reads from X, and `config_overrides(timeframe)` (its EVENT_SAMPLER / EVENT_PARAMS / EXIT_MODEL /
+  EXIT_PARAMS). `primary_config(name, timeframe, params, **overrides)` builds the RunConfig (defaults, then
+  SIZER = "rule_size", the needed groups added, then `overrides`); an experiment cell with a mechanism primary gets
+  its sampler / exit written into its `overrides` (`experiments/spec.normalize`), so the ledger records the run
+  configuration, and `sizer: rule_size` unless the cell or its defaults set one; a feature group the rule reads
+  (vol_state for a VIX source or gate) must be listed in the cell's `feature_groups` (refused at load otherwise). RunConfig refuses a mechanism primary on a timeframe it does not list. The SPEC table's `SAMPLER`
+  / `EXIT` class attributes are the `config_overrides` method (the exit depends on parameters: gap_fade).
+- Flat sides. A mechanism primary's side may be 0: no position for that holding period (a long-only rule's short
+  signal, the VIX gate, and the rule's own warm-up: an event at which the rule is undefined, e.g. no trailing year
+  for `tsmom`, no σ of 20 earlier gaps for `gap_fade`, is flat rather than an error). `check_signal` takes the
+  primary and allows {−1, 0, +1} for ALLOW_FLAT ({0, +1} when `long_only`); every other primary stays {−1, +1}. Flat
+  events are dropped from the meta-model's fitting rows (no meta-label, weights recomputed without them; a window
+  left with fewer than MIN_VAL_EVENTS sided rows is skipped as `insufficient_events`, since the event minimums
+  counted the flat ones), from the rolling-calibration history (CalHistory) and from the ledger's meta diagnostics
+  (`wfo_metrics.meta_outcomes`); they get trade_signal 0 and are never traded; primary diagnostics count them in
+  `n_flat` (present only when there are any). The CPCV comparison (`models/compare`) refuses flat sides.
+- `rule_size` sizer: m = magnitude on approved bets (`Sizer.size(p, hint)`; the WFO passes the primary frame's
+  `magnitude`); a magnitude outside [0, 1] raises. With SIZER = "rule_size" the unfiltered primary stream is also
+  sized by `magnitude` (`wfo.backtest.primary_size_col`, run_backtest and risk/run.py), so a Phase-1 family test
+  (U18, no ML) sees the rule's own exposure.
+- Schedule sampler (§13) additions: `entry_times: ["close"]` = a market-on-close entry (alone, not mixed with other
+  times): the entry bar is the session's last bar when it is the closing-auction bar (`auction_flags`; a session
+  missing it gives no event), the fill is its CLOSE, the decision the close of the bar before it (5Min: 15:50 bar
+  → 15:55 close; an early close 12:50 → 12:55; 1Day: the previous session's close). MOC cutoffs: NYSE Arca (SPY,
+  sector ETFs, TLT, GLD) 15:59, Nasdaq (QQQ) 15:55, NYSE (single stocks) 15:50 — the 15:55 decision is inside
+  Arca's and at Nasdaq's limit; every U16 rule that enters MOC decides on information from before the session
+  (calendar, previous VIX), so a 15:50 decision would give the same orders. `every: session | week | month` keeps
+  entry sessions that are the first of their ISO week / month in the data (the data's first session counts as
+  one). `day_offset: k` tests the `days` predicate on the session k sessions after the entry session in the data
+  (the session before an FOMC day: `days: fomc, day_offset: 1`), still requiring the event known (available_at) at
+  the decision; an unscheduled meeting (2020-03-03, announced 10:00 that day) never selects its eve. New predicates
+  `macro` (FOMC ∪ CPI ∪ NFP, the complement of `non_macro`), `month_end`, `opex`.
+- Time exit (§13) additions: `exit_session: k` — "close" / "HH:MM" / "open" in the session k sessions after the
+  entry session (defaults 0 / 0 / 1 = the U14 behaviour); `exit_time: "next"` — the opening auction (MOO) of the
+  first session of the next `every` period of the schedule (hold to the next rebalance; needs the schedule
+  sampler). With MOC entries the label is the close-to-exit return (entry_px = the entry bar's close); the exit must
+  be in a later session (RunConfig requires `exit_session` >= 1 for "close" / "HH:MM"; triple-barrier, hysteresis and
+  `hold_bars` exits and POSITION_MODE "average" are refused).
+- Portfolio simulator (`risk/portfolio.py`): MOC entries fill at the close of their entry bar after its exits (cost
+  kind `close`: the closing-auction proxy). A held position whose exit at bar b is known at the decision (a `time`
+  / `hysteresis` open fill, or a scheduled `vertical` close fill under the time model; never a triple-barrier touch)
+  and falls at or before the new entry's fill no longer blocks its symbol (before U16 a 09:30 entry on the bar of a
+  MOO exit was skipped, so a daily open → next-open schedule traded every other day). When the exit is at the entry's
+  own fill (a rebalance) the two are one order: the old position closes at the reference price without cost and the
+  new one pays the fill's cost on |side·q_new − side_old·q_old| only; a bet on the same side with the same committed
+  fraction keeps the old shares, so an unchanged position is held through every rebalance untraded and free
+  (`rolled` column in the trade table; a held position is a chain of rolled trades, so `n_trades` counts
+  rebalances). `run_backtest` sends time / hysteresis exits through the portfolio simulator whatever the cost model
+  (`portfolio_path`); `simulate_trades` (triple-barrier exits, slippage, no risk layer) is unchanged and still
+  bit-identical to it there.
+- Primaries as built (defaults; every side uses bars ≤ the event bar):
+  - `vol_target` (1Day, long-only): daily open → next open (`every: session`, `exit_time: next`); σ̂ = rolling std
+    of `window` daily log returns × √252 (`rv`), the EWM std (`ewm`), or VIX / 100 (`vix`, from the `vol_state`
+    group); m = min(1, σ*/σ̂) held until the target moves by ≥ `band` (a sticky path over the bars; for `vix` over
+    the events passed, so it restarts at each WFO window). With σ* huge (m ≡ 1) the SPY equity is buy-and-hold less
+    one 0.25 bp entry (2,395 free rolls); the default makes 82 orders in 2016-01 → 2025-09 (turnover 1.4×/yr).
+  - `tsmom` (1Day): weekly (`every: week`) Monday-open (the week's first session) → next week's open; side =
+    sign(log return over `lookback` sessions) or sign(Δ causal MODWT smooth, J = `modwt_j` 6); m = min(1, gross_cap,
+    σ* / σ̂(vol_window)), σ* 0.10; long_only → flat. Plain returns (no risk-free rate); `gross_cap` caps a single
+    instrument here (the basket cap is U17's portfolio cell).
+  - `overnight` (5Min, 1Day; long-only): MOC → next session's MOO; flat when VIX (vol_state) > `vix_max`.
+  - `calendar_drift` (1Day, 5Min; long-only): ONE window per cell (SPEC's `windows` list and `tlt_month_end` flag
+    become cells a family pools): `fomc_pre` MOC of the FOMC eve → 14:00 on the day (5Min) / the day's close (1Day);
+    `fomc_day` → the day's close; `tom` MOC of session −2 → close of +3 (holds −1, +1 … +3); `tom_2_2` −3 → +2;
+    `month_end` (TLT) −2 → −1; `opex_week` MOC five sessions before the monthly expiry → its close (a holiday week
+    starts one session earlier); `cpi_nfp` the eve's MOC → release-day close. Sessions are the data's (a session
+    the data layer dropped shifts a window by one).
+  - `intraday_momentum` (5Min): schedule `entry` (15:30) with gate `abs(predictor) > k * sigma_day` (the sampler's
+    session frame, so with VOL_PROFILE = "tod" the fold's profile); side = sign(predictor at the decision bar);
+    m = min(1, |predictor| / σ_day) with the plain σ_day (`session_state`, = the session frame's columns without a
+    profile); exit MOC.
+  - `gap_fade` (5Min): entry 09:35 open (decided at the 09:30 bar's close), days `non_macro` (`macro` with
+    follow_on_news), gate |gap_sigma| > min_gap_sigma; side −sign(gap) (+ when following); m = min(1, |gap_σ| / 2);
+    exit "10:30" open, or `exit: hysteresis` on score = ∓log(close / previous close) / σ_overnight (β = 0: exit at the
+    next open once the gap is filled; else the 10:25 bar's close, 11 bars).
+  - `event_reaction` (5Min): FOMC: decide at the 14:10 bar's close on log(close / the 14:00 bar's open), enter 14:15,
+    exit 15:45; CPI / NFP: 09:30 open → 09:40 close, enter 09:45, exit 11:15 (`observe_min`, `hold_min`); one release
+    kind per cell; a session without its release bar is flat. The two unscheduled 2020 FOMC statements (03-03 10:00,
+    03-15 Sunday) are not specially handled: 03-03 is traded at the scheduled times, 03-15 is not a session.
+  - `weekly_reversal` (1Day): weekly, side = −sign(5-session log return), m = 1. The cross-sectional rank within the
+    sector-ETF set needs a basket cell (U17); not built here.
+  - `vix_carry`: U21.
+- Diagnostics: `primaries.diagnostics.slot_diagnostics` — the primary_diagnostics metrics per entry slot (HH:MM of
+  the entry bar) with `per_session` (the slot's ISOM count: sided events per session of the signals' span).
+
 ---
 
 ## §17 Family tests (U17)

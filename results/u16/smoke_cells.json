@@ -1,0 +1,303 @@
+[
+  {
+    "cell_hash": "6ab3ec83ef5251c9",
+    "status": "ok",
+    "label": "SPY_1Day_calendar_drift_logit_l2_oof_rule_size_none",
+    "primary_params": {
+      "window": "fomc_pre"
+    },
+    "event_params": {
+      "day_offset": 1,
+      "days": "fomc",
+      "entry_times": [
+        "close"
+      ]
+    },
+    "exit_params": {
+      "exit_session": 1,
+      "exit_time": "close"
+    },
+    "n_oos_events": 28,
+    "n_trades": 16,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "06f4825e6b799469",
+    "status": "ok",
+    "label": "SPY_1Day_calendar_drift_logit_l2_oof_rule_size_none",
+    "primary_params": {
+      "window": "tom"
+    },
+    "event_params": {
+      "day_offset": 1,
+      "days": "month_end",
+      "entry_times": [
+        "close"
+      ]
+    },
+    "exit_params": {
+      "exit_session": 4,
+      "exit_time": "close"
+    },
+    "n_oos_events": 42,
+    "n_trades": 39,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "4480d810a74a92b3",
+    "status": "ok",
+    "label": "TLT_1Day_calendar_drift_logit_l2_oof_rule_size_none",
+    "primary_params": {
+      "window": "month_end"
+    },
+    "event_params": {
+      "day_offset": 1,
+      "days": "month_end",
+      "entry_times": [
+        "close"
+      ]
+    },
+    "exit_params": {
+      "exit_session": 1,
+      "exit_time": "close"
+    },
+    "n_oos_events": 42,
+    "n_trades": 34,
+    "schema_unchanged": {
+      "TLT": true
+    }
+  },
+  {
+    "cell_hash": "6a64a27afaf775d8",
+    "status": "ok",
+    "label": "SPY_1Day_tsmom_logit_l2_oof_rule_size_none",
+    "primary_params": {},
+    "event_params": {
+      "entry_times": [
+        "open"
+      ],
+      "every": "week"
+    },
+    "exit_params": {
+      "exit_time": "next"
+    },
+    "n_oos_events": 184,
+    "n_trades": 112,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "2a5448906fc86edd",
+    "status": "ok",
+    "label": "SPY_1Day_weekly_reversal_logit_l2_oof_rule_size_none",
+    "primary_params": {},
+    "event_params": {
+      "entry_times": [
+        "open"
+      ],
+      "every": "week"
+    },
+    "exit_params": {
+      "exit_time": "next"
+    },
+    "n_oos_events": 184,
+    "n_trades": 24,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "91a84418e40bddec",
+    "status": "ok",
+    "label": "SPY_1Day_overnight_logit_l2_oof_rule_size_none",
+    "primary_params": {},
+    "event_params": {
+      "entry_times": [
+        "close"
+      ]
+    },
+    "exit_params": {
+      "exit_time": "open"
+    },
+    "n_oos_events": 882,
+    "n_trades": 314,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "2ae6f4c7cfa052da",
+    "status": "ok",
+    "label": "SPY_1Day_vol_target_logit_l2_oof_rule_size_none",
+    "primary_params": {},
+    "event_params": {
+      "entry_times": [
+        "open"
+      ],
+      "every": "session"
+    },
+    "exit_params": {
+      "exit_time": "next"
+    },
+    "n_oos_events": 882,
+    "n_trades": 471,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "2b6c5e122b857282",
+    "status": "ok",
+    "label": "TLT_5Min_event_reaction_logit_l2_oof_rule_size_none",
+    "primary_params": {
+      "release": "fomc"
+    },
+    "event_params": {
+      "days": "fomc",
+      "entry_times": [
+        "14:15"
+      ]
+    },
+    "exit_params": {
+      "exit_time": "15:45"
+    },
+    "n_oos_events": 28,
+    "n_trades": 15,
+    "schema_unchanged": {
+      "TLT": true
+    }
+  },
+  {
+    "cell_hash": "b00a82f87f2f0a4f",
+    "status": "ok",
+    "label": "SPY_5Min_calendar_drift_logit_l2_oof_rule_size_none",
+    "primary_params": {
+      "window": "fomc_pre"
+    },
+    "event_params": {
+      "day_offset": 1,
+      "days": "fomc",
+      "entry_times": [
+        "close"
+      ]
+    },
+    "exit_params": {
+      "exit_session": 1,
+      "exit_time": "14:00"
+    },
+    "n_oos_events": 28,
+    "n_trades": 22,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "62b2b5033916956f",
+    "status": "ok",
+    "label": "SPY_5Min_event_reaction_logit_l2_oof_rule_size_none",
+    "primary_params": {
+      "release": "fomc"
+    },
+    "event_params": {
+      "days": "fomc",
+      "entry_times": [
+        "14:15"
+      ]
+    },
+    "exit_params": {
+      "exit_time": "15:45"
+    },
+    "n_oos_events": 28,
+    "n_trades": 8,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "ad3294ae80963d27",
+    "status": "ok",
+    "label": "SPY_5Min_gap_fade_logit_l2_oof_rule_size_none",
+    "primary_params": {},
+    "event_params": {
+      "days": "non_macro",
+      "entry_times": [
+        "09:35"
+      ],
+      "gate": "abs(gap_sigma) > 1.0"
+    },
+    "exit_params": {
+      "exit_time": "10:30"
+    },
+    "n_oos_events": 321,
+    "n_trades": 49,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "7700a827ce5bac40",
+    "status": "ok",
+    "label": "SPY_5Min_event_reaction_logit_l2_oof_rule_size_none",
+    "primary_params": {
+      "release": "cpi_nfp"
+    },
+    "event_params": {
+      "days": "cpi_nfp",
+      "entry_times": [
+        "09:45"
+      ]
+    },
+    "exit_params": {
+      "exit_time": "11:15"
+    },
+    "n_oos_events": 154,
+    "n_trades": 77,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "d0695e57a13f2076",
+    "status": "ok",
+    "label": "SPY_5Min_intraday_momentum_logit_l2_oof_rule_size_none",
+    "primary_params": {},
+    "event_params": {
+      "entry_times": [
+        "15:30"
+      ],
+      "gate": "abs(open_to_now) > 0.5 * sigma_day"
+    },
+    "exit_params": {
+      "exit_time": "close"
+    },
+    "n_oos_events": 1119,
+    "n_trades": 155,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  },
+  {
+    "cell_hash": "c4128adee68dbcc4",
+    "status": "ok",
+    "label": "SPY_5Min_overnight_logit_l2_oof_rule_size_none",
+    "primary_params": {},
+    "event_params": {
+      "entry_times": [
+        "close"
+      ]
+    },
+    "exit_params": {
+      "exit_time": "open"
+    },
+    "n_oos_events": 2015,
+    "n_trades": 1974,
+    "schema_unchanged": {
+      "SPY": true
+    }
+  }
+]
