@@ -880,6 +880,83 @@ instrument.
 
 **Cost.** 2 sessions. Depends on U14–U16 interfaces (can start on the statistics in parallel).
 
+**Status (2026-10-10).** ✅ Complete (adversarial review done: the BREAKING and SEVERE findings fixed, the MINORs fixed
+or deferred below). 748 tests pass (36 in `tests/test_u17.py`); ruff clean. Branch `unit/17-family-tests`. As-built
+notes in SPEC §17.5.
+- **Built.**
+  - The rule pass (`wfo/rule_pass.py`, `META_MODEL: none`): Phase-1 cells run the fixed rule once, with no meta-model
+    and no walk-forward. State (the `tod` profile, vol_state's GARCH) is fit causally in segments after RULE_WARMUP
+    sessions. The stream starts at the rule's first position.
+  - Rule cells are stage F only, with n_trials 0, plus portfolio cost totals.
+  - The `families/` package: the spec schema with git registration; budgets; pooled equal-risk variant streams with
+    one ledger row per variant (the counted trial); the Ledoit–Wolf test, floors, coherence, the Holm program verdict
+    and the reported splits; reports; the CLI `python -m families register | run | summary`; `families/program.yaml`
+    (8 families, 112 trials).
+- **Size and power — met.** Null size over 1,000 simulations of two independent streams (T = 1,000, 499 resamples):
+  4.3 %, inside 5 ± 1.5 % (4.8 % at T = 2,500). Power on a planted 0.3 Sharpe gap (ρ = 0.95, ten years): 0.86 in the
+  test (the reviewer's reruns gave 0.82–0.83). The reviewer's own nulls (iid, sparse, GARCH-t, one-sample) gave
+  5.25–5.7 %, and the interval covers a true 0.3 gap 95 % of the time.
+- **Block bootstrap on an AR(1) — met.** With φ = 0.6, block-21 resamples keep lag-1 autocorrelation ≈ φ(1 − 1/b)
+  and the long-run variance of the mean; single-observation blocks lose both.
+- **Floors, coherence, Holm on synthetic inputs — met.** Floors are checked by hand, and coherence covers share, the
+  lower-median variant and vacuous cases. Holm is checked on a planted set: a significant negative Δ does not pass.
+- **Budget overrun refused — met.** Refused cases:
+  - spec-level: more than TRIAL_BUDGET variants, a budget above 12;
+  - ledger-level: a family's configurations, amendments (which share their family's budget and cannot raise it), the
+    program's trials and families;
+  - a ledger holding the id under another registered sha.
+- **Registered-sha check — met.** In a temporary git repository: an untracked spec, a dirty spec, a committed
+  post-registration edit (a loosened floor), and a forged sha that is not an ancestor are all refused. A registered,
+  committed spec runs.
+- **End to end on a planted overnight drift — met.** Synthetic 5Min SPY / QQQ with a 15 bp/night drift and zero-drift
+  intraday noise; the F3 spec is registered in a temporary repo with 2 variants:
+  - the headline Δ Sharpe ≫ 1, p < 0.01; floors, coherence and the sign hold;
+  - the ledger counts 3 trials for 6 member cells, and a re-run is a ledger no-op;
+  - the no-drift control fails in the program verdict.
+- **Report on a dry-run family — met.** `families/dryrun/F1_spy_dryrun.yaml` (F1 on SPY only, 4 variants) was
+  committed, registered (9e4bebf, then d27513b) and run through the CLI on a scratch ledger. The report, spec curve
+  and program summary render.
+  - Result (a dry run, not the F1 test): headline Sharpe 0.98 vs buy-and-hold 0.87 over 2,399 days; Δ +0.11 (95 % CI
+    −0.24 … 0.46), p 0.52; max drawdown −18 % vs −34 %; floors ok; coherent (4/4 variants positive).
+  - It fails Holm, as the PLAN2 expected magnitude for one instrument implies.
+- **Regression — met.** U12 parity: PASS (8/8 hashes, after the review fixes). Legacy CSV run: all five outputs are
+  byte-identical to a clean `main` worktree run in the same environment. `wfo_signals.csv` sha1 is `f8e0617e…` on
+  both; U16 recorded `551d8074…` for both, so the value follows the environment (as U15 first found), not the code.
+  The handoff's "closed" note on the legacy hash only meant "branch = main"; the reference value is not stable
+  across sessions.
+- **U16 bug found and fixed:** the VIX rules (vol_target `vix`, overnight `vix_max`) read `vix`, but the feature set
+  names it `vol_state__vix`; they raised inside a real run.
+- **Review fixes:**
+  - B1: trial keys were labels, so an amendment reusing labels with new configurations cost nothing (28 amendments
+    passed in the reviewer's probe). Keys are now configuration hashes; the budget is capped at 12 and an amendment
+    cannot raise it.
+  - S1: floors had no defaults (an unset floor passed). The PLAN2 defaults now apply and cannot be switched off.
+  - S2: stateful variants warmed up for INITIAL_TRAIN + VAL (1,512 sessions at 1Day), ended on flat days, and were
+    still compared in coherence.
+    - Fix: RULE_WARMUP (63) and a tail segment to the data end.
+    - Coherence reads Δ on the headline's days.
+    - Skipped segments are reported.
+  - S3: rule warm-up days were test days. The stream now starts at the first position.
+  - Minors: no-op / duplicate variants are refused; `experiments.runner.run` refuses family stages unless called by
+    the family runner; Holm counts untested and ledger-only families with p = 1; edge-to-cost sums are weighted like
+    the stream; skipped segments are shown.
+- **Deferred:**
+  - **F2 basket risk profile.** F2 needs a basket risk profile (gross cap 1.0, short borrow) defined in code before
+    its registration (U18). The profiles today are `none` and `standard` (whose 10-position cap does not fit a
+    20-ETF basket).
+  - **F10 rank.** `weekly_reversal`'s cross-sectional rank (F10) is still not built (basket cells exist; a
+    cross-symbol signal step does not).
+  - **1Day VIX state.** A 1Day rule reading vol_state (vol_target `vix`, overnight `vix_max` at 1Day) has no events
+    for its first ~500 sessions (GARCH_MIN_OBS). The rule only reads VIX, but the group's state is fit as a whole.
+  - **`path_monotone` (F5 response) is not built.** A spec naming it is refused.
+  - **`gamma_sign` state split.** It is reported "unavailable" (no gamma proxy; U15 note).
+  - **Variant span.** A variant starting later than the headline is shown with its start and day count, and
+    coherence reads its Δ on the headline's days. Its own p-value and interval stay on its own sample.
+  - **Direct API bypass.** Budgets are enforced in the family runner. Direct `run_cell` / `_run_rule_cell` calls (not
+    `run`) can still write rule-cell artifacts without a variant row (no ledger row either).
+  - **Stage G (overlays).** U19 adds the overlay runner, its budget (2 per family) and the procedure bootstrap; §17.4
+    is not built.
+
 ### U18 — Phase 1: family development tests (no machine learning)
 
 **Goal.** Run F1, F2, F3, F4, F5, F7, F8 (and F10, F11 if budget allows) once each, as registered.
@@ -1001,7 +1078,8 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
   `cross_asset` sector / lags, point-in-time `Exo` view, runner context; status note under U15).
 - U16 — ✅ complete 2026-10-09 (branch `unit/16-mechanism-primaries`; eight mechanism primaries, MOC entries, rolls,
   flat sides, `rule_size`; status note under U16).
-- U17 — not started.
+- U17 — ✅ complete 2026-10-10 (branch `unit/17-family-tests`; rule pass, `families/` test, registration, budgets,
+  reports; status note under U17).
 - U18 — not started (family specs not yet registered).
 - U19 — not started.
 - U20 — not started.
