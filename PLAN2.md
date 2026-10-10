@@ -1059,7 +1059,8 @@ model fits). 1 session of orchestration.
   cost even without slippage. F7: significantly worse than buy-and-hold, not a significant continuation effect — the
   loss is SPY's −4.9 bp gross per trade plus ≈ 2.6 bp round-trip cost (QQQ and IWM ≈ −0.1 bp gross). F8: the CPI /
   NFP leg is negative, FOMC alone ≈ 0.
-- **Program (`results/families/program_summary.md`):** 7 families tested, 40 / 112 trials, 7 / 8 families; no family
+- **Program (`results/families/program_summary.md`; published as a private artifact,
+  https://claude.ai/artifact/5ca2XK2Zc4uGoUdcbLMF5v):** 7 families tested, 40 / 112 trials, 7 / 8 families; no family
   passes. DSR at N = 40 is ≤ 0.22 for every headline (F1 0.218).
 - **Adversarial review** (F5, F7, F8): no BREAKING or SEVERE. Every headline stream rebuilt from its member cells
   (max difference 1e-16), Δ / p / Holm / floors / trial count reproduced; F7's 1,466 trades rebuilt by hand from bars
