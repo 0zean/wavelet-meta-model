@@ -998,6 +998,46 @@ decision; cost model under-estimation for the two-fills-a-day families.
 **Cost.** Compute: F1/F3/F4 minutes; F2 < 1 h; F5/F7/F8 ≈ 1–3 h each (5Min bars, 4–14 instruments, no
 model fits). 1 session of orchestration.
 
+**Status (2026-10-10, in progress: F1–F4 run; F5, F7, F8 not yet specified).** Branch `unit/18-family-dev-tests`.
+- **Tooling added** (SPEC §17.6): union of calendar windows (`calendar_drift` window list; schedule `windows`), the
+  `basket` risk profile, `per_instrument` patches and per-variant `timeframe` in family specs, basket sample splits
+  with their own cell and benchmark. Fixes: registration decoded `git show` with the Windows codec, refusing an
+  unchanged spec with non-ASCII text (found after registering, before any run); the program summary recomputes DSR
+  with the program's trials at summary time; the summary shows the coherence verdict; per-trade responses count a
+  rolled chain as one position. 765 tests (17 in `tests/test_u18.py`).
+- **Registered** `families/F1–F4.yaml` at e19b44f (commit 847e183), after the user approved the specs and the
+  equal-risk benchmark. Deviations from this plan's text, stated in each spec header: risk profile `none` (`basket`
+  for F2) instead of `standard`; benchmark `buy_and_hold_er`; F4 as one SPY position over the union of its windows on
+  1Day (the 14:00 FOMC exit is a 5Min variant) with a 2 %/yr floor; F2's 15-ETF basket.
+- **Runs** on `results/ledger.jsonl`, in order F1, F3, F4, F2 (`results/families/`). All four fail:
+
+| family | Sharpe vs benchmark | Δ (95 % CI) | p (Holm) | floors | coherence | DSR (N 23) |
+|---|---|---|---|---|---|---|
+| F1 vol-managed | 0.92 vs 0.83 | +0.09 (−0.22 … 0.40) | 0.55 (1.00) | net return 11.5 % < 0.8 × 15.0 % → fail | 0.80, coherent | 0.86 |
+| F3 overnight | 0.72 vs 0.90 | −0.18 (−0.72 … 0.36) | 0.50 (1.00) | net return 8.6 % < 13.8 % → fail; edge/cost 7.3 ok | 1.00, median variant fails floors → no | 0.70 |
+| F4 calendar | 0.57 vs 0.67 | −0.10 (−0.91 … 0.71) | 0.81 (1.00) | 2.2 %/yr ≥ 2 % ok | 0.67, median variant fails floors → no | 0.52 |
+| F2 TSMOM | 0.23 vs 0.86 | −0.63 (−1.65 … 0.38) | 0.21 (0.83) | net return 1.3 % < 2 % → fail | 1.00, median variant fails floors → no | 0.17 |
+
+  Trials: 23 / 112, 4 / 8 families.
+- **Adversarial review** (F1–F4): every headline statistic, floor, coherence and Holm value reproduced; registration
+  chain clean; the union sampler's held sessions match the event calendar exactly on real data (514 / 514).
+  - SEVERE, F2 construction: tsmom's m = min(1, σ*/σ̂) with pro-rata scaling to gross 1 caps the low-vol assets at
+    m = 1 (IEF, UUP, HYG, LQD in 84–94 % of weeks), so the bond / credit / dollar sleeve carries ~0.6–0.7 of the
+    other assets' risk: the registered headline is not the equal-risk basket F2's claim describes. The spec header
+    states the formula; the verdict stands as registered. Whether to amend is open (below).
+  - SEVERE, fixed: the summary's DSR used each family's run-time N (F1 0.992 at N 6); now recomputed at N 23.
+  - MINOR: the quasi-holdout cells fetched 2026-09-28 … 30 and rewrote the DIA, IWM, QQQ, GLD, TLT caches; TLT's
+    whole history was re-adjusted for a dividend (×0.996), so F1's tlt_gld split and F4's dev TLT leg ran on the old
+    vintage and F4's benchmark and F2 on the new (Sharpe moves at the 3rd–4th decimal). The new caches are
+    committed with the results.
+  - MINOR, disclosed: the status-only smoke run before registration computed (unprinted) full-window statistics on a
+    scratch ledger; every configuration matched the registered run. F4's 2 % floor was chosen before it; F4's
+    headline clears it by 0.2 pp and would fail the long-only default (F4 fails on p and coherence regardless).
+  - MINOR, fixed for later runs: per-trade responses of a daily-rolled union were per day (F4's report predates the
+    fix). Deferred: borrow is charged for bars held + 1 (≈ 20 % over on a weekly short; ~0.03 %/yr).
+- **Open:** F2 amendment (user's call); F5, F7, F8 specs (intraday; VOL_PROFILE tod), runs, then the published
+  program summary.
+
 ### U19 — Phase 2: meta-labeling overlay on passing families
 
 **Goal.** Answer one question per passing family: does a meta-model that decides which of the family's
@@ -1089,7 +1129,7 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
   flat sides, `rule_size`; status note under U16).
 - U17 — ✅ complete 2026-10-10 (branch `unit/17-family-tests`; rule pass, `families/` test, registration, budgets,
   reports; status note under U17).
-- U18 — not started (family specs not yet registered).
+- U18 — in progress (F1–F4 registered and run 2026-10-10, all fail; F5, F7, F8 to specify; status note under U18).
 - U19 — not started.
 - U20 — not started.
 - U21 — not started (gated).
