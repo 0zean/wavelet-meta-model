@@ -9,7 +9,7 @@ Cells (all stage F rule cells, n_trials 0 each, run in one runner batch):
   are not used: the test reads the dev-window cells only).
 
 Trial accounting (SPEC §11.1): a variant is one trial whatever its instrument count. Each variant gets a ledger row
-(kind "family_variant", n_trials 1, its pooled stream's statistics, `trial_key` = <family>/<label>, members = its cell
+(kind "family_variant", n_trials 1, its pooled stream's statistics, `trial_key` = <family>/<configuration hash>, members = its cell
 hashes); its artifacts (daily_returns.csv, result.json) live under <root>/cells/<variant hash>/. Budgets count
 distinct trial keys with a counted status in stages F / G: per family (amendments `<id>.v<k>` share their family's)
 ≤ TRIAL_BUDGET, and program-wide ≤ families/program.yaml's caps; a run that would exceed one is refused before any
@@ -65,17 +65,20 @@ def check_budget(fam: FamilySpec, rows: list[dict], caps: dict) -> dict:
             raise BudgetError(f"{fam.id} already has ledger rows under registered sha {r.get('registered_sha')}: "
                               "an amendment is a new file (<id>.v2.yaml)")  # fmt: skip
     keys = counted_keys(rows)
+    # an amendment cannot grant its family more trials than an earlier version had
+    budget = min([fam.budget] + [int(r["budget"]) for r in L.trials(rows) if r.get("kind") == KIND
+                                 and r.get("base_family") == fam.base_id and r.get("budget") is not None])  # fmt: skip
     mine = keys.get(fam.base_id, set()) | {fam.trial_key(v.label) for v in fam.variants}
-    if len(mine) > fam.budget:
+    if len(mine) > budget:
         raise BudgetError(f"{fam.base_id}: {len(mine)} trials (with earlier versions' {len(keys.get(fam.base_id, ()))})"
-                          f" exceed TRIAL_BUDGET {fam.budget}")  # fmt: skip
+                          f" exceed TRIAL_BUDGET {budget}")  # fmt: skip
     keys[fam.base_id] = mine
     n_fam, n_trials = len(keys), sum(len(v) for v in keys.values())
     if n_fam > caps["max_families"]:
         raise BudgetError(f"{n_fam} families exceed the program cap {caps['max_families']}")
     if n_trials > caps["max_trials"]:
         raise BudgetError(f"{n_trials} program trials exceed the cap {caps['max_trials']}")
-    return {"family_trials": len(mine), "family_budget": fam.budget, "program_families": n_fam,
+    return {"family_trials": len(mine), "family_budget": budget, "program_families": n_fam,
             "program_trials": n_trials, **caps}  # fmt: skip
 
 
@@ -154,7 +157,12 @@ def _pooled(fam: FamilySpec, cells, rows_by_hash, hashes, root, weights) -> dict
     streams = {c.symbols[0] if not fam.basket else "_basket": _stream(root, h) for c, h in zip(cells, members)}
     out["per_instrument"] = {} if fam.basket else streams
     out["stream"] = streams["_basket"].rename("ret") if fam.basket else T.pool(streams, weights)
-    out["costs"] = {k: float(sum(rows_by_hash[h][k] for h in members)) for k in ("pnl", "cost_paid", "traded_notional")}
+    # cash totals per unit of each member's starting capital, mixed with the pooled stream's weights (a basket: its own)
+    w = [1.0] if fam.basket else [float(weights[c.symbols[0]]) for c in cells]
+    out["costs"] = {k: float(sum(wi * rows_by_hash[h][k] / rows_by_hash[h]["init_cash"] for wi, h in zip(w, members)))
+                    for k in ("pnl", "cost_paid", "traded_notional")}  # fmt: skip
+    out["skipped_segments"] = {k: v for h in members for k, v in (rows_by_hash[h].get("skipped_segments") or {}).items()
+                               if v}  # fmt: skip
     tr = [_read(root, h, "trades.csv") for h in members]
     out["trades"] = pd.concat([t for t in tr if t is not None and len(t)]) if any(
         t is not None and len(t) for t in tr) else None  # fmt: skip
@@ -195,7 +203,7 @@ def run_family(
     batch += [c for cs in split_cells.values() for c in cs] + quasi_cells
     hashes: dict[tuple, str] = {}
     run(batch, ledger=ledger, root=root, source=source, jobs=jobs, spec_name=fam.id,
-        feature_cache_dir=feature_cache_dir, on_hash=lambda c, h: hashes.__setitem__((c.stage, c.spec_json()), h))  # fmt: skip
+        feature_cache_dir=feature_cache_dir, family=True, on_hash=lambda c, h: hashes.__setitem__((c.stage, c.spec_json()), h))  # fmt: skip
     rows_by_hash = {h: r for (h, st), r in L.done(ledger.rows()).items() if st == "F"}
 
     bh = bh_returns(source, fam.instruments, fam.timeframe, start, end)
@@ -216,7 +224,8 @@ def run_family(
                "family": fam.id, "base_family": fam.base_id, "variant": v.label, "trial_key": fam.trial_key(v.label),
                "registered_sha": str((fam.registered or {}).get("sha")), "members": p["members"], "n_trials": 1,
                "spec_json": json.dumps(v.config, sort_keys=True, default=str), "git_sha": sha, "code_hash": chash,
-               "started_at": stamp, "instruments": list(fam.instruments), "weights": weights.to_dict()}  # fmt: skip
+               "started_at": stamp, "instruments": list(fam.instruments), "weights": weights.to_dict(),
+               "budget": fam.budget}  # fmt: skip
         if p["status"] == "ok":
             row |= T.stream_stats(p["stream"]) | p["costs"]
             d = root / "cells" / vh
@@ -245,7 +254,8 @@ def run_family(
         for k, st in failed.items():
             ev["variants"][k] = {"status": st}
         ev["verdict"]["coherence"] = T.coherence(
-            {**{k: {"delta_ann": v["compare"]["delta_ann"], "floors_ok": v["floors"]["ok"]}
+            {**{k: {"delta_ann": v["compare"]["delta_ann"] if k == HEADLINE else v["delta_common"],
+                    "floors_ok": v["floors"]["ok"]}
                 for k, v in ev["variants"].items() if "compare" in v},
              **{k: {"delta_ann": np.nan, "floors_ok": False} for k in failed}}, fam.test["coherence_share"])  # fmt: skip
     ev["verdict"]["dsr"], ev["verdict"]["dsr_n"], ev["verdict"]["dsr_v"] = program_dsr(ledger.rows(), streams[HEADLINE])
@@ -271,7 +281,11 @@ def run_family(
     state = load_state(source, start, end)
     desc = T.describe(fam, streams, bench, {k: pooled[k].get("trades") for k in streams},
                       pooled[HEADLINE].get("per_instrument", {}), state, sample_streams, qslice)  # fmt: skip
-    result |= {"evaluation": ev, "described": desc}
+    result |= {
+        "evaluation": ev,
+        "described": desc,
+        "skipped_segments": {k: p["skipped_segments"] for k, p in pooled.items() if p.get("skipped_segments")},
+    }
     frame = pd.concat({**{k: T.day_index(s) for k, s in streams.items()}, "benchmark": T.day_index(bench)}, axis=1,
                       sort=True)  # fmt: skip
     return _save(result, frame, out_dir)

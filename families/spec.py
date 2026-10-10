@@ -36,6 +36,8 @@ The run therefore always uses the spec as committed before its first ledger row.
 
 import copy
 import datetime as dt
+import hashlib
+import json
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -51,6 +53,7 @@ FAMILY_DIR = ROOT / "families"
 DEV_WINDOW = ("2016-01-04", "2025-10-01")  # SPEC §11.1, [start, end)
 QUASI_WINDOW = ("2025-10-01", "2026-10-01")  # the contaminated quasi-holdout slice: reported, never a gate
 DEFAULT_BUDGET = 12
+MAX_BUDGET = 12  # PLAN2 protocol 3: no family spec (or amendment) may grant itself more variants than this
 BENCHMARKS = ("buy_and_hold_ew", "buy_and_hold_er", "cash")
 STATE_SPLITS = (
     "vix_tercile",
@@ -109,7 +112,11 @@ class FamilySpec:
         return self.variants[0]
 
     def trial_key(self, label: str) -> str:
-        return f"{self.base_id}/{label}"
+        """`<base id>/<configuration hash>`: the variant's cells (symbols, window, primary, exit, costs, every override)
+        without code or data, so an amendment that reuses a label with a new configuration is a new trial, and the same
+        configuration re-run (new code, a re-registered amendment) is not."""
+        cfg = sorted(c.spec_json() for c in self.cells[label])
+        return f"{self.base_id}/{hashlib.sha256(json.dumps(cfg).encode()).hexdigest()[:12]}"
 
 
 def _date(x) -> str:
@@ -251,6 +258,8 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     if len(set(labels)) != len(labels):
         raise ValueError(f"duplicate variant labels {labels}")
     budget = int(doc.get("TRIAL_BUDGET", DEFAULT_BUDGET))
+    if not 1 <= budget <= MAX_BUDGET:
+        raise ValueError(f"TRIAL_BUDGET must be in [1, {MAX_BUDGET}], got {budget}")
     if len(variants) > budget:
         raise ValueError(f"{len(variants)} trials (headline + {len(variants) - 1} variants) exceed TRIAL_BUDGET "
                          f"{budget}")  # fmt: skip
@@ -261,7 +270,19 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     extra = set(doc.get("floors") or {}) - set(FLOOR_KEYS)
     if extra:
         raise ValueError(f"unknown floor(s) {sorted(extra)}; expected {sorted(FLOOR_KEYS)}")
-    floors |= doc.get("floors") or {}
+    given = dict(doc.get("floors") or {})
+    cls = _primary_cls((headline.get("primary") or {}).get("name") if isinstance(headline.get("primary"), dict)
+                       else headline.get("primary"))  # fmt: skip
+    prim_params = headline["primary"].get("params") or {} if isinstance(headline["primary"], dict) else {}
+    long_only = bool(cls.LONG_ONLY or prim_params.get("long_only", False))
+    if "min_net_ret" not in given and "min_net_ret_vs_benchmark" not in given:  # PLAN2 U17 defaults
+        given["min_net_ret_vs_benchmark" if long_only else "min_net_ret"] = 0.8 if long_only else 0.02
+    given.setdefault("min_edge_to_cost", 3.0)
+    floors |= given
+    if floors["min_net_ret"] is None and floors["min_net_ret_vs_benchmark"] is None:
+        raise ValueError("a family needs a net-return floor (min_net_ret or min_net_ret_vs_benchmark)")
+    if floors["min_edge_to_cost"] is None or not floors["min_edge_to_cost"] > 0:
+        raise ValueError("a family needs min_edge_to_cost > 0 (the magnitude floor; default 3)")
     if floors["max_dd"] is not None and not 0 < floors["max_dd"] < 1:
         raise ValueError("floors.max_dd is a drawdown magnitude in (0, 1)")
     test = dict(TEST_DEFAULTS)
@@ -299,6 +320,12 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     fam = FamilySpec(fid, doc, Path(path) if path else None, instruments, basket, tf, window, variants, bench,
                      floors, test, states, response, samples, budget, reg)  # fmt: skip
     fam.cells = {v.label: make_cells(fam, v.config, *window) for v in variants}
+    seen: dict[str, str] = {}
+    for v in variants:  # a variant identical to the headline or to another variant would pad the coherence share
+        key = json.dumps(sorted(c.spec_json() for c in fam.cells[v.label]))
+        if key in seen:
+            raise ValueError(f"variant {v.label!r} runs the same configuration as {seen[key]!r}")
+        seen[key] = v.label
     return fam
 
 

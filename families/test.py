@@ -120,7 +120,7 @@ def floors(r: pd.Series, bench: pd.Series, costs: dict, spec_floors: dict) -> di
                                    "threshold": f["min_edge_to_cost"], "ok": ok}  # fmt: skip
     if f.get("max_dd") is not None:
         out["max_dd"] = {"value": st["max_dd"], "threshold": -f["max_dd"], "ok": bool(st["max_dd"] >= -f["max_dd"])}
-    out["ok"] = all(v["ok"] for v in out.values())
+    out["ok"] = bool(out) and all(v["ok"] for v in out.values())  # no floor set is not a pass
     return out
 
 
@@ -145,11 +145,23 @@ def coherence(variants: dict[str, dict], share: float) -> dict:
             "median_floors_ok": bool(rest[med]["floors_ok"]), "coherent": ok}  # fmt: skip
 
 
+def delta_common(r: pd.Series, headline: pd.Series, bench: pd.Series, kind: str) -> float:
+    """A variant's Sharpe difference vs the benchmark on the days it shares with the headline (and the benchmark): the
+    coherence comparison, so a variant that starts later (a longer warm-up, a state fit) or covers fewer days is
+    compared over the same sessions as the headline rather than over its own sample. The headline's own test is
+    unaffected (it never reads a variant)."""
+    j = pd.concat([day_index(r).rename("a"), day_index(headline).rename("h"), day_index(bench).rename("b")], axis=1,
+                  sort=True).dropna()  # fmt: skip
+    if len(j) < 2:
+        return np.nan
+    return sharpe_ann(j["a"]) - (0.0 if kind == "cash" else sharpe_ann(j["b"]))
+
+
 def headline_verdict(results: dict[str, dict], test: dict) -> dict:
     """The family's decision inputs (before Holm across families): headline p, its floors, coherence."""
     h = results[HEADLINE]
-    coh = coherence({k: {"delta_ann": v["compare"]["delta_ann"], "floors_ok": v["floors"]["ok"]}
-                     for k, v in results.items()}, test["coherence_share"])  # fmt: skip
+    coh = coherence({k: {"delta_ann": v["compare"]["delta_ann"] if k == HEADLINE else v["delta_common"],
+                         "floors_ok": v["floors"]["ok"]} for k, v in results.items()}, test["coherence_share"])  # fmt: skip
     return {"p": h["compare"]["p"], "delta_ann": h["compare"]["delta_ann"], "ci_ann": h["compare"]["ci_ann"],
             "floors_ok": h["floors"]["ok"], "coherence": coh, "positive": bool(h["compare"]["delta_ann"] > 0)}  # fmt: skip
 
@@ -160,7 +172,9 @@ def evaluate(fam: FamilySpec, streams: dict[str, pd.Series], bench: pd.Series, c
     for v in fam.variants:
         r = streams[v.label]
         out[v.label] = {"stats": stream_stats(r), "compare": compare(r, bench, fam.benchmark, fam.test),
-                        "floors": floors(r, bench, costs[v.label], fam.floors), "costs": costs[v.label]}  # fmt: skip
+                        "floors": floors(r, bench, costs[v.label], fam.floors), "costs": costs[v.label],
+                        "start": str(day_index(r).index.min().date()) if len(r) else None,
+                        "delta_common": delta_common(r, streams[HEADLINE], bench, fam.benchmark)}  # fmt: skip
     from validation.stats import psr, return_moments
 
     h = day_index(streams[HEADLINE])

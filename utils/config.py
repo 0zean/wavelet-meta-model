@@ -201,6 +201,9 @@ class RunConfig:
     EMBARGO: int = 1
     MIN_TRAIN_EVENTS: int = 200
     MIN_VAL_EVENTS: int = 100
+    # The rule pass (META_MODEL "none", wfo/rule_pass.py): sessions of history before its first segment when state must
+    # be fit (VOL_PROFILE "tod", a per-fold feature group); segments are TEST sessions, the last runs to the data end.
+    RULE_WARMUP: int = 63
 
     # Power Walk-Forward (SPEC §6, U9; wfo/pwfo.py). Windows in WINDOW_UNIT (exchange-calendar sessions in the
     # runner): IS ∈ PWFO_IS_GRID × OOS ∈ PWFO_OOS_GRID, retraining every OOS. Each IS window splits into train and a
@@ -334,6 +337,8 @@ class RunConfig:
         for name in ("INITIAL_TRAIN", "VAL", "TEST", "VERTICAL_BARS", "BARS_PER_DAY"):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be >= 1")
+        if not self.EMBARGO < self.RULE_WARMUP:
+            raise ValueError("RULE_WARMUP must be longer than EMBARGO (the first segment's state needs bars)")
         if not 0 <= self.EMBARGO < min(self.INITIAL_TRAIN, self.VAL):
             raise ValueError("EMBARGO must be >= 0 and shorter than the train and val windows")
         for name in ("PWFO_IS_GRID", "PWFO_OOS_GRID"):

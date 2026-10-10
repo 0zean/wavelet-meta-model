@@ -1080,14 +1080,19 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   magnitude (`rule_size`) or 1 (`fixed`, the only other sizer allowed), 0 on flat sides. Only the groups the rule
   reads are built (FeatureSet `require_core=False`), and an event with a NaN there is dropped.
   - State that must be fit — `VOL_PROFILE = "tod"` (the sampler's σ) or a per-fold group (vol_state's GARCH) — is
-    fit causally per segment. The segments are wfo_folds' test windows (TEST sessions each, after INITIAL_TRAIN + VAL
-    sessions of warm-up), and each segment's state is fit on every bar before it less EMBARGO sessions. Otherwise
-    the pass is one segment over the whole window.
-  - The stream starts at the first segment's first bar (`live_start`). RunConfig refuses `none` with a non-rule
-    primary, a meta sizer or POSITION_MODE "average".
+    fit causally per segment. The segments are TEST sessions each, the first after `RULE_WARMUP` sessions (new
+    RunConfig field, default 63) and the last running to the data's end. Each segment's state is fit on every bar
+    before it less EMBARGO sessions. A segment whose state cannot be fit (vol_state's GARCH needs GARCH_MIN_OBS = 500
+    returns, so a 1Day VIX rule starts about two years in) has no events and is listed in `skipped_segments`, which
+    the family report prints. Otherwise the pass is one segment over the whole window.
+  - The stream starts at the rule's first sided event (`live_start`). The rule's warm-up — a trailing window
+    filling, a state not yet fit — is flat by construction and is not a test day. The start depends on the rule and
+    the bars only, never on returns. RunConfig refuses `none` with a non-rule primary, a meta sizer or POSITION_MODE
+    "average".
 - **Rule cells** (`experiments/runner._run_rule_cell`).
   - Model.meta "none" is allowed only in stage F, and stage F only takes rule cells (`Cell.__post_init__`).
-    Experiment specs may not use stages F / G / H (`expand` refuses them); they run through `python -m families`.
+    Experiment specs may not use stages F / G / H (`expand` refuses them). `experiments.runner.run` refuses those
+    stages unless `family=True`, which only families/run.py passes, so budgets cannot be bypassed through the API.
   - Each symbol's rule pass goes through the signals cache, and the cell is simulated by
     `risk.portfolio.simulate_portfolio` from the earliest live bar (one or many symbols, the cell's risk profile and
     cost model).
@@ -1109,10 +1114,14 @@ advantages. Adopted overlays replace the headline in the registry; others are di
     `sizer` and `overrides`. COST_MODEL / EXIT_* / EVENT_PARAMS may not be set through overrides.
   - Variants are a label plus dotted changes to the headline. Labels must be YAML strings (an unquoted `2016_2019`
     is the integer 20162019), and other instruments are a sample split, not a variant.
-  - 1 + #variants ≤ TRIAL_BUDGET (default 12).
+  - 1 + #variants ≤ TRIAL_BUDGET (default 12, at most 12).
+  - A variant that runs the same configuration (its cells' specs) as the headline or as another variant is refused.
+    It would pad the coherence share.
   - `benchmark` ∈ buy_and_hold_ew | buy_and_hold_er | cash.
-  - `floors` take min_net_ret, min_net_ret_vs_benchmark (the long-only "0.8 × benchmark"), min_edge_to_cost and
-    max_dd (a magnitude). `test` takes alpha, block_days, n_boot, coherence_share and seed.
+  - `floors` take min_net_ret, min_net_ret_vs_benchmark, min_edge_to_cost and max_dd (a magnitude). The PLAN2
+    defaults apply when a key is absent: 0.8 × benchmark for a long-only headline primary, else min_net_ret 2 %/yr;
+    min_edge_to_cost 3. A spec may not switch off the net-return floor or the edge floor, and `floors()` with no
+    floor set is not ok. `test` takes alpha, block_days, n_boot, coherence_share and seed.
   - Named state splits: vix_tercile, vix_median, macro_day, abs_move_tercile, prior_day_sign, day_of_week and
     gamma_sign (reported "unavailable": no gamma proxy).
   - Named responses: sharpe, sortino, calmar, ret_ann, vol_ann, max_dd, skew, lpm2, mean_per_trade_bp, hit_rate,
@@ -1127,9 +1136,14 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   - The runner refuses the spec when: it has no `registered`; the file is untracked or dirty; the sha is not an
     ancestor of HEAD; or the file at that sha (without `registered`) differs from the file now.
 - **Run** (`families/run.py`, `python -m families run <file> --jobs N`).
-  - Budgets are checked before any cell runs. A trial key is `<base id>/<label>`. The counted keys are those of
-    family-variant rows with status ok / no_fit in stages F / G. A family (with its amendments) may have at most
-    TRIAL_BUDGET keys, and the program at most `families/program.yaml`'s 8 families / 112 trials.
+  - Budgets are checked before any cell runs. A trial key is `<base id>/<configuration hash>`: the hash of the
+    variant's cell specs (symbols, window, primary, exit, costs, every override; not code or data). So an amendment
+    that reuses a label with a new configuration is a new trial, and the same configuration re-run (new code, a
+    re-registered amendment) is not. The counted keys are those of family-variant rows with status ok / no_fit in
+    stages F / G.
+  - A family (with its amendments) may have at most TRIAL_BUDGET keys, where the budget is the minimum over this
+    version and every earlier version recorded in the ledger: an amendment cannot raise it. The program may have at
+    most `families/program.yaml`'s 8 families / 112 trials.
   - The runner refuses a ledger that already has rows of this id under another registered sha.
   - One runner batch runs:
     - the variants' cells over the window;
@@ -1141,9 +1155,12 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   - One ledger row per variant, appended once per (hash, status):
     - kind "family_variant", n_trials 1, hash = sha(id, label, member hashes, the families/*.py source)[:16];
     - trial_key, family / base_family, registered_sha and members;
-    - the pooled stream's daily statistics and the members' summed pnl / cost_paid / traded_notional.
-    Its daily_returns.csv and result.json go under `<root>/cells/<hash>/`. So the ledger's N for stage F counts
-    variants, not cells.
+    - the pooled stream's daily statistics and the members' pnl / cost_paid / traded_notional, each per unit of the
+      member's starting cash and mixed with the pooled stream's weights (so the edge floor weighs instruments as the
+      stream does).
+    Its daily_returns.csv and result.json go under `<root>/cells/<hash>/`. The ledger's N for stage F (by distinct
+    hash, §9) counts variants, not cells. A re-run under new code is a new hash and counts again (the safe side),
+    while the budgets and the family DSR count configurations.
   - Outputs in `<out>/<id>/`: result.json, streams.csv (each variant and the benchmark), report.md / .html and
     spec_curve.png.
 - **Test** (`families/stats.py`, `families/test.py`).
@@ -1152,7 +1169,7 @@ advantages. Adopted overlays replace the headline in the registry; others are di
     estimator (LW 2008 §3.2). p = (1 + #{|Δ*−Δ̂|/s* ≥ |Δ̂|/ŝ}) / (M + 1), with the studentized interval. The
     `cash` benchmark runs the one-sample version (H0: SR = 0).
   - Measured size: 4.3 % (T = 1,000) and 4.8 % (T = 2,500) over 1,000 null simulations. Power on a 0.3 gap
-    (ρ = 0.95, T = 2,520): 0.86.
+    (ρ = 0.95, T = 2,520): 0.82–0.86 over 100 simulations, depending on the seeds.
   - Alpha: OLS with Newey–West (Bartlett, lag 5).
   - Floors:
     - net return = the annualized compounded return of the stream;
@@ -1161,8 +1178,12 @@ advantages. Adopted overlays replace the headline in the registry; others are di
       never trades fails it.
     - max_dd: on the daily stream.
   - Coherence: over the non-headline variants, the share with the headline's sign on Δ must be ≥ coherence_share
-    (to 3 decimals: 0.667 = two thirds). The lower-median variant by Δ must clear every floor. A variant that did
-    not run counts as not sharing the sign and failing the floors. With no variants the check is vacuous.
+    (to 3 decimals: 0.667 = two thirds). The lower-median variant by Δ must clear every floor (on its own sample).
+    - A variant's Δ here is computed on the days it shares with the headline and the benchmark (`delta_common`), so
+      a variant that starts later is compared over the headline's sessions. The headline's own test never reads a
+      variant.
+    - A variant that did not run counts as not sharing the sign and failing the floors.
+    - With no variants the check is vacuous.
   - Passing: Holm over the families' headline p; a family passes iff p_holm < α, its floors hold, it is coherent
     **and Δ > 0** (the test is two-sided, so a significant shortfall is not a pass).
   - DSR: N = the program's counted trial keys (stages F / G), V = the variance of their latest rows' per-period
@@ -1179,8 +1200,12 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   - the registered-vs-run diff (`git diff <registered sha> HEAD -- <spec>`: only the `registered` line when they
     agree).
 
-  `python -m families summary` writes `program_summary.md / .html / .csv` with the verdict over every result in
-  the output directory.
+  The variant table also shows each variant's first day and day count, and its Δ on the headline's days.
+
+  `python -m families summary` writes `program_summary.md / .html / .csv` with the verdict over every result in the
+  output directory and every family with a stage-F variant row in the ledger. A family without a completed test (an
+  errored headline, a missing result file) enters Holm with p = 1, so a family cannot leave the multiplicity count
+  by failing or being deleted.
 
 ---
 

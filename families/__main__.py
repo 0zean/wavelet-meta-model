@@ -55,9 +55,10 @@ def main() -> None:
                          feature_cache_dir="default", quasi=not a.no_quasi)  # fmt: skip
         print(Path(res["paths"]["md"]).read_text(encoding="utf-8"))
     else:
+        from experiments.ledger import Ledger
         from families.report import program_summary
 
-        print(program_summary(a.out)["md"].read_text(encoding="utf-8"))
+        print(program_summary(a.out, ledger=Ledger(a.ledger))["md"].read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

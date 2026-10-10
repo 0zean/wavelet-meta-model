@@ -44,7 +44,7 @@ def spec_curve(result: dict, path: Path) -> Path | None:
     if not pts:
         return None
     pts.sort(key=lambda p: p[1])
-    fig, ax = plt.subplots(figsize=(max(5, 0.6 * len(pts) + 2), 3.6))
+    fig, ax = plt.subplots(figsize=(max(6.5, 0.6 * len(pts) + 2), 4.0))
     for i, (k, d, ci) in enumerate(pts):
         c = "#c2410c" if k == HEADLINE else "#1d4ed8"
         lo, hi = (np.nan, np.nan) if ci is None else ci
@@ -53,9 +53,9 @@ def spec_curve(result: dict, path: Path) -> Path | None:
         ax.plot(i, d, "o", color=c)
     ax.axhline(0, color="#6b7280", lw=0.8)
     ax.set_xticks(range(len(pts)), [p[0] for p in pts], rotation=45, ha="right", fontsize=8)
-    bench = "Sharpe (vs 0)" if result.get("benchmark") == "cash" else f"Sharpe − {result.get('benchmark')}"
-    ax.set_ylabel(f"{bench}, annualized")
-    ax.set_title(f"{result['id']}: specification curve (headline in orange; reported, never selected)", fontsize=9)
+    ax.set_ylabel("Sharpe (ann.)" if result.get("benchmark") == "cash" else "Δ Sharpe vs benchmark (ann.)")
+    ax.set_title(f"{result['id']}: specification curve, 95 % intervals\n(headline in orange; variants reported, "
+                 f"never selected; benchmark {result.get('benchmark')})", fontsize=9)  # fmt: skip
     fig.tight_layout()
     fig.savefig(path, dpi=120)
     plt.close(fig)
@@ -134,12 +134,21 @@ def family_markdown(result: dict) -> str:
             rows.append({"variant": k, "status": x.get("status")})
             continue
         st = x["stats"]
-        rows.append({"variant": k, "status": "ok", "sharpe": _f(x["compare"]["sharpe"], 2),
-                     "Δ vs bench": _f(x["compare"]["delta_ann"], 2),
+        rows.append({"variant": k, "status": "ok", "start": x.get("start"), "days": x["compare"]["n_days"],
+                     "sharpe": _f(x["compare"]["sharpe"], 2), "Δ vs bench": _f(x["compare"]["delta_ann"], 2),
+                     "Δ on headline days": "—" if k == HEADLINE else _f(x.get("delta_common"), 2),
                      "CI": f"{_f(x['compare']['ci_ann'][0], 2)} … {_f(x['compare']['ci_ann'][1], 2)}",
                      "p": _f(x["compare"]["p"], 4), "net ret": _f(st["ret_ann"], 3, pct=True),
                      "max dd": _f(st["max_dd"], 3, pct=True), "floors": _f(x["floors"]["ok"])})  # fmt: skip
-    md += [_table(rows, ["variant", "status", "sharpe", "Δ vs bench", "CI", "p", "net ret", "max dd", "floors"]), ""]
+    cols = ["variant", "status", "start", "days", "sharpe", "Δ vs bench", "CI", "p", "Δ on headline days", "net ret",
+            "max dd", "floors"]  # fmt: skip
+    md += [_table(rows, cols), ""]
+    note = ("Coherence reads each variant's Δ on the days it shares with the headline (column 'Δ on headline days'); "
+            "the curve and the p-values are each variant's own sample.")  # fmt: skip
+    md += [note, ""]
+    if result.get("skipped_segments"):
+        md += ["**Skipped segments** (state could not be fit: no events there, flat days): "
+               + "; ".join(f"{k}: {v}" for k, v in result["skipped_segments"].items()), ""]  # fmt: skip
     d = result.get("described", {})
     md += ["## Responses", ""]
     resp = d.get("responses", {})
@@ -235,9 +244,18 @@ def write_family_report(result: dict, out: Path) -> dict:
     return {"md": out / "report.md", "html": out / "report.html"}
 
 
-def program_summary(out_dir, alpha: float = 0.05) -> dict:
-    """The program verdict (SPEC §17.3) over every <out_dir>/<id>/result.json with a test: Holm across the families'
-    headline p-values, floors, coherence → program_summary.md / .html / .csv."""
+UNTESTED = {"p": 1.0, "delta_ann": float("nan"), "floors_ok": False, "coherence": {"coherent": False},
+            "positive": False}  # fmt: skip
+
+
+def program_summary(out_dir, alpha: float = 0.05, ledger=None) -> dict:
+    """
+    The program verdict (SPEC §17.3): Holm across the families' headline p-values, floors, coherence →
+    program_summary.md / .html / .csv. The families are every <out_dir>/<id>/result.json and, with `ledger`, every
+    family with a stage-F variant row there; one without a completed test (an errored headline, a missing result
+    file) enters Holm with p = 1, so a family cannot leave the multiplicity count by failing or being deleted.
+    """
+    from families.run import KIND
     from families.test import program_verdict
 
     out_dir = Path(out_dir)
@@ -245,9 +263,14 @@ def program_summary(out_dir, alpha: float = 0.05) -> dict:
     for p in sorted(out_dir.glob("*/result.json")):
         r = json.loads(p.read_text(encoding="utf-8"))
         results[r["id"]] = r
+    in_ledger = set()
+    if ledger is not None:
+        in_ledger = {r["family"] for r in ledger.rows() if r.get("kind") == KIND and r.get("stage") == "F"}
     verdicts = {k: r["evaluation"]["verdict"] for k, r in results.items() if "evaluation" in r}
+    untested = sorted((set(results) | in_ledger) - set(verdicts))
+    verdicts |= {k: dict(UNTESTED) for k in untested}
     table = program_verdict(verdicts, alpha)
-    intro = (f"{len(results)} families with results, {len(verdicts)} tested. A family passes iff its Holm-adjusted "
+    intro = (f"{len(verdicts)} families, {len(verdicts) - len(untested)} tested. A family passes iff its Holm-adjusted "
              f"headline p < {alpha}, its headline clears every floor, it is coherent and its difference is positive "
              "(SPEC §17.3).")  # fmt: skip
     md = ["# Hypothesis-family program: summary", "", intro, ""]
@@ -258,16 +281,18 @@ def program_summary(out_dir, alpha: float = 0.05) -> dict:
     md.append("")
     rows = []
     for _, t in table.iterrows():
-        r = results[t["family"]]
+        r = results.get(t["family"], {})
+        if "evaluation" not in r:
+            why = r.get("error", "no result file") if r else "no result file"
+            rows.append({"family": t["family"], "p": "1 (untested)", "p_holm": _f(t["p_holm"], 4),
+                         "verdict": f"no test ({why})"})  # fmt: skip
+            continue
         h = r["evaluation"]["variants"][HEADLINE]["compare"]
         rows.append({"family": t["family"], "sharpe": _f(h["sharpe"], 2), "bench": _f(h["bench_sharpe"], 2),
                      "Δ": _f(t["delta_ann"], 2), "CI": f"{_f(h['ci_ann'][0], 2)} … {_f(h['ci_ann'][1], 2)}",
                      "p": _f(t["p"], 4), "p_holm": _f(t["p_holm"], 4), "floors": _f(bool(t["floors_ok"])),
                      "coherence": _f(r["evaluation"]["verdict"]["coherence"].get("share"), 2),
                      "DSR": _f(t["dsr"], 3), "verdict": "PASS" if t["passes"] else "fail"})  # fmt: skip
-    for k, r in results.items():
-        if k not in verdicts:
-            rows.append({"family": k, "verdict": f"no test ({r.get('error', '')})"})
     md += [_table(rows, ["family", "sharpe", "bench", "Δ", "CI", "p", "p_holm", "floors", "coherence", "DSR",
                          "verdict"]), ""]  # fmt: skip
     md += ["Per-family reports: " + ", ".join(f"[{k}]({k}/report.md)" for k in results), ""]

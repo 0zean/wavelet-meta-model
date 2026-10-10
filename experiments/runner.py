@@ -334,7 +334,7 @@ def _run_rule_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path
         sigs[sym].to_csv(out / f"signals_{sym}.csv")
     starts = [s.attrs.get("live_start") for s in sigs.values() if s.attrs.get("live_start") is not None]
     if not starts:
-        raise NoFitError("the rule pass has no segment: the data is shorter than the warm-up (INITIAL_TRAIN + VAL)")
+        raise NoFitError("the rule never takes a position (no sided event): the data is shorter than its warm-up")
     live = min(starts)
     bars = {s: data["bars"][s].loc[live:] for s in sigs}
     costs = None
@@ -614,6 +614,7 @@ def run(
     holdout_marker=HOLDOUT_MARKER,
     on_row=None,
     on_hash=None,
+    family: bool = False,
 ) -> list[dict]:
     """
     Run `cells` (module docstring) and append their ledger rows; returns the rows written by this call.
@@ -622,7 +623,14 @@ def run(
     cell whose process dies again becoming an `error` row. jobs = 1 runs in-process (no crash isolation).
     `on_row(row)` is called after each append (progress / tests); `on_hash(cell, chash)` for every cell once its hash
     is known, whether it then runs or is skipped (the family runner reads the cells' artifacts by hash).
+    Cells of the family stages (F / G / H) run only with `family=True` (families/run.py, which counts and budgets
+    their trials); without it they are refused before anything runs.
     """
+    from experiments.spec import FAMILY_STAGES
+
+    fam = sorted({c.stage for c in cells} & set(FAMILY_STAGES))
+    if fam and not family:
+        raise ValueError(f"stage(s) {fam} are family stages: run them through `python -m families run` (budgets)")
     with ledger.run_lock():
         return _run(cells, ledger, Path(root), source or CachedBars(), jobs, final, retry_errors,
                     spec_name, feature_cache_dir, L.Ledger(holdout_marker), on_row, on_hash)  # fmt: skip

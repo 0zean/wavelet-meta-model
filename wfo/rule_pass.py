@@ -10,11 +10,16 @@ sizer, 1 under `fixed` (0 on flat events), meta_prob NaN.
 
 Only the feature groups the rule reads (primary.needs_groups()) are built; an event with a NaN in them is dropped (as
 the WFO drops events with NaN features). State that must be fit — a time-of-day volatility profile (VOL_PROFILE
-"tod": the sampler's σ) or a per-fold feature group (vol_state's GARCH) — is fit causally in segments: the test
-windows of wfo.wfo_engine.wfo_folds (TEST sessions each, the first after INITIAL_TRAIN + VAL sessions of warm-up), each
-segment's state fit on every bar before it less the EMBARGO sessions, its events sampled on the full series with that
-state (causal: an event uses bars <= it) and kept inside the segment. Without such state the pass is one segment over
-the whole span. `attrs["live_start"]` = the first bar a segment covers: the stream starts there.
+"tod": the sampler's σ) or a per-fold feature group (vol_state's GARCH) — is fit causally in segments of TEST
+sessions, the first after RULE_WARMUP sessions and the last running to the data's end, each segment's state fit on
+every bar before it less the EMBARGO sessions, its events sampled on the full series with that state (causal: an
+event uses bars <= it) and kept inside the segment. A segment whose state cannot be fit (vol_state's GARCH needs
+GARCH_MIN_OBS returns) has no events and is listed in `attrs["skipped_segments"]`. Without such state the pass is one
+segment over the whole span.
+
+`attrs["live_start"]` = the bar of the rule's first sided event (None without one): the cell's stream starts there,
+so the rule's warm-up — sessions where it is undefined (a trailing window filling, a state not yet fit) and is flat
+by construction — is not part of the tested sample. It depends on the rule and the bars only, never on returns.
 """
 
 import numpy as np
@@ -43,12 +48,15 @@ SIGNAL_COLUMNS = [
 
 
 def _segments(index: pd.DatetimeIndex, cfg: RunConfig, stateful: bool) -> list[tuple[int, int, int]]:
-    """(start, end, fit_end) bar positions: events in [start, end), state fit on bars [0, fit_end)."""
+    """(start, end, fit_end) bar positions: events in [start, end), state fit on bars [0, fit_end). Sessions are the
+    data's (as wfo_folds counts them)."""
     if not stateful:
         return [(0, len(index), 0)]
-    from wfo.wfo_engine import wfo_folds
-
-    return [(f.val_end, f.test_end, f.val_end - f.val_embargo) for f in wfo_folds(index, cfg)]
+    day = index.normalize()
+    starts = np.flatnonzero(np.r_[True, day[1:] != day[:-1]])
+    bounds = np.r_[starts, len(index)]
+    first = range(cfg.RULE_WARMUP, len(starts), cfg.TEST)
+    return [(int(bounds[s]), int(bounds[min(s + cfg.TEST, len(starts))]), int(bounds[s - cfg.EMBARGO])) for s in first]
 
 
 def rule_signals(
@@ -106,7 +114,7 @@ def rule_signals(
     out["primary"] = prim.name
     out["bet_size"] = np.where(sided, mag if cfg.SIZER == "rule_size" else 1.0, 0.0)
     out = out[SIGNAL_COLUMNS]
-    out.attrs["live_start"] = df.index[segments[0][0]] if segments and segments[0][0] < len(df) else None
+    out.attrs["live_start"] = out.index[sided][0] if sided.any() else None
     out.attrs["n_segments"] = len(segments)
     out.attrs["skipped_segments"] = skipped
     print(f"[RULE]  {prim.name}: {len(out)} events, {int(sided.sum())} sided, {len(segments)} segment(s)")

@@ -44,19 +44,21 @@ def test_a_stateless_rule_pass_is_the_fold_free_signal_of_every_event():
     assert sig.index.equals(ref.index) and len(sig) > 30
     np.testing.assert_array_equal(sig["trade_signal"], ref["signed_dir"])
     np.testing.assert_array_equal(sig["bet_size"], ref["magnitude"])
-    assert sig["meta_prob"].isna().all() and sig.attrs["live_start"] == df.index[0]
+    assert sig["meta_prob"].isna().all() and sig.attrs["live_start"] == sig.index[sig["signed_dir"] != 0][0]
 
 
 def test_a_stateful_rule_pass_fits_each_segment_on_earlier_bars_only():
     """VOL_PROFILE 'tod': each segment's profile is fit on bars before it, so bars after a cut leave every event
-    before the cut unchanged; the stream starts after the INITIAL_TRAIN + VAL warm-up."""
-    kw = {"META_MODEL": "none", "VOL_PROFILE": "tod", "INITIAL_TRAIN": 10, "VAL": 5, "TEST": 5, "EMBARGO": 1}
+    before the cut unchanged. Segments of TEST sessions start after RULE_WARMUP sessions and the last one runs to the
+    data's end (58 sessions: 15 + 8 × 5 + a last one of 3); the stream starts at the first sided event."""
+    kw = {"META_MODEL": "none", "VOL_PROFILE": "tod", "RULE_WARMUP": 15, "TEST": 5, "EMBARGO": 1}
     cfg = primary_config("intraday_momentum", "5Min", {"threshold_sigma": 0.0}, **kw)
-    df = intraday(60, seed=4, u_shape=True)
+    df = intraday(58, seed=4, u_shape=True)
     sig = rule_signals(df, cfg)
     days = df.index.normalize().unique()
-    assert sig.attrs["live_start"] == df.index[df.index.normalize() == days[15]][0]
-    assert sig.index.min() >= sig.attrs["live_start"] and sig.attrs["n_segments"] == 9
+    assert sig.attrs["n_segments"] == 9 and sig["fold"].max() == 9
+    assert sig.index.normalize().unique()[0] == days[15] and sig.index.normalize().unique()[-1] == days[-1]
+    assert sig.attrs["live_start"] == sig.index[sig["signed_dir"] != 0][0]
     cut = df.index[df.index.normalize() == days[40]][0]
     bumped = df.copy()
     after = bumped.index >= cut
@@ -370,20 +372,22 @@ def test_registration_is_refused_until_the_spec_is_committed_unchanged(repo):
         check_registered(p, repo)
 
 
-def _vrow(fam, label, sha="abc", status="ok", sharpe=0.5):
-    return {"stage": "F", "status": status, "kind": "family_variant", "cell_hash": f"{fam}-{label}-{sha}",
-            "family": fam, "base_family": fam.split(".v")[0], "trial_key": f"{fam.split('.v')[0]}/{label}",
-            "registered_sha": sha, "n_trials": 1, "sharpe": sharpe}  # fmt: skip
+def _vrow(fam, key, sha="abc", status="ok", sharpe=0.5, budget=None):
+    base = fam.split(".v")[0]
+    return {"stage": "F", "status": status, "kind": "family_variant", "cell_hash": f"{fam}-{key}-{sha}",
+            "family": fam, "base_family": base, "trial_key": key if "/" in key else f"{base}/{key}",
+            "registered_sha": sha, "n_trials": 1, "sharpe": sharpe, "budget": budget}  # fmt: skip
 
 
-def test_budgets_count_trial_keys_per_family_and_program():
+def test_budgets_count_configurations_per_family_and_program():
     fam = parse(SPEC)
     fam.registered = {"sha": "abc"}
     caps = {"max_families": 8, "max_trials": 112}
-    acc = check_budget(fam, [_vrow("F3_test", HEADLINE)], caps)
-    assert acc["family_trials"] == 3 and acc["program_trials"] == 3  # a re-run of the same keys is not new trials
+    acc = check_budget(fam, [_vrow("F3_test", fam.trial_key(HEADLINE))], caps)
+    assert acc["family_trials"] == 3 and acc["program_trials"] == 3  # a re-run of the same configuration is not new
     amended = parse({**SPEC, "id": "F3_test.v2", "variants": SPEC["variants"] + [{"label": "v2", "cost_model": "cs"}]})
     amended.registered = {"sha": "def"}
+    assert amended.trial_key(HEADLINE) == fam.trial_key(HEADLINE)  # same configuration, same trial
     rows = [_vrow("F3_test", k) for k in ("a", "b", "c", "d", "e")]
     with pytest.raises(BudgetError, match="TRIAL_BUDGET 8"):  # 5 earlier + 4 new keys of the same family
         check_budget(amended, rows, caps)
@@ -396,6 +400,79 @@ def test_budgets_count_trial_keys_per_family_and_program():
         check_budget(fam, [_vrow("F3_test", HEADLINE, sha="zzz")], caps)
     errors = [_vrow("F3_test", k, status="error") for k in "abcdefgh"]  # errors are not counted trials
     assert check_budget(fam, errors, caps)["family_trials"] == 3
+
+
+def test_an_amendment_that_reuses_labels_with_new_configurations_costs_new_trials():
+    """Review B1: trial keys identify the configuration, not the label, so a stream of amendments that keep the labels
+    but change the headline and the variants consumes the family budget; and no amendment can raise it."""
+    caps = {"max_families": 8, "max_trials": 112}
+    rows = []
+    for k, vix in enumerate((12.0, 13.0, 14.0)):
+        head = {**SPEC["headline"], "primary": {"name": "overnight", "params": {"vix_max": vix}}}
+        fam = parse({**SPEC, "id": f"F3_test.v{k + 2}", "headline": head})
+        fam.registered = {"sha": f"s{k}"}
+        if k == 2:
+            with pytest.raises(BudgetError, match="exceed TRIAL_BUDGET 8"):  # 3 configurations x 3 versions = 9 > 8
+                check_budget(fam, rows, caps)
+            break
+        check_budget(fam, rows, caps)
+        rows += [_vrow(fam.id, fam.trial_key(v.label), sha=f"s{k}", budget=fam.budget) for v in fam.variants]
+    roomy = parse({**SPEC, "id": "F3_test.v9", "TRIAL_BUDGET": 12})
+    roomy.registered = {"sha": "s9"}
+    assert check_budget(roomy, rows[:3], caps)["family_budget"] == 8  # the earlier versions' budget still binds
+    with pytest.raises(ValueError, match="TRIAL_BUDGET must be"):
+        parse({**SPEC, "TRIAL_BUDGET": 40})
+
+
+def test_floors_default_to_the_plans_and_cannot_be_switched_off():
+    """Review S1: a spec without floors gets PLAN2's (long-only: 0.8 x benchmark; else 2 %/yr; edge-to-cost 3x)."""
+    long_only = parse({k: v for k, v in SPEC.items() if k != "floors"})
+    assert long_only.floors["min_net_ret_vs_benchmark"] == 0.8 and long_only.floors["min_net_ret"] is None
+    assert long_only.floors["min_edge_to_cost"] == 3.0
+    rest = {k: v for k, v in SPEC.items() if k not in ("floors", "variants")}
+    sided = parse({**rest, "headline": {"primary": "intraday_momentum"}})
+    assert sided.floors["min_net_ret"] == 0.02 and sided.floors["min_net_ret_vs_benchmark"] is None
+    with pytest.raises(ValueError, match="net-return floor"):
+        parse({**SPEC, "floors": {"min_net_ret_vs_benchmark": None}})
+    with pytest.raises(ValueError, match="min_edge_to_cost"):
+        parse({**SPEC, "floors": {"min_edge_to_cost": None}})
+    d = _days(300)
+    flat = pd.Series(0.0, index=d)
+    assert not T.floors(flat, flat, {"pnl": 0, "cost_paid": 0, "traded_notional": 0}, {})["ok"]
+
+
+def test_no_op_and_duplicate_variants_are_refused():
+    """Review M1: a variant that runs the headline's configuration (or another variant's) would pad coherence."""
+    for v in (
+        {"label": "same", "cost_model": "quotes"},
+        {"label": "same", "risk_profile": "none"},
+        {"label": "dup", "cost_model": "slippage"},
+    ):
+        with pytest.raises(ValueError, match="same configuration"):
+            parse({**SPEC, "variants": SPEC["variants"] + [v]})
+
+
+def test_family_stage_cells_run_only_through_the_family_runner(tmp_path):
+    from experiments.runner import run
+
+    raw = {"symbols": "SPY", "timeframe": "5Min", "start": "2024-01-02", "end": "2024-06-01", "primary": "overnight",
+           "model": {"meta": "none"}}  # fmt: skip
+    with pytest.raises(ValueError, match="family stages"):
+        run([Cell(normalize(raw), "F")], ledger=L.Ledger(tmp_path / "l.jsonl"), root=tmp_path)
+    assert not (tmp_path / "l.jsonl").exists()
+
+
+def test_coherence_compares_variants_on_the_headlines_days():
+    """Review S2: a variant that starts later is compared with the benchmark over the days it shares with the
+    headline."""
+    d = _days(400)
+    rng = np.random.default_rng(0)
+    bench = pd.Series(rng.normal(5e-4, 0.01, 400), index=d)
+    head = bench * 0.5 + rng.normal(2e-4, 0.003, 400)
+    late = head.iloc[200:] * 1.0
+    dc = T.delta_common(late, head.iloc[100:], bench, "buy_and_hold_ew")
+    j = slice(d[200], d[-1])
+    assert dc == pytest.approx(T.sharpe_ann(late.loc[j]) - T.sharpe_ann(bench.loc[j]))
 
 
 # ── End to end on synthetic bars ─────────────────────────────────────────────
