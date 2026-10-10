@@ -27,6 +27,11 @@ _XGB_BASE = {
     "colsample_bytree": 0.8,
     "tree_method": "hist",
     "device": "cpu",
+    # One thread, always: XGBoost's default takes its thread count from the environment (OMP_NUM_THREADS, else every
+    # logical CPU), and a multithreaded hist build sums gradients in another order, so the same seed grew different
+    # trees per session (legacy CSV sha1 551d8074… at 1 thread vs f8e0617e… at 32). The runner already pinned BLAS /
+    # OpenMP to one thread, so every ledger result was single-threaded; this makes the legacy CLI match it.
+    "n_jobs": 1,
 }
 _PARAM_FIELDS = ("CLF_PARAMS", "REG_PARAMS", "META_PARAMS")
 

@@ -922,8 +922,17 @@ notes in SPEC §17.5.
 - **Regression — met.** U12 parity: PASS (8/8 hashes, after the review fixes). Legacy CSV run: all five outputs are
   byte-identical to a clean `main` worktree run in the same environment. `wfo_signals.csv` sha1 is `f8e0617e…` on
   both; U16 recorded `551d8074…` for both, so the value follows the environment (as U15 first found), not the code.
-  The handoff's "closed" note on the legacy hash only meant "branch = main"; the reference value is not stable
-  across sessions.
+  - **Cause and fix (2026-10-10, branch `fix/xgb-single-thread`).** The legacy XGBoost models (the ml_xgb classifier
+    and regressor, the legacy meta-model, the zoo `xgb`) set no thread count, so XGBoost used OMP_NUM_THREADS when a
+    session exported it, else all 32 logical CPUs. A multithreaded hist build sums gradients in another order and
+    grows different trees from the same seed. Measured on the same code and session: 1 thread → `551d8074…`,
+    32 threads / default → `f8e0617e…`. The differences are not small: 23 primary direction flips and 161 trade
+    decisions out of 754 events.
+  - The experiment runner always pinned OpenMP to one thread, so every ledger result was already single-threaded.
+    `_XGB_BASE` now sets `n_jobs: 1`, and the legacy run gives `551d8074…` (all five outputs identical) at 1, 32 and
+    the default thread count. U12 parity: PASS. The `402ef202…` MacBook value is a separate, platform difference (the
+    code hash includes the platform).
+  - Reference from now on: `551d8074…` on this PC.
 - **U16 bug found and fixed:** the VIX rules (vol_target `vix`, overnight `vix_max`) read `vix`, but the feature set
   names it `vol_state__vix`; they raised inside a real run.
 - **Review fixes:**
