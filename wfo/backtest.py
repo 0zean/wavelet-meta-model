@@ -16,8 +16,8 @@ def _candidates(signals: pd.DataFrame, side_col: str, size_col: str | None, step
     return cand[cand["size"] > 0]
 
 
-def _exits(df: pd.DataFrame, cand: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
-    return exit_frame(df, cand.index, cand["width"], cfg, side=cand["side"])
+def _exits(df: pd.DataFrame, cand: pd.DataFrame, cfg: RunConfig, sessions=None) -> pd.DataFrame:
+    return exit_frame(df, cand.index, cand["width"], cfg, side=cand["side"], sessions=sessions)
 
 
 def _unit_pnl(trades: pd.DataFrame, cand: pd.DataFrame, slippage: float) -> pd.DataFrame:
@@ -209,7 +209,13 @@ def portfolio_path(cfg: RunConfig, profile) -> bool:
     """Whether run_backtest simulates through risk.portfolio: an active risk profile, a cost model other than
     "slippage", or time / hysteresis exits (scheduled exits free their symbol for an entry at the same fill and
     roll into it, and market-on-close entries fill at the close: modelled there only)."""
-    return profile.active or cfg.COST_MODEL != "slippage" or cfg.EXIT_MODEL in ("time", "hysteresis")
+    return (
+        profile.active
+        or cfg.COST_MODEL != "slippage"
+        or cfg.EXIT_MODEL in ("time", "hysteresis")
+        or cfg.FILL_AUCTION == "print"
+        or cfg.CASH_YIELD != "none"
+    )  # U22: prints / the yield live there only
 
 
 def run_backtest(
@@ -218,6 +224,11 @@ def run_backtest(
     cfg: RunConfig,
     size_col: str = "bet_size",
     cost_data: pd.DataFrame | None = None,
+    *,
+    prints: pd.DataFrame | None = None,
+    cash_yield: pd.Series | None = None,
+    sessions=None,
+    stress: pd.Series | None = None,
 ) -> dict[str, tuple[pd.Series, pd.DataFrame]]:
     """
     Backtest the meta-filtered, sized signals (`size_col`, cfg.POSITION_MODE) and, as the benchmark
@@ -234,6 +245,8 @@ def run_backtest(
         size_col (str, optional): Bet-size column of the meta-filtered strategy. Defaults to "bet_size".
         cost_data (pd.DataFrame | None, optional): The symbol's cost inputs for cfg.COST_MODEL (risk.costs.fill_costs):
             "cs" its 5Min bars with history before the OOS span, "quotes" its rows of the quotes table. Defaults to None.
+        prints, cash_yield, sessions, stress: U22 (SPEC §20) inputs of the portfolio path: the symbol's auction
+            prints, the cash yield per session, the exchange calendar's sessions, the stress-session flags.
 
     Returns:
         dict[str, tuple[pd.Series, pd.DataFrame]]: Strategy name → (equity, trades).
@@ -247,15 +260,17 @@ def run_backtest(
         f"\n[BACKTEST]  Simulating barrier-exit trades (sizer {cfg.SIZER}, {cfg.POSITION_MODE} positions, "
         f"risk {profile.name}, costs {cfg.COST_MODEL}) ..."
     )
-    fc = fill_costs(df.index, cfg, cost_data)
+    fc = fill_costs(df.index, cfg, cost_data, stress=stress)
     costs = None if fc is None else {"_": fc}
     results = {}
     streams = (("Meta-filtered", "trade_signal", size_col), ("Primary only", "signed_dir", primary_size_col(cfg)))
     for name, col, sz in streams:
         if cfg.POSITION_MODE == "single" and portfolio_path(cfg, profile):
             eq, trades, _ = simulate_portfolio(
-                {"_": df}, {"_": signals}, cfg, profile, side_col=col, size_col=sz, costs=costs
-            )
+                {"_": df}, {"_": signals}, cfg, profile, side_col=col, size_col=sz, costs=costs,
+                prints=None if prints is None else {"_": prints}, cash_yield=cash_yield,
+                sessions=None if sessions is None else {"_": sessions},
+            )  # fmt: skip
             results[name] = (eq, trades)
         elif cfg.POSITION_MODE == "single":  # triple-barrier exits, slippage costs, no risk layer
             trades = simulate_trades(df, signals, cfg, side_col=col, size_col=sz)

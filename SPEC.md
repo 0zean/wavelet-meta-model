@@ -1312,3 +1312,203 @@ Implementation (U13, as built):
   sessions too: cost-model look-ahead within a year (not a signal input).
 - Parity: with `COST_MODEL="slippage"` added to the old switches (`scripts/u12_parity.py`), the four U11 Stage C
   parity cells reproduce their `daily_returns.csv` and `returns_pwfo.csv` exactly (`parity: PASS`, U13 code).
+
+---
+
+## §20 Fills, costs and the account (U22)
+
+PLAN3 §0.3: the engine audit found no defect in decision timing or cost booking but two unmeasured assumptions that
+decide intraday verdicts (the price of auction fills, the slippage per side) and nothing about what a retail account
+can execute. §20 prices the first, parametrizes the second and models the third. Every switch below is backtest-only
+(not in the static feature-cache key nor in the signals key); the old values are pinned in `scripts/u12_parity.py`
+`OLD_SWITCHES` (`FILL_AUCTION=last_bar`, `COST_TABLE=year`, `CASH_YIELD=none`, `STRESS_MULT=1.0`, `SLIPPAGE_BP` 1 bp
+per kind, `MOC_SIZE_FROM=fill`, `SESSION_CLOCK=data`) and reproduce the U18 streams bit for bit
+(`scripts/u22_checks.py f5-parity --family F5 | F3`: the headline cells' `daily_returns.csv` identical by sha256;
+the review found that the first version left the MOC sizing and the session clock unpinned, so F3 did not reproduce).
+
+**Auction prints.** `data/timeframes.py` adds the native `1DayPrint` timeframe: Alpaca's daily bar (SIP, the same
+adjustment as the 5Min cache), kept for its `open` and `close`, the official opening and closing auction prints; its
+high / low / volume include extended-hours trades and are not used. `data.bars.load_prints(symbol, start, end)` reads
+them through the same cache (`sip/all/1DayPrint/`); `data/fetch.py` fetches them by default with the 5Min bars. On
+the cached SPY / QQQ / IWM / DIA history (2,701 sessions) the closing print differs from the 15:55 bar's close by a
+median 0.7–1.3 bp with no sign (share positive 0.41–0.49, mean within ±0.15 bp), p99 6–11 bp, with the largest gaps
+on the March 2020 sessions (up to 288 bp on SPY 2020-03-12); the opening print equals the 09:30 bar's open on most
+sessions (median 0, p99 1–4 bp; IWM 2020-03-16 299 bp, a delayed open). `RunConfig.FILL_AUCTION ∈ {"print",
+"last_bar"}` (default `print`): the portfolio simulator prices every fill at an auction bar (`risk.costs.auction_flags`:
+entries, flattening and trims at a 09:30 bar's open, MOO exits; MOC entries and `vertical` exits at a closing bar) at
+the session's print when the symbol's prints hold that session, else at the bar price with a counted fallback
+(`equity.attrs["auction_fallbacks"]`, the cell row's `auction_fallbacks`, the family report's data notes). Gap fills
+through a barrier and intrabar touches are never auction fills; marks stay at bar closes. The runner loads prints for
+every symbol of a cell under `print` (`CachedBars.prints`); a data source without them (the tests' synthetic sources)
+runs at bar prices with every auction fill counted. `wfo.backtest.portfolio_path` routes every backtest with
+`print` or a cash yield through the simulator (the legacy `simulate_trades` path knows neither; the U11 parity cells
+take it under the old switches). Decision timing is unchanged: a MOC fill is still decided at the previous bar's
+close, and the next session's MOO fill reads that session's print. Re-running the U18 headlines under `print` with
+every other switch at its old value (`scripts/u22_checks.py print-rerun`): F3 pooled Sharpe 0.725 → 0.707 (SPY 0.671 → 0.641, QQQ 0.761 → 0.756), F5 −0.122 → −0.164 (IWM −0.464 → −0.587); the print costs these two overlays a little, within the ± 0.05 the plan expected, and every daily return moves (up to 146 bp on the March 2020 closes).
+
+**Market-on-close sizing.** `RunConfig.MOC_SIZE_FROM ∈ {"decision", "fill"}` (default `decision`): a MOC order is
+sized from the last close known at the decision (the previous bar's close), not from the fill price (unknown until
+the auction): `qty = f · E / (close[b−1] · (1 + side · c))`; `frac` records the intended fraction. `fill` is the
+U16–U18 convention. Open fills keep sizing from their fill (the U7 convention).
+
+**Slippage per kind.** `RunConfig.SLIPPAGE_BP: dict[kind, float] | "measured"` (bp per side by fill kind `open` /
+`intra` / `close`; default 1.0 each, the U18 value) replaces the scalar for the quotes model's non-auction fills
+(auction fills pay the auction proxy half-spread only, as before). `"measured"` reads
+`data/costs/measured_slippage.csv` (columns kind, slippage_bp, n), written by U27's fill reconciliation; it raises
+until the file exists. `SLIPPAGE_PCT` stays for the `slippage` / `cs` models, `META_MIN_RET` and the Kelly sizer.
+
+**The as-of quotes table.** `data/costs/quotes_half_spread_asof.csv` (`python -m data.quotes table` builds it next
+to the per-year table): per (symbol, asof, bin) the median over the samples of the ≤ 4 most recent sample weeks
+completed before `asof`, a quarter start, so a fill in quarter Q is priced with what was observable at Q's start.
+Tables run from 2016Q2 (one week) and pool four weeks (n ≈ 40, the yearly sample) from 2017Q1; fills before
+2016-04-01 use the first table (counted: `fill_costs(...).attrs["asof_before_first"]`, the row's `asof_before_first`;
+the only look-ahead left). `RunConfig.COST_TABLE ∈ {"asof", "year"}` (default `asof`) chooses which table the runner
+loads (`CachedBars.quotes_table(symbols, table)`); `risk.costs.fill_costs` recognizes the table by its column
+(`asof` / `year`).
+
+**Stress sessions.** `RunConfig.STRESS_MULT` (default 1.0) multiplies every half-spread (auction proxies included,
+slippage excluded) on a stress session: the previous session's VIX close ≥ `utils.config.STRESS_VIX` (30), known at
+the open. The runner builds the flags from the cached VIX under the point-in-time rule; `fill_costs` refuses a
+multiplier above 1 without them. The U13 event sample and the audit measured 1.5–3.5× on VIX ≥ 30 sessions; 2.1× is
+the registered variant (PLAN3 §3 G1).
+
+**Cash yield.** `RunConfig.CASH_YIELD ∈ {"tbill", "none"}` (default `tbill`): the simulator credits, at each
+session's first bar, the free cash at the previous close (max(0, min(cash, equity)): short proceeds beyond the equity
+earn nothing) × the 3-month T-bill rate as of the previous session (FRED `DTB3`, added to the exo layer with the
+H.15 rule, next business day 16:30 ET) × calendar days / 360 (`equity.attrs["cash_interest"]`). The decision equity
+of that session includes it. A source without the series gives no yield and says so (`data_notes["cash_yield"]`).
+
+**Cost ledger.** `equity.attrs["daily_costs"]` (the cell's `daily_costs.csv`): per session the starting equity and,
+per fill class (`risk.costs.FILL_CLASSES`: open_auction, open, intra, close, close_auction), the traded notional and
+the one-way cost paid. `families.test.reprice` re-prices a stream at another cost (a round-trip bp on every fill, or
+a one-way bp per class) by adding the booked cost back and subtracting the alternative, both as fractions of the
+session's starting equity (first order: positions are not re-simulated); the family report's cost curve (§22) is
+built from it. Rolled exits trade nothing and a roll's entry books only the traded shares, as before.
+
+**Session clock.** `features.events.session_clock(index, sessions)` numbers sessions on the exchange calendar when
+`sessions` (the calendar's dates between the data's first and last session) is given: the schedule sampler's
+`every`, `day_offset` and `windows` and the time exit's `exit_session` / `next` count calendar sessions, so a session
+the data layer dropped no longer shifts a window by one; a target session without bars gives no fill and the event is
+dropped (no fill is invented; QQQ's dropped 2018-05-02/03 sessions are the real case: the 05-01 MOC's MOO target
+has no bars). `RunConfig.SESSION_CLOCK ∈ {"calendar", "data"}` (default `calendar`; `data` = the U14–U18 clock, the
+sessions present in the data): the runner passes the calendar to a cell's rule pass and simulator as `data["clock"]`
+under `calendar` (hashed into the cell and the signals key; the PWFO's windows always count calendar sessions, as
+since U12). Every function's default without `sessions` is the data's clock.
+
+**Slip-through barriers.** `EXIT_PARAMS {"slip_through": true}` (triple-barrier; off by default): a sided intrabar
+touch fills at the worse, for the side, of the barrier and the next bar's open, at that next bar when the open is
+worse (never across a session without HOLD_OVERNIGHT; gap fills and unsided events unchanged). For a future
+triple-barrier family whose stops are not filled at their price.
+
+**Account profile** (`risk/account.py`). `AccountProfile(kind margin | cash, equity, pdt_min_equity 25k,
+day_trade_bp 4×, margin_bp 2×, max_day_trades 3, settlement_days 1, locate_bps)`; profiles `margin_30k` (PLAN3 §7),
+`margin_10k` (the PLAN2 registrations), `cash_30k`. `check_account(members, stream, profile)` reads the member cells'
+trades (positions = chains of rolled trades, as fractions `frac × weight` of the account's equity path) and flags:
+the pattern-day-trader rule (a fourth day trade in five sessions while the equity is under the floor; the first
+offending session; and what the rule would cost: the share of day trades it blocks), Reg-T buying power (gross ≤ 4×
+intraday for a PDT-eligible margin account, else 2×; ≤ 2× overnight; 1× cash), a cash account's settlement (a
+purchase needs settled cash; sale proceeds settle T+1) and shorts, and the locate-fee estimate on short notional.
+Nothing here changes a P&L: a run is reported `tradable` or not with its reasons (the family result's `account`),
+and `enforce` raises for the forward loop. F5's registered headline on $10k is flagged on its first session
+(2016-04-06: four day trades, one per instrument) and would lose 98.7 % of its day trades to the rule; on $30k it is
+tradable; on a cash account its shorts are refused.
+
+**Fetch defaults.** `data/fetch.py` defaults `--end` to HOLDOUT_START (exclusive) and `--timeframes` to 5Min +
+1DayPrint; an explicit later end records a `fetch` event in `data/cache/forward_access.jsonl` (the audit file of
+§18) before fetching; `--truncate-forward` drops cached bars on / after HOLDOUT_START from every cache and logs a
+`truncate` event per cache (done on 2026-10-10 for the eleven ETF caches that ran to 2026-10-08).
+
+**Chain ids.** A trade's `rolled` flag marks the trade whose EXIT rolled into the next entry (risk.portfolio
+`close_lot`), so a position's chain ends at the first trade that is not rolled; `families.test.chain_ids` numbers
+chains accordingly (U17's `position_returns` advanced the id at the unrolled trade, grouping a chain's last leg with
+the next chain's first; one-chain families were unaffected). `risk.account.positions` uses the same ids and, for
+the account rules, ends a position at a side flip inside a chain (a flip closes one position and opens another:
+two day trades when both legs fall in one session). Hysteresis exits at a 09:30 bar are open-auction fills and read
+the print like `time` exits; `slip_through` leaves every gap fill (an exit at the bar's open) alone.
+
+Tests (tests/test_u22.py): print / bar fills and fallbacks by hand and on cached SPY 2024-03-04 (print 496.04 vs
+bar 496.00 adjusted; the audit's raw 512.30 / 512.25); the five-session check; per-kind slippage with the 1-bp
+default equal to SLIPPAGE_PCT; the as-of lookup and table build by hand; the stress multiplier; the cost ledger's
+totals and `reprice` identities; the cash accrual by hand; the account rules on synthetic trades; the session clock
+with a dropped session; slip-through by hand; the fetch default and the truncation on a scratch cache; the runner's
+recorded inputs.
+
+## §21 Continuous targets and region primaries (U22; the region primary itself is U23)
+
+`MechanismPrimary.ALLOW_CONTINUOUS = True` declares a rule whose (side, magnitude) is a target position in
+[−1, +1] re-evaluated at every event (a region primary's target is the mean of its cells' positions). RunConfig then
+requires `SIZER="rule_size"` (the target passes through) and `SIZE_STEP=0` (no discretization), and the time exit
+`exit_time: "next_event"` (intraday schedule sampler, plain entry times, no `days` / `gate` / `windows`) holds each
+target to the open of the schedule's next entry bar in the same session, else the session's MOC close. The portfolio
+simulator's roll path (§16) then trades only the change between consecutive targets: a target held at the same
+fraction rolls untraded and free; a change trades |q_new − q_old| shares; a flip trades both; a zero target closes
+the position. Verified (tests/test_u22.py): a constant +1 target is buy-and-hold intraday less one entry and one exit
+a day; an alternating ±1 target pays exactly c · (q_old + q_new) · px per bar; a region whose two cells are opposite
+(mean target 0) never trades. A lot entered at a bar's open may exit at that bar's close (the last decision's MOC):
+the simulator's phase-2 skip for rolled lots now applies to market-on-close entries only.
+
+## §22 Statistical protocol v3 (U22; PLAN3 §4)
+
+**Spec keys** (`families/spec.py`). `test: {kind, sided, at_cost, alpha, block_days, n_boot (default 5000),
+coherence_share, seed}` with `kind ∈ {sharpe_vs_benchmark (PLAN2), overlay_alpha, marginal}`, `sided ∈ {one, two}`,
+`at_cost ∈ {registered, <round-trip bp>, measured}`; `power: {n_days, vol_ann, families, mde_alpha_bp_per_day,
+expected_alpha_bp_per_day, diagnostic}` (required by `overlay_alpha` / `marginal`; the recorded MDE must agree with
+`families.power.mde_alpha` within 10 %, and an expected magnitude below the MDE must declare `diagnostic: true`);
+`core: {family, variant (headline), k (1.0)}` (`marginal` only; a variant may change `core.k`, which makes it a
+distinct configuration); `account: {kind, equity, locate_bps}` (default: a margin account at the headline cells'
+INIT_CASH). Benchmarks are `constant_mix_ew`, `constant_mix_er` (the PLAN2 `buy_and_hold_ew` / `buy_and_hold_er`,
+accepted as aliases: daily-rebalanced mixes), the drifting `buy_and_hold` (the equal-risk mix bought once) and
+`cash`. New state split `year`; new responses `worst_day`, `longest_flat_run`.
+
+**Statistics** (`families/stats.py`, `families/test.py`). Every headline statistic is computed on excess returns:
+the stream and the benchmark less the T-bill accrual per session (`families.test.rf_accrual`: the same ACT/360
+accrual the simulator credits, from DTB3 as of each session; `families/run.py` loads it and records `rf:
+unavailable` for a source without the series). On the U18 streams the excess benchmark Sharpe is 0.10–0.29 below the
+raw one (the statistics audit's 0.11–0.28 tilt) and the overlays' excess Sharpes fall far more, because their cash
+earned nothing: that is what `CASH_YIELD=tbill` corrects. `sharpe_test` and the new `mean_test` (the studentized
+circular block bootstrap of a daily mean against zero: Bartlett HAC standard error at the block bandwidth, block-sum
+variance on each resample, as Ledoit–Wolf) take `sided`: a one-sided p against H1: statistic > 0, with the lower
+confidence bound. `overlay_alpha`'s statistic is the annualized mean excess return (`delta_ann`, with
+`alpha_bp_per_day`, the bootstrap t, the Newey–West t and PSR(0)); `marginal`'s is the paired Ledoit–Wolf Sharpe
+difference of core + k × overlay vs the core on their common days (the core = the core family's stream from its
+results), with the drawdown difference and its block-bootstrap interval. Size and power (`scripts/u22_checks.py
+power`, 2,400 days, 8 % vol, n_boot 999): size 0.050 over 1,000 iid simulations and 0.045 over 1,000 GARCH(1,1)-t
+simulations; power 0.905 at a planted 3 bp/day alpha and 0.795 at the analytic MDE (target 0.80). The analytic MDE
+(`families/power.py`: (z_{1−α/k} + z_power) · σ_d / √n) is 2.56 bp/day for one family and 3.17 bp/day = 8.0 %/yr =
+Sharpe 1.0 at Holm over four families.
+
+**Verdict** (`program_verdict`): Holm over the program's families' headline p; pass iff p_holm < α, floors, coherence
+and a positive statistic. The DSR left the verdict and is printed as a ledger diagnostic. `families/program.yaml`
+lists the program's families (`families: [G1, G2, G3, G5, G6]`, caps 5 / 42): only they may run and only their
+trials count; the PLAN2 families stay in the ledger as a closed program; `python -m families summary` Holms over the
+listed families only. Coherence over a region's cells (`cells_coherence`: the share of cells with the headline's
+alpha sign, the median cell's alpha) is wired for the U23 region primary; the variant coherence of §17 stays.
+
+**Floors** evaluate on the stream at `test.at_cost` (the verdict's cost column), on EXCESS returns: `min_net_ret`
+(and `min_net_ret_vs_benchmark`) read the stream and the benchmark less the T-bill accrual, and the cell rows' `pnl`
+is the trading P&L without the cash interest credited (`eq[-1] − INIT_CASH − cash_interest`), so a zero-edge stream
+whose idle cash earned the T-bill clears neither the net-return nor the edge-to-cost floor (U22 review: the first
+version counted the interest as edge). PLAN3 G1 registers at_cost 1.0 (bp round trip) until U27 writes
+`data/costs/measured_cost.csv` (one-way bp per fill class), then `measured`.
+
+**Cost curve.** The family result carries `cost_curve`: every variant re-priced from its members' cost ledgers at
+0.3 / 1.0 / 2.3 bp round trip and at the measured profile when it exists (statistics, floors; the headline's test
+at each cost), plus the `registered` (simulated) column; the report prints the table. A member without a cost ledger
+(a PWFO member) shows "—" and cannot register a non-registered `at_cost`.
+
+**Weights and N_eff.** Equal-risk weights from the trailing 252 sessions before the family window when the data
+reach back that far (a window starting more than 400 days after the development window's start), else the window's
+first 252 sessions (Alpaca's history starts with the development window); recorded as `weights_basis`. The report
+prints N_eff = (Σ w_i σ_i)² / Var(Σ w_i r_i) over the instruments' common span (the statistics audit's formula).
+
+**Looks.** `families/looks.jsonl` counts every configuration examined on the development window (`python -m
+families look <label> <n>`), seeded with PLAN3 §1's K₀ = 60 (itemized by script: 54, plus 6 unitemized); the report
+prints K and the Bonferroni bound p × K next to the bootstrap p.
+
+**Account.** The family result's `account` is `risk.account.check_account` on the headline's member positions with
+the spec's account; the report states whether the headline is tradable on the registered account, the first
+offending session and what the PDT rule would cost otherwise.
+
+## §23 Reserved (U23: intraday kernels and the region primary)
+
+## §24 Reserved (U26: time–frequency state)

@@ -59,11 +59,36 @@ def test_fracdiff_is_causal(df):
     pd.testing.assert_series_equal(a, b)
 
 
+def _events_causal(df, cfg, n_cuts: int = 40):
+    """Per-event cuts (U22, engine audit): for each of the first `n_cuts` events after bar 2000, perturb every bar
+    after the event bar and require the events and widths up to and including it unchanged. A single cut far from any
+    event does not bite on a one-bar look-ahead in the width (the VOL mutant); a cut right after each event does."""
+    a = sample_events(df, cfg)
+    pos = df.index.get_indexer(a.index)
+    for t in pos[pos >= 2000][:n_cuts]:
+        b = sample_events(perturb_after(df, int(t) + 1, seed=int(t)), cfg)
+        cut = df.index[t]
+        pd.testing.assert_frame_equal(a.loc[:cut], b.loc[:cut])
+
+
 def test_events_and_widths_are_causal(df):
-    a = sample_events(df, CFG)
-    b = sample_events(perturb_after(df, BOUNDARY), CFG)
-    cut = df.index[BOUNDARY - 1]
-    pd.testing.assert_frame_equal(a.loc[:cut], b.loc[:cut])
+    _events_causal(df, CFG)
+
+
+def test_the_per_event_causality_check_catches_a_one_bar_look_ahead_in_the_width(df, monkeypatch):
+    """The engine audit's VOL mutant (bar_volatility reads the next bar's return) escaped the single-cut test."""
+    import features.events as EV
+
+    orig = EV.bar_volatility
+
+    def leaky(close, span, profile=None):
+        lr = np.log(close).diff().shift(-1)
+        return lr.ewm(span=span, min_periods=span).std().rename("bar_vol")
+
+    monkeypatch.setattr(EV, "bar_volatility", leaky)
+    with pytest.raises(AssertionError):
+        _events_causal(df, CFG, n_cuts=10)
+    monkeypatch.setattr(EV, "bar_volatility", orig)
 
 
 def test_labels_only_depend_on_their_window(df):

@@ -151,6 +151,45 @@ def period_starts(day: np.ndarray, every: str) -> np.ndarray:
     return np.r_[True, key[1:] != key[:-1]] if len(d) else np.zeros(0, bool)
 
 
+def calendar_sessions(index: pd.DatetimeIndex, sessions) -> np.ndarray:
+    """The exchange calendar's sessions (datetime64[D]) between the data's first and last session; every data
+    session must be one of them (raises otherwise), as wfo.pwfo.unit_bounds counts."""
+    day = ny_dates(index)
+    cal = pd.DatetimeIndex(sessions).normalize()
+    cal = cal.tz_localize(None) if cal.tz is not None else cal
+    cal = np.asarray(cal.unique().sort_values(), "M8[D]")
+    if len(day):
+        cal = cal[(cal >= day[0]) & (cal <= day[-1])]
+        missing = np.setdiff1d(np.unique(day), cal)
+        if len(missing):
+            raise ValueError(f"{len(missing)} data sessions are not exchange sessions, e.g. {missing[0]}")
+    return cal
+
+
+def session_clock(index: pd.DatetimeIndex, sessions=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    (session number per bar, first bar per session, last bar per session). Sessions are the data's (U14) or, with
+    `sessions` (the exchange calendar's dates, U22 / SPEC §20), the calendar's between the data's first and last
+    session: a calendar session without bars (dropped by the data layer) counts in every offset and has first / last
+    bar −1.
+    """
+    day = ny_dates(index)
+    n = len(index)
+    if sessions is None:
+        first = np.r_[True, day[1:] != day[:-1]] if n else np.zeros(0, bool)
+        last = np.r_[day[1:] != day[:-1], True] if n else np.zeros(0, bool)
+        return np.cumsum(first) - 1, np.flatnonzero(first), np.flatnonzero(last)
+    cal = calendar_sessions(index, sessions)
+    sess = np.searchsorted(cal, day)
+    s_first = np.full(len(cal), -1, np.int64)
+    s_last = np.full(len(cal), -1, np.int64)
+    if n:
+        change = np.r_[True, day[1:] != day[:-1]]
+        s_first[sess[change]] = np.flatnonzero(change)
+        s_last[sess[np.r_[day[1:] != day[:-1], True]]] = np.flatnonzero(np.r_[day[1:] != day[:-1], True])
+    return sess, s_first, s_last
+
+
 def dc_mult(cfg: RunConfig) -> float:
     """The DC threshold multiple: EVENT_PARAMS dc_mult under the dc sampler, else DEFAULT_DC_MULT."""
     return float(event_params(cfg)["dc_mult"]) if cfg.EVENT_SAMPLER == "dc" else DEFAULT_DC_MULT
@@ -301,7 +340,7 @@ def _check_calendar_years(entry_day: np.ndarray) -> None:
 
 
 def schedule_events(
-    df: pd.DataFrame, cfg: RunConfig, *, profile: VolProfile | None = None, symbol: str | None = None
+    df: pd.DataFrame, cfg: RunConfig, *, profile: VolProfile | None = None, symbol: str | None = None, sessions=None
 ) -> pd.DatetimeIndex:
     """
     Scheduled event bars (SPEC §13): for each entry time T the entry bar is the bar stamped T in its session and the
@@ -315,7 +354,9 @@ def schedule_events(
     the session frame at the event bar (a NaN comparison is False). `windows` (U18; MOC entries every session): a list
     of {days, day_offset, hold}; the MOC entry of session x is kept iff some window's entry session e (selected as
     `days` / `day_offset` would select it, known at e's decision) has e <= x < e + hold, so a time exit at the next
-    session's close holds the union of the windows (consecutive entries roll into one position).
+    session's close holds the union of the windows (consecutive entries roll into one position). `sessions` (U22): the exchange calendar's session dates as the session clock (session_clock):
+    `every`, `day_offset` and `windows` count calendar sessions, so a session the data layer dropped no longer
+    shifts a window by one.
     """
     from data.timeframes import get_timeframe
 
@@ -324,9 +365,9 @@ def schedule_events(
     n = len(df)
     day = ny_dates(df.index)
     first = np.r_[True, day[1:] != day[:-1]] if n else np.zeros(0, bool)
-    last = np.r_[day[1:] != day[:-1], True] if n else np.zeros(0, bool)
-    sess = np.cumsum(first) - 1
-    first_pos, last_pos = np.flatnonzero(first), np.flatnonzero(last)  # session k's first / last bar
+    sess, first_pos, last_pos = session_clock(df.index, sessions)  # session k's first / last bar (−1: no bars)
+    cal = day[first_pos] if sessions is None else calendar_sessions(df.index, sessions)
+    with_bars = last_pos >= 0
     if minutes is None:
         entry = np.arange(1, n)
     elif p["entry_times"] == ["close"]:
@@ -334,13 +375,15 @@ def schedule_events(
 
         # MOC: the session's last bar must be its closing-auction bar (a session missing it gives no event)
         is_close = auction_flags(df.index, minutes)[1]
-        ok = (last_pos >= 1) & (sess[np.maximum(last_pos - 1, 0)] == sess[last_pos]) & is_close[last_pos]
-        entry = last_pos[ok]
+        lp = last_pos[with_bars]
+        ok = (lp >= 1) & (sess[np.maximum(lp - 1, 0)] == sess[lp]) & is_close[lp]
+        entry = lp[ok]
     else:
         mins = ny_minutes(df.index)
         # an early close: the session's last bar spans 13:00 (risk.costs.auction_flags' rule), so a hole at the end
         # of a regular session is not read as one
-        early = (mins[last_pos] < EARLY_CLOSE_MINUTE) & (mins[last_pos] + minutes >= EARLY_CLOSE_MINUTE)
+        lp = last_pos[with_bars]
+        early = (mins[lp] < EARLY_CLOSE_MINUTE) & (mins[lp] + minutes >= EARLY_CLOSE_MINUTE)
         parts = []
         for t in p["entry_times"]:
             T = parse_time(t)
@@ -348,21 +391,21 @@ def schedule_events(
             if T > OPEN_MINUTE:
                 has = np.zeros(len(last_pos), bool)
                 has[sess[at]] = True
-                mapped = last_pos[early & ~has & (mins[last_pos] + minutes <= T)]
+                mapped = lp[early & ~has[sess[lp]] & (mins[lp] + minutes <= T)]
                 at = np.union1d(at, mapped)
                 at = at[(at >= 1) & (sess[np.maximum(at - 1, 0)] == sess[at])]
             else:
                 at = at[(at >= 1) & first[at]]
             parts.append(at)
         entry = np.unique(np.concatenate(parts)) if parts else np.zeros(0, np.int64)
-    entry = entry[period_starts(day[first_pos], p["every"])[sess[entry]]]
+    entry = entry[period_starts(cal, p["every"])[sess[entry]]]
     t = entry - 1
     keep = np.ones(len(t), bool)
 
     def days_hit(days: str, offset: int) -> np.ndarray:
         target = sess[entry] + offset
-        ok = target < len(first_pos)
-        tday = np.where(ok, day[first_pos[np.minimum(target, len(first_pos) - 1)]].astype(np.int64), _NO_DAY)
+        ok = target < len(cal)
+        tday = np.where(ok, cal[np.minimum(target, max(len(cal) - 1, 0))].astype(np.int64), _NO_DAY)
         tday = tday.astype("M8[D]")
         _check_calendar_years(tday)
         kinds = "earnings" if days == "earnings" else _MACRO[days]
@@ -375,7 +418,7 @@ def schedule_events(
         # a window's entry session e (its predicate tested day_offset sessions later, known at e's decision) holds
         # e + 1 … e + hold; the daily MOC entry at session x (held to x + 1's close) is kept iff x + 1 is held by some
         # window, i.e. x ∈ [e, e + hold). Consecutive kept entries roll (one position, no cost).
-        held = np.zeros(len(first_pos) + max(w["hold"] for w in p["windows"]), bool)
+        held = np.zeros(len(cal) + max(w["hold"] for w in p["windows"]), bool)
         for w in p["windows"]:
             for e in sess[entry][days_hit(w["days"], w["day_offset"])]:
                 held[e : e + w["hold"]] = True
@@ -395,7 +438,12 @@ def schedule_events(
 
 
 def sample_events(
-    df: pd.DataFrame, cfg: RunConfig, *, profile: VolProfile | None = None, symbol: str | None = None
+    df: pd.DataFrame,
+    cfg: RunConfig,
+    *,
+    profile: VolProfile | None = None,
+    symbol: str | None = None,
+    sessions=None,
 ) -> pd.DataFrame:
     """
     Tradeable events (cfg.EVENT_SAMPLER) and their barrier widths, using only data up to each event.
@@ -409,13 +457,14 @@ def sample_events(
         cfg (RunConfig): Run configuration.
         profile (VolProfile | None): The fold's time-of-day profile (None = plain σ).
         symbol (str | None): The cell's symbol (schedule days="earnings" only).
+        sessions: The exchange calendar's session dates (the schedule's session clock, U22); None = the data's.
 
     Returns:
         pd.DataFrame: Indexed by event time with column `width`.
     """
     vol = bar_volatility(df["close"], cfg.VOL_SPAN, profile)
     if cfg.EVENT_SAMPLER == "schedule":
-        events = schedule_events(df, cfg, profile=profile, symbol=symbol)
+        events = schedule_events(df, cfg, profile=profile, symbol=symbol, sessions=sessions)
     else:
         if cfg.EVENT_SAMPLER == "cusum":
             events = cusum_events(df["close"], cfg.CUSUM_MULT * vol)

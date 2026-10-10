@@ -134,7 +134,10 @@ def test_slippage_cost_frames_reproduce_the_slippage_backtest_exactly():
     quotes path differs from the pre-U13 backtest only through the cost numbers."""
     df = synthetic_daily(400)
     sig = rand_signals(df, 80, np.random.default_rng(3))
-    cfg = RunConfig.for_timeframe("1Day", COST_MODEL="slippage", SIZE_STEP=0.1)
+    # U22: the auction prints and the cash yield live in the portfolio simulator, so the legacy path needs the old
+    # values of those switches (scripts/u12_parity.py OLD_SWITCHES)
+    cfg = RunConfig.for_timeframe("1Day", COST_MODEL="slippage", SIZE_STEP=0.1, FILL_AUCTION="last_bar",
+                                  CASH_YIELD="none")  # fmt: skip
     costs = {"X": pd.DataFrame(cfg.SLIPPAGE_PCT, index=df.index, columns=["open", "intra", "close"])}
     eq, _, _ = simulate_portfolio({"X": df}, {"X": sig}, cfg, PROFILES["none"], size_col="bet_size", costs=costs)
     ref_tr = simulate_trades(df, sig, cfg, size_col="bet_size")

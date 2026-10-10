@@ -35,6 +35,11 @@ from wfo.wfo_engine import CalHistory, prepare
 ROOT = Path(__file__).resolve().parent.parent
 OLD = {"ZOO_FIXED_PARAMS": {}, "CALIBRATION": "crossfit", "OOF_META": "refit", "PWFO_COMBINE": "nested",
        "COST_MODEL": "slippage", "VOL_PROFILE": "none", "EVENT_SAMPLER": "cusum", "EXIT_MODEL": "triple_barrier"}  # fmt: skip
+
+# U22 (SPEC §20): the auction-print, cost-table, cash-yield and stress switches at their old values
+OLD = {**OLD, "FILL_AUCTION": "last_bar", "COST_TABLE": "year", "CASH_YIELD": "none", "STRESS_MULT": 1.0,
+       "SLIPPAGE_BP": {"open": 1.0, "intra": 1.0, "close": 1.0}, "MOC_SIZE_FROM": "fill",
+       "SESSION_CLOCK": "data"}  # fmt: skip
 FIXED = {"logit_l2": {"C": 0.1}}
 SMALL_XGB = {k: {**getattr(RunConfig(), k), "n_estimators": 50} for k in ("CLF_PARAMS", "REG_PARAMS", "META_PARAMS")}
 # 1Day walk-forward small enough for synthetic data; a tuned meta-model on OOF rows

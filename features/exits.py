@@ -12,14 +12,20 @@ OPEN_FILL lists the open-fill names: the backtests book those exits at the bar's
 
 Models (cfg.EXIT_MODEL, cfg.EXIT_PARAMS):
 - `triple_barrier`: barrier_exits (§3), unchanged.
+- `triple_barrier`: `slip_through` (U22): a sided touch fills at the worse of the barrier and the next bar's open
+  (features.triple_barrier_labels.barrier_exits); off by default.
 - `time`: exactly one of `exit_time` or `hold_bars` (close of the k-th held bar, cut at the session close unless
   HOLD_OVERNIGHT). `exit_time`, in the session `exit_session` sessions after the entry session (default 0, "open" 1):
   "close" = that session's last bar close, modelled MOC; "open" = its first bar open, MOO; "HH:MM" = the open of its
   first bar stamped at or after it, its MOC close when the session ends first; "next" (SPEC §16, U16: hold to the next
   rebalance) = the first bar open (MOO) of the first session of the next schedule `every` period (EVENT_PARAMS: the
-  next session, week or month in the data). An auction fill must be an auction bar (risk.costs.auction_flags): a
-  session whose last bar (MOC) or first bar (MOO) is missing gives no fill and the event is dropped. An exit not
-  after the entry drops the event.
+  next session, week or month in the data); "next_event" (U22, SPEC §21: a continuous target re-evaluated at every
+  decision) = the open of the schedule's next entry bar in the same session, else the session's MOC close (intraday,
+  schedule sampler, no `days` / `gate` / `windows`). An auction fill must be an auction bar (risk.costs.auction_flags):
+  a session whose last bar (MOC) or first bar (MOO) is missing gives no fill and the event is dropped. An exit not
+  after the entry drops the event. Sessions are counted on the exchange calendar when `sessions` is given (U22: a
+  session the data layer dropped still counts; a target session without bars gives no fill and the event is dropped),
+  else on the sessions present in the data.
 - Entries fill at the OPEN of the entry bar, or at its CLOSE under a market-on-close schedule (events.entry_at_close;
   `time` exits only, strictly after that close).
 - `hysteresis` (Toulson & Toulson's STTS exit): on the primary's bar-level score (exit_signal), a long exits when the
@@ -39,7 +45,8 @@ from utils.config import RunConfig
 
 EXIT_MODELS = ("triple_barrier", "time", "hysteresis")
 OPEN_FILL = ("time", "hysteresis")
-_DEFAULTS = {"triple_barrier": {}, "time": {"exit_time": None, "hold_bars": None, "exit_session": None},
+_DEFAULTS = {"triple_barrier": {"slip_through": False},
+             "time": {"exit_time": None, "hold_bars": None, "exit_session": None},
              "hysteresis": {"beta": None, "max_bars": None}}  # fmt: skip
 
 
@@ -58,6 +65,8 @@ def exit_params(cfg: RunConfig) -> dict:
             f"EXIT_PARAMS for {model!r}: unknown keys {sorted(unknown)}; allowed {sorted(_DEFAULTS[model])}"
         )
     p = {**_DEFAULTS[model], **cfg.EXIT_PARAMS}
+    if model == "triple_barrier" and not isinstance(p["slip_through"], bool):
+        raise ValueError(f"EXIT_PARAMS slip_through must be a bool, got {p['slip_through']!r}")
     if model == "time":
         from data.timeframes import get_timeframe
 
@@ -68,14 +77,23 @@ def exit_params(cfg: RunConfig) -> dict:
         if hb is not None and not _pos_int(hb):
             raise ValueError(f"EXIT_PARAMS hold_bars must be an integer >= 1, got {hb!r}")
         if k is not None:
-            if et is None or et == "next":
+            if et is None or et in ("next", "next_event"):
                 raise ValueError("EXIT_PARAMS exit_session needs exit_time 'close', 'open' or 'HH:MM'")
             lo = 1 if et == "open" else 0
             if not (isinstance(k, int) and not isinstance(k, bool) and k >= lo):
                 raise ValueError(f"EXIT_PARAMS exit_session must be an integer >= {lo}, got {k!r}")
         if et == "next" and cfg.EVENT_SAMPLER != "schedule":
             raise ValueError("EXIT_PARAMS exit_time 'next' (the next rebalance) needs EVENT_SAMPLER='schedule'")
-        if et is not None and et not in ("close", "open", "next"):
+        if et == "next_event":
+            from features.events import event_params
+
+            if cfg.EVENT_SAMPLER != "schedule" or minutes is None:
+                raise ValueError("EXIT_PARAMS exit_time 'next_event' needs the intraday schedule sampler")
+            ev = event_params(cfg)
+            if ev["entry_times"] == ["close"] or ev["days"] != "all" or ev["gate"] is not None or ev["windows"]:
+                raise ValueError("EXIT_PARAMS exit_time 'next_event' needs plain entry times (no 'close' entry, days "
+                                 "'all', no gate, no windows): every decision bar is an event")  # fmt: skip
+        if et is not None and et not in ("close", "open", "next", "next_event"):
             if not isinstance(et, str) or minutes is None:
                 raise ValueError(f"EXIT_PARAMS exit_time must be 'close', 'open' or (intraday) 'HH:MM', got {et!r}")
             m = parse_time(et)
@@ -108,13 +126,12 @@ def _frame(df, t, e, x, exit_px, barrier, w, entry_close: bool = False) -> pd.Da
     )
 
 
-def _sessions(df: pd.DataFrame):
-    """Per bar: session number, and per session: first / last bar position."""
-    day = ny_dates(df.index)
-    n = len(df)
-    first = np.r_[True, day[1:] != day[:-1]] if n else np.zeros(0, bool)
-    last = np.r_[day[1:] != day[:-1], True] if n else np.zeros(0, bool)
-    return np.cumsum(first) - 1, np.flatnonzero(first), np.flatnonzero(last)
+def _sessions(df: pd.DataFrame, sessions=None):
+    """Per bar: session number, and per session: first / last bar position (−1 for a calendar session without bars
+    when `sessions`, the exchange calendar's session dates, is given: features.events.session_clock)."""
+    from features.events import session_clock
+
+    return session_clock(df.index, sessions)
 
 
 def _entries(df: pd.DataFrame, events: pd.DatetimeIndex, width: pd.Series):
@@ -137,16 +154,20 @@ def time_exits(
     exit_session: int | None = None,
     every: str = "session",
     entry_close: bool = False,
+    next_entries: np.ndarray | None = None,
+    sessions=None,
 ) -> pd.DataFrame:
     """Scheduled exits (see the module docstring); `bar_minutes` None = 1Day bars; `every` = the schedule's period
-    (exit_time "next"); `entry_close`: entries fill at the entry bar's close (MOC)."""
+    (exit_time "next"); `entry_close`: entries fill at the entry bar's close (MOC); `next_entries` = the schedule's
+    entry bars (exit_time "next_event"); `sessions` = the exchange calendar's session dates (the session clock)."""
     from features.events import period_starts
     from risk.costs import auction_flags
 
     n = len(df)
     close, open_ = df["close"].to_numpy(), df["open"].to_numpy()
     t, e, w, _ = _entries(df, events, width)
-    sess, s_first, s_last = _sessions(df)
+    sess, s_first, s_last = _sessions(df, sessions)
+    cal = ny_dates(df.index)[s_first] if sessions is None else _calendar_days(df, sessions)
     is_open, is_close = auction_flags(df.index, bar_minutes)
     n_sess = len(s_first)
     if entry_close and (hold_bars is not None or (exit_time not in ("open", "next") and not exit_session)):
@@ -160,11 +181,28 @@ def time_exits(
             ok = (last < n - 1) | (e + hold_bars - 1 <= n - 1)
         x = np.minimum(last, n - 1)
         return _frame(df, t[ok], e[ok], x[ok], close[x[ok]], "vertical", w[ok])
+    if exit_time == "next_event":
+        if next_entries is None:
+            raise ValueError("exit_time 'next_event' needs the schedule's entry bars")
+        nxt = np.sort(np.asarray(next_entries, dtype=np.int64))
+        j = np.searchsorted(nxt, e, side="right")
+        has = j < len(nxt)
+        xo = nxt[np.minimum(j, max(len(nxt) - 1, 0))] if len(nxt) else np.zeros(len(e), np.int64)
+        by_open = has & (sess[xo] == sess[e])
+        x_close = s_last[sess[e]]
+        by_close = ~by_open & is_close[x_close]
+        x = np.where(by_open, xo, x_close)
+        px = np.where(by_open, open_[x], close[x])
+        ok = by_open | by_close
+        barrier = np.where(by_open, "time", "vertical")[ok]
+        return _frame(df, t[ok], e[ok], x[ok], px[ok], barrier, w[ok], entry_close)
     if exit_time == "next":
-        starts = np.flatnonzero(period_starts(ny_dates(df.index)[s_first], every))
+        starts = np.flatnonzero(period_starts(cal, every))
         j = np.searchsorted(starts, sess[e], side="right")
         ok = j < len(starts)
         x = s_first[starts[np.minimum(j, len(starts) - 1)]] if len(starts) else np.zeros(len(e), np.int64)
+        ok &= x >= 0  # the period's first calendar session has bars
+        x = np.maximum(x, 0)
         ok &= is_open[x]  # MOO at the next period's first session
         return _frame(df, t[ok], e[ok], x[ok], open_[x[ok]], "time", w[ok], entry_close)
     k = (1 if exit_time == "open" else 0) if exit_session is None else exit_session
@@ -173,9 +211,13 @@ def time_exits(
     tgt = np.minimum(tgt, n_sess - 1)
     if exit_time == "open":
         x = s_first[tgt]
+        ok &= x >= 0  # the target calendar session has bars
+        x = np.maximum(x, 0)
         ok &= is_open[x]  # MOO: the session's first bar must be its opening bar
         return _frame(df, t[ok], e[ok], x[ok], open_[x[ok]], "time", w[ok], entry_close)
     x_close = s_last[tgt]
+    ok &= x_close >= 0
+    x_close = np.maximum(x_close, 0)
     if exit_time == "close":
         ok &= is_close[x_close]
         return _frame(df, t[ok], e[ok], x_close[ok], close[x_close[ok]], "vertical", w[ok], entry_close)
@@ -183,7 +225,7 @@ def time_exits(
     mins = ny_minutes(df.index)
     at = np.where((mins >= T), np.arange(n), n)  # first bar of the session stamped >= T
     first_at = pd.Series(at).groupby(sess).transform("min").to_numpy()
-    xo = first_at[s_first[tgt]]
+    xo = first_at[np.maximum(s_first[tgt], 0)]
     later = (k > 0) | (mins[e] < T)  # the exit session's T is after the entry bar
     by_open = ok & later & (xo < n)
     by_close = ok & later & (xo >= n) & is_close[x_close]
@@ -192,6 +234,13 @@ def time_exits(
     ok = by_open | by_close
     barrier = np.where(by_open, "time", "vertical")[ok]
     return _frame(df, t[ok], e[ok], x[ok], px[ok], barrier, w[ok], entry_close)
+
+
+def _calendar_days(df: pd.DataFrame, sessions) -> np.ndarray:
+    """The calendar sessions (datetime64[D]) between the data's first and last session, as session_clock counts."""
+    from features.events import calendar_sessions
+
+    return calendar_sessions(df.index, sessions)
 
 
 def hysteresis_exits(
@@ -246,18 +295,28 @@ def exit_signal(df: pd.DataFrame, cfg: RunConfig) -> pd.Series:
 
 
 def exit_frame(
-    df: pd.DataFrame, events: pd.DatetimeIndex, width: pd.Series, cfg: RunConfig, side: pd.Series | None = None
+    df: pd.DataFrame,
+    events: pd.DatetimeIndex,
+    width: pd.Series,
+    cfg: RunConfig,
+    side: pd.Series | None = None,
+    sessions=None,
 ) -> pd.DataFrame:
-    """The exit of each event under cfg.EXIT_MODEL (the barrier_exits frame; `side` as there)."""
+    """The exit of each event under cfg.EXIT_MODEL (the barrier_exits frame; `side` as there; `sessions` = the
+    exchange calendar's session dates for the time model's session clock, None = the data's sessions)."""
+    p = exit_params(cfg)
     if cfg.EXIT_MODEL == "triple_barrier":
         return barrier_exits(
-            df, events, width, side, vertical_bars=cfg.VERTICAL_BARS, hold_overnight=cfg.HOLD_OVERNIGHT
-        )
-    p = exit_params(cfg)
+            df, events, width, side, vertical_bars=cfg.VERTICAL_BARS, hold_overnight=cfg.HOLD_OVERNIGHT,
+            slip_through=p["slip_through"],
+        )  # fmt: skip
     if cfg.EXIT_MODEL == "time":
         from data.timeframes import get_timeframe
-        from features.events import entry_at_close, event_params
+        from features.events import entry_at_close, event_params, schedule_events
 
+        next_entries = None
+        if p["exit_time"] == "next_event":
+            next_entries = df.index.get_indexer(schedule_events(df, cfg, sessions=sessions)) + 1
         return time_exits(
             df,
             events,
@@ -269,6 +328,8 @@ def exit_frame(
             exit_session=p["exit_session"],
             every=event_params(cfg)["every"] if cfg.EVENT_SAMPLER == "schedule" else "session",
             entry_close=entry_at_close(cfg),
+            next_entries=next_entries,
+            sessions=sessions,
         )
     return hysteresis_exits(
         df,

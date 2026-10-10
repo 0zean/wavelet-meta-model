@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-10",
+  "coverage_start": "1954-01-04",
+  "fetched_at": "2026-10-10T16:14:17.034508-04:00",
+  "n_rows": 18184,
+  "name": "DTB3",
+  "schema_version": 1,
+  "sha256": "9cae2ade809f4d1ad019eba1b6a0429ae94cd980e46e27f112bd9569bac72e3f",
+  "source": "fred",
+  "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3"
+}

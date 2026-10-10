@@ -26,6 +26,15 @@ first U13 fetch could reach through the 15-minute window, is dropped and counted
 an unknown time, used for daily bars). Stored as the checked-in `data/costs/quotes_half_spread.csv` + `.json`
 (provenance, sample plan, counts).
 
+As-of table (U22, SPEC §20; `COST_TABLE="asof"`). The per-year medians price a fill early in a year with that
+year's later sample weeks (a within-year look-ahead of ± 25 % on tenths of a bp). `quotes_half_spread_asof.csv`
+holds, per (symbol, asof, bin), the median over the samples of the ASOF_WEEKS most recent sample weeks completed
+before `asof` (the first day of a quarter; a quarter's own week, in its middle month, completes before the next
+quarter starts), so a fill in quarter Q is priced with what was observable at Q's start. Tables exist from the
+quarter after the first sample week (2016Q2, one week, n ≈ 10 per bin) and pool four weeks (n ≈ 40, the yearly
+table's sample size) from 2017Q1. Fills before the first table's quarter use the first table (the only remaining
+look-ahead: 2016Q1, counted by risk.costs.fill_costs).
+
     uv run python -m data.quotes fetch [--plan base|events] [--symbols ...] [--start-quarter 2016Q1] [--end-quarter 2026Q3]
     uv run python -m data.quotes table
 """
@@ -51,6 +60,9 @@ STRESS_DAYS = ("2018-02-06", "2020-03-16", "2020-03-17", "2020-03-18", "2020-03-
 COSTS_DIR = Path(__file__).resolve().parent / "costs"
 TABLE_CSV = COSTS_DIR / "quotes_half_spread.csv"
 TABLE_COLUMNS = ["symbol", "year", "bin", "half_spread_bp", "n"]
+ASOF_TABLE_CSV = COSTS_DIR / "quotes_half_spread_asof.csv"
+ASOF_COLUMNS = ["symbol", "asof", "bin", "half_spread_bp", "n"]
+ASOF_WEEKS = 4  # sample weeks (one per quarter) pooled by a table as of a quarter start
 SCHEMA_VERSION = 1
 MARK_STEP = pd.Timedelta(minutes=5)
 BIN_MINUTES = 15
@@ -267,15 +279,38 @@ def preopen(samples: pd.DataFrame) -> pd.Series:
     return (q < m.dt.normalize() + pd.Timedelta(hours=9, minutes=30)).fillna(False)
 
 
-def build_table(samples: pd.DataFrame) -> pd.DataFrame:
-    """Median half-spread per (symbol, year, bin) — see the module docstring."""
-    df = samples.assign(hs=half_spread_bp(samples), year=samples["mark"].dt.tz_convert(NY_TZ).dt.year)
+def _long(samples: pd.DataFrame) -> pd.DataFrame:
+    """One row per valid sample: symbol, year, day (NY date), bin, hs; the `day` bin duplicates the regular marks."""
+    local = samples["mark"].dt.tz_convert(NY_TZ)
+    df = samples.assign(hs=half_spread_bp(samples), year=local.dt.year, day=local.dt.normalize().dt.tz_localize(None))
     regular = ~df["label"].isin(AUCTION_BINS)
     df["bin"] = [lab if lab in AUCTION_BINS else tod_bin(lab) for lab in df["label"]]
-    parts = [df[["symbol", "year", "bin", "hs"]], df.loc[regular, ["symbol", "year", "hs"]].assign(bin="day")]
-    long = pd.concat(parts, ignore_index=True).dropna(subset=["hs"])
+    parts = [df[["symbol", "year", "day", "bin", "hs"]],
+             df.loc[regular, ["symbol", "year", "day", "hs"]].assign(bin="day")]  # fmt: skip
+    return pd.concat(parts, ignore_index=True).dropna(subset=["hs"])
+
+
+def build_table(samples: pd.DataFrame) -> pd.DataFrame:
+    """Median half-spread per (symbol, year, bin) — see the module docstring."""
+    long = _long(samples)
     out = long.groupby(["symbol", "year", "bin"])["hs"].agg(half_spread_bp="median", n="size").reset_index()
     return out[TABLE_COLUMNS].sort_values(["symbol", "year", "bin"]).reset_index(drop=True)
+
+
+def build_asof_table(samples: pd.DataFrame, weeks: int = ASOF_WEEKS) -> pd.DataFrame:
+    """Median half-spread per (symbol, asof, bin) over the `weeks` most recent sample weeks completed before `asof`
+    (a quarter start, "YYYY-MM-DD") — see the module docstring. Tables run from the quarter after the first sample
+    week to the quarter after the last."""
+    long = _long(samples)
+    long["q"] = long["day"].dt.to_period("Q")
+    have = sorted(long["q"].unique())
+    rows = []
+    for q in pd.period_range(have[0] + 1, have[-1] + 1, freq="Q"):
+        used = [p for p in have if p < q][-weeks:]
+        g = long[long["q"].isin(used)].groupby(["symbol", "bin"])["hs"].agg(half_spread_bp="median", n="size")
+        rows.append(g.reset_index().assign(asof=str(q.start_time.date())))
+    out = pd.concat(rows, ignore_index=True)
+    return out[ASOF_COLUMNS].sort_values(["symbol", "asof", "bin"]).reset_index(drop=True)
 
 
 def read_table(path: Path = TABLE_CSV) -> pd.DataFrame:
@@ -284,6 +319,15 @@ def read_table(path: Path = TABLE_CSV) -> pd.DataFrame:
         raise ValueError(f"{path}: columns {list(df.columns)} != {TABLE_COLUMNS}")
     if df.duplicated(["symbol", "year", "bin"]).any():
         raise ValueError(f"{path}: duplicate (symbol, year, bin) rows")
+    return df
+
+
+def read_asof_table(path: Path = ASOF_TABLE_CSV) -> pd.DataFrame:
+    df = pd.read_csv(path, dtype={"symbol": str, "bin": str, "asof": str})
+    if list(df.columns) != ASOF_COLUMNS:
+        raise ValueError(f"{path}: columns {list(df.columns)} != {ASOF_COLUMNS}")
+    if df.duplicated(["symbol", "asof", "bin"]).any():
+        raise ValueError(f"{path}: duplicate (symbol, asof, bin) rows")
     return df
 
 
@@ -312,6 +356,17 @@ def table(cache_dir: Path, days: list[pd.Timestamp], out: Path = TABLE_CSV) -> p
     }
     out.with_suffix(".json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     print(f"[QUOTES] table {len(tbl):,} rows from {len(samples):,} samples on {len(used)} sessions → {out}")
+    asof = build_asof_table(samples)
+    asof_out = out.with_name(ASOF_TABLE_CSV.name) if out == TABLE_CSV else out.with_name(out.stem + "_asof.csv")
+    asof.to_csv(asof_out, index=False, lineterminator="\n", float_format="%.6g")
+    asofs = sorted(asof["asof"].unique())
+    asof_out.with_suffix(".json").write_text(json.dumps({
+        "built_at": meta["built_at"], "source": meta["source"], "plan": meta["plan"], "bins": meta["bins"],
+        "weeks_pooled": ASOF_WEEKS, "asof_quarters": asofs, "days": used,
+        "note": f"a table as of a quarter start pools the <= {ASOF_WEEKS} sample weeks completed before it; fills "
+                f"before {asofs[0]} use the {asofs[0]} table (U22, SPEC §20)",
+    }, indent=2) + "\n", encoding="utf-8")  # fmt: skip
+    print(f"[QUOTES] as-of table {len(asof):,} rows, {len(asofs)} quarters {asofs[0]} → {asofs[-1]} → {asof_out}")
     return tbl
 
 

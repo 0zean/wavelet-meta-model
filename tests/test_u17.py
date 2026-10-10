@@ -516,7 +516,7 @@ class OvernightSource:
     def sessions(self, end):
         return pd.bdate_range(self.START, end, inclusive="left")
 
-    def quotes_table(self, symbols):
+    def quotes_table(self, symbols, table="year"):
         return const_quotes_table(symbols, regular=lambda b: 0.5, auction={"open_auction": 0.3, "close_auction": 0.3})
 
     def exo(self, *a, **k):

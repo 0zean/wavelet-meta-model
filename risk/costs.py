@@ -14,6 +14,8 @@ sessions excluded); the estimate used on a traded bar is the trailing mean over 
 that bar's session (causal for every timeframe), halved and floored.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -68,6 +70,30 @@ def half_spread(index: pd.DatetimeIndex, bars_5min: pd.DataFrame, window_days: i
 COST_MODELS = ("slippage", "cs", "quotes")
 QUOTES_FLOOR_BP = 0.25
 FILL_KINDS = ("open", "intra", "close")  # entries / gap exits / trims at the open; intrabar barriers; closes
+# U22 (SPEC §20): a fill's class for the cost curve = its kind, or the auction when it is one (auction_flags)
+FILL_CLASSES = ("open_auction", "open", "intra", "close", "close_auction")
+MEASURED_SLIPPAGE_CSV = Path(__file__).resolve().parent.parent / "data" / "costs" / "measured_slippage.csv"
+
+
+def measured_slippage(path: Path = MEASURED_SLIPPAGE_CSV) -> dict[str, float]:
+    """Measured slippage per side in bp by fill kind (columns kind, slippage_bp, n; written by U27's reconciliation).
+    Raises when the file does not exist yet or lacks a kind."""
+    if not Path(path).exists():
+        raise FileNotFoundError(
+            f"SLIPPAGE_BP='measured' needs {path} (written by the forward test's fill reconciliation)"
+        )
+    t = pd.read_csv(path, dtype={"kind": str})
+    out = {str(k): float(v) for k, v in zip(t["kind"], t["slippage_bp"])}
+    missing = [k for k in FILL_KINDS if k not in out]
+    if missing:
+        raise ValueError(f"{path}: no measured slippage for fill kind(s) {missing}")
+    return {k: out[k] for k in FILL_KINDS}
+
+
+def slippage_by_kind(cfg) -> dict[str, float]:
+    """One-way slippage fraction per fill kind for the quotes model: cfg.SLIPPAGE_BP (bp) or the measured profile."""
+    bp = measured_slippage() if cfg.SLIPPAGE_BP == "measured" else cfg.SLIPPAGE_BP
+    return {k: float(bp[k]) * 1e-4 for k in FILL_KINDS}
 
 
 def auction_flags(index: pd.DatetimeIndex, bar_minutes: int | None) -> tuple[np.ndarray, np.ndarray]:
@@ -124,16 +150,49 @@ def quotes_half_spread(
     return out
 
 
-def fill_costs(index: pd.DatetimeIndex, cfg, cost_data=None) -> pd.DataFrame | None:
+def asof_half_spread(
+    days: np.ndarray, bins: np.ndarray, table: pd.DataFrame, floor_bp: float = QUOTES_FLOOR_BP
+) -> tuple[np.ndarray, int]:
+    """
+    Half-spread (fraction) for each (NY date, bin) from one symbol's as-of quotes table (data.quotes
+    build_asof_table; columns asof, bin, half_spread_bp): the latest `asof` on or before the date; a date before the
+    first table's quarter takes the first table (returned as the count of such fills: the only look-ahead left).
+    A bin missing from the chosen table raises.
+    """
+    asofs = np.array(sorted({str(a) for a in table["asof"]}), dtype="datetime64[D]")
+    lookup = {(str(a), b): v for a, b, v in zip(table["asof"], table["bin"], table["half_spread_bp"])}
+    day = np.asarray(days).astype("datetime64[D]")
+    pos = np.searchsorted(asofs, day, side="right") - 1
+    before = len(np.unique(day[pos < 0]))  # sessions priced with the first table
+    pos = np.maximum(pos, 0)
+    out = np.empty(len(day))
+    cache: dict[tuple[int, str], float] = {}
+    for i, (p, b) in enumerate(zip(pos, bins)):
+        key = (int(p), b)
+        if key not in cache:
+            a = str(asofs[p])
+            if (a, b) not in lookup:
+                raise ValueError(f"as-of quotes table has no {b!r} bin as of {a}")
+            cache[key] = max(lookup[(a, b)], floor_bp) * 1e-4
+        out[i] = cache[key]
+    return out, before
+
+
+def fill_costs(index: pd.DatetimeIndex, cfg, cost_data=None, stress: pd.Series | None = None) -> pd.DataFrame | None:
     """
     One-way cost fraction of a fill at each bar of `index`, by fill kind (columns `open`, `intra`, `close`), for
     cfg.COST_MODEL; None for "slippage" (SLIPPAGE_PCT on every fill, the pre-U13 backtest).
 
     - "cs": SLIPPAGE_PCT + the trailing Corwin–Schultz half-spread (`half_spread`, the risk profile's window and
       floor) on every fill; `cost_data` = the symbol's 5Min bars with history before `index`.
-    - "quotes": `cost_data` = the symbol's rows of the quotes table. Opening / closing auction fills (auction_flags)
-      pay the auction proxy half-spread only; other fills pay SLIPPAGE_PCT + the half-spread of the time-of-day bin
-      of the fill (open: the bar's start, close: its end, intrabar: its start; daily bars' intrabar fills: `day`).
+    - "quotes": `cost_data` = the symbol's rows of a quotes table: the per-year table (column `year`, the U13
+      medians) or the as-of table (column `asof`, U22: the sample weeks completed before the fill's quarter). Opening /
+      closing auction fills (auction_flags) pay the auction proxy half-spread only; other fills pay the kind's
+      slippage (cfg.SLIPPAGE_BP, SPEC §20) + the half-spread of the time-of-day bin of the fill (open: the bar's
+      start, close: its end, intrabar: its start; daily bars' intrabar fills: `day`). In a stress session (`stress`:
+      True per NY session date, from the previous session's VIX close >= utils.config.STRESS_VIX) every half-spread
+      is multiplied by cfg.STRESS_MULT; a STRESS_MULT above 1 needs the flags. The frame's attrs record
+      `asof_before_first` (fills priced with the first as-of table) and `stress_fills`.
     """
     from data.timeframes import get_timeframe
     from risk.profiles import get_profile
@@ -144,33 +203,53 @@ def fill_costs(index: pd.DatetimeIndex, cfg, cost_data=None) -> pd.DataFrame | N
     if cost_data is None:
         raise ValueError(f"COST_MODEL={model!r} needs cost data for the symbol (5Min bars for 'cs', quotes rows "
                          "for 'quotes')")  # fmt: skip
-    slip = cfg.SLIPPAGE_PCT
     if model == "cs":
         prof = get_profile(cfg.RISK_PROFILE)
-        c = slip + half_spread(index, cost_data, prof.spread_window_days, prof.spread_floor).to_numpy()
+        c = cfg.SLIPPAGE_PCT + half_spread(index, cost_data, prof.spread_window_days, prof.spread_floor).to_numpy()
         return pd.DataFrame({k: c for k in FILL_KINDS}, index=index)
     if model != "quotes":
         raise ValueError(f"COST_MODEL must be one of {COST_MODELS}, got {model!r}")
     from data.quotes import BIN_MINUTES
 
+    slip = slippage_by_kind(cfg)
     minutes = get_timeframe(cfg.TIMEFRAME).minutes
     local = index.tz_convert("America/New_York") if index.tz is not None else index
     years = local.year.to_numpy()
+    days = local.normalize().tz_localize(None).to_numpy().astype("datetime64[D]") if local.tz is not None else \
+        local.normalize().to_numpy().astype("datetime64[D]")  # fmt: skip
     is_open, is_close = auction_flags(index, minutes)
     n = len(index)
+    mult = np.ones(n)
+    if cfg.STRESS_MULT != 1.0:
+        if stress is None:
+            raise ValueError("STRESS_MULT above 1 needs the stress-session flags (previous VIX close >= STRESS_VIX)")
+        flags = stress.reindex(pd.DatetimeIndex(days)).fillna(False).to_numpy(dtype=bool)
+        mult = np.where(flags, float(cfg.STRESS_MULT), 1.0)
+    asof_mode = "asof" in cost_data.columns
+    before = 0
 
     def hs(bins):
-        return quotes_half_spread(years, bins, cost_data)
+        nonlocal before
+        if asof_mode:
+            v, b = asof_half_spread(days, bins, cost_data)
+            before = max(before, b)
+        else:
+            v = quotes_half_spread(years, bins, cost_data)
+        return v * mult
 
     if minutes is None:
         open_c = hs(np.full(n, "open_auction", dtype=object))
         close_c = hs(np.full(n, "close_auction", dtype=object))
-        intra = slip + hs(np.full(n, "day", dtype=object))
+        intra = slip["intra"] + hs(np.full(n, "day", dtype=object))
     else:
         start = (local.hour * 60 + local.minute).to_numpy()
-        reg_open = slip + hs(_bin_label(start, BIN_MINUTES))
-        reg_close = slip + hs(_bin_label(start + minutes, BIN_MINUTES))
-        intra = reg_open
+        hs_start = hs(_bin_label(start, BIN_MINUTES))
+        reg_open = slip["open"] + hs_start
+        reg_close = slip["close"] + hs(_bin_label(start + minutes, BIN_MINUTES))
+        intra = slip["intra"] + hs_start
         open_c = np.where(is_open, hs(np.full(n, "open_auction", dtype=object)), reg_open)
         close_c = np.where(is_close, hs(np.full(n, "close_auction", dtype=object)), reg_close)
-    return pd.DataFrame({"open": open_c, "intra": intra, "close": close_c}, index=index)
+    out = pd.DataFrame({"open": open_c, "intra": intra, "close": close_c}, index=index)
+    out.attrs["asof_before_first"] = before
+    out.attrs["stress_fills"] = int((mult != 1.0).sum())
+    return out

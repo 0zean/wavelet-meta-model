@@ -1,7 +1,9 @@
 """
-Statistics of the family test (SPEC §17.2): the Ledoit & Wolf (2008) Sharpe-ratio difference test by a studentized
-circular block bootstrap, a one-sample version (Sharpe > 0), alpha against a benchmark by OLS with Newey–West
-standard errors, Holm step-down adjustment and James–Stein shrinkage of per-instrument Sharpe ratios.
+Statistics of the family test (SPEC §17.2, §22): the Ledoit & Wolf (2008) Sharpe-ratio difference test by a
+studentized circular block bootstrap, a one-sample version (Sharpe > 0), the same studentized block bootstrap of a
+daily mean against zero (`mean_test`: the overlay-alpha test of protocol v3, U22), alpha against a benchmark by OLS
+with Newey–West standard errors, Holm step-down adjustment and James–Stein shrinkage of per-instrument Sharpe ratios.
+Every test takes `sided`: "two" (|statistic|) or "one" (H1: the statistic is positive).
 
 Conventions: daily returns; Sharpe ratios are per period (mean / population std) unless named `_ann`
 (× √252). Every random draw takes an explicit seed.
@@ -75,12 +77,16 @@ def sharpe_test(
     n_boot: int = 2000,
     alpha: float = 0.05,
     seed: int = 0,
+    sided: str = "two",
 ) -> dict:
     """
     Ledoit–Wolf studentized circular block-bootstrap test of H0: SR_a = SR_b (paired daily returns on the same days),
     or of H0: SR_a = 0 when b is None (module docstring). Returns per-period and annualized Δ̂, its standard error,
-    the two-sided p-value and the 1 − alpha interval (annualized), n_obs, block and n_boot.
+    the p-value (two-sided on |t|, or one-sided against H1: Δ > 0), the 1 − alpha interval (annualized; one-sided: the
+    lower bound and +inf), n_obs, block and n_boot.
     """
+    if sided not in ("one", "two"):
+        raise ValueError(f"sided must be 'one' or 'two', got {sided!r}")
     a = np.asarray(a, dtype=float)
     two = b is not None
     b = None if b is None else np.asarray(b, dtype=float)
@@ -108,24 +114,94 @@ def sharpe_test(
         zeta = (Ys - u[:, None, :]).reshape(m, L // block, block, Y.shape[1]).sum(axis=2) / np.sqrt(block)
         psi = np.einsum("mjk,mjl->mkl", zeta, zeta) / zeta.shape[1]
         s = np.sqrt(np.einsum("mk,mkl,ml->m", gs, psi, gs) / L)
-        stats.append(np.abs(d - d_hat) / s)
+        stats.append((d - d_hat) / s)
     stats = np.concatenate(stats)
     stats = stats[np.isfinite(stats)]
-    t_obs = abs(d_hat) / se
-    p = float((1 + np.sum(stats >= t_obs)) / (len(stats) + 1))
-    q = float(np.quantile(stats, 1 - alpha))
     ann = np.sqrt(TRADING_DAYS)
+    out = _boot_pvalue(float(d_hat), se, stats, alpha, sided)
     return {
         "delta": float(d_hat),
         "delta_ann": float(d_hat * ann),
         "se": se,
         "se_ann": se * ann,
         "t": float(d_hat / se),
-        "p": p,
-        "ci_ann": (float((d_hat - q * se) * ann), float((d_hat + q * se) * ann)),
+        "p": out["p"],
+        "ci_ann": (float(out["ci"][0] * ann), float(out["ci"][1] * ann)),
         "n_obs": T,
         "block": block,
         "n_boot": n_boot,
+        "sided": sided,
+    }
+
+
+def _boot_pvalue(stat: float, se: float, boot: np.ndarray, alpha: float, sided: str) -> dict:
+    """p-value and 1 − alpha interval of `stat` (standard error `se`) from the centred studentized bootstrap
+    statistics `boot` = (θ* − θ̂)/s*: two-sided on |·|, one-sided against H1: θ > 0 (the interval is then the lower
+    confidence bound and +inf)."""
+    t_obs = stat / se
+    if sided == "two":
+        ab = np.abs(boot)
+        p = float((1 + np.sum(ab >= abs(t_obs))) / (len(ab) + 1))
+        q = float(np.quantile(ab, 1 - alpha))
+        return {"p": p, "ci": (stat - q * se, stat + q * se)}
+    p = float((1 + np.sum(boot >= t_obs)) / (len(boot) + 1))
+    q = float(np.quantile(boot, 1 - alpha))  # P(θ̂ − θ ≤ q·se) = 1 − α → θ ≥ θ̂ − q·se
+    return {"p": p, "ci": (stat - q * se, float("inf"))}
+
+
+def mean_test(
+    r, *, block: int = 21, n_boot: int = 5000, alpha: float = 0.05, seed: int = 0, sided: str = "one"
+) -> dict:
+    """
+    Studentized circular block-bootstrap test of H0: E[r] = 0 for a daily stream (the overlay-alpha test, SPEC §22):
+    t̂ = mean / se with the Bartlett HAC standard error (bandwidth = the block), the bootstrap statistics
+    (mean* − mean̂) / se* with the block-sum variance estimator on each resample of ⌊T/b⌋ blocks (as sharpe_test),
+    p one-sided against H1: E[r] > 0 (or two-sided), the 1 − alpha interval. Returns the mean per day and per
+    year (× 252) in fractions, the standard error, t, p, the interval (annualized), and the Newey–West (lag 5) t as a
+    cross-check.
+    """
+    if sided not in ("one", "two"):
+        raise ValueError(f"sided must be 'one' or 'two', got {sided!r}")
+    x = np.asarray(r, dtype=float)
+    if np.isnan(x).any():
+        raise ValueError("returns contain NaN: align the stream first")
+    T = len(x)
+    if T < 2 * block:
+        raise ValueError(f"need at least 2 blocks of {block} returns; got {T}")
+    if x.std() == 0:
+        raise ValueError("the stream has zero variance: nothing to test")
+    m_hat = float(x.mean())
+    Y = x[:, None]
+    se = float(np.sqrt(hac_bartlett(Y, block)[0, 0] / T))
+    rng = np.random.default_rng(seed)
+    stats = []
+    for start in range(0, n_boot, _CHUNK):
+        m = min(_CHUNK, n_boot - start)
+        idx = circular_block_indices(T, block, m, rng)
+        xs = x[idx]  # (m, L)
+        L = xs.shape[1]
+        means = xs.mean(axis=1)
+        zeta = (xs - means[:, None]).reshape(m, L // block, block).sum(axis=2) / np.sqrt(block)
+        s = np.sqrt((zeta**2).mean(axis=1) / L)
+        stats.append((means - m_hat) / s)
+    boot = np.concatenate(stats)
+    boot = boot[np.isfinite(boot)]
+    out = _boot_pvalue(m_hat, se, boot, alpha, sided)
+    nw = mean_ci_nw(x)
+    nw_se = (nw[2] - nw[0]) / norm.ppf(0.975) if np.isfinite(nw[2]) else np.nan
+    return {
+        "mean": m_hat,
+        "mean_ann": m_hat * TRADING_DAYS,
+        "mean_bp_per_day": m_hat * 1e4,
+        "se": se,
+        "t": m_hat / se,
+        "p": out["p"],
+        "ci_ann": (float(out["ci"][0] * TRADING_DAYS), float(out["ci"][1] * TRADING_DAYS)),
+        "t_nw": float(m_hat / nw_se) if nw_se and np.isfinite(nw_se) and nw_se > 0 else np.nan,
+        "n_obs": T,
+        "block": block,
+        "n_boot": n_boot,
+        "sided": sided,
     }
 
 

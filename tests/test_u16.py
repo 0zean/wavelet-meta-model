@@ -266,7 +266,10 @@ def test_moc_entry_fills_at_the_close_and_pays_the_closing_auction():
     entry = 101 * (1 + AUCTION["close_auction"] * 1e-4)
     exit_ = 103 * (1 - AUCTION["open_auction"] * 1e-4)
     assert t["entry_fill"] == pytest.approx(entry, rel=1e-14) and t["exit_fill"] == pytest.approx(exit_, rel=1e-14)
-    q = 10_000 / entry
+    # U22 (SPEC §20): a market-on-close order is sized from the last close known at the decision (the 15:50 bar's
+    # close, 100), not from the fill (101, unknown until the auction)
+    q = 10_000 / (100.0 * (1 + AUCTION["close_auction"] * 1e-4))
+    assert t["qty"] == pytest.approx(q, rel=1e-14)
     assert eq.loc[ts("2024-07-01 15:55")] == pytest.approx(10_000 + q * (101 - entry), rel=1e-13)  # marked at its close
     assert eq.iloc[-1] == pytest.approx(10_000 + q * (exit_ - entry), rel=1e-13)
     # the same through run_backtest (time exits route to the portfolio simulator even with slippage costs)

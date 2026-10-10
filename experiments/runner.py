@@ -62,7 +62,7 @@ LIBS = ("numpy", "pandas", "scipy", "scikit-learn", "xgboost", "lightgbm", "catb
 BACKTEST_ONLY = frozenset(
     {"RISK_PROFILE", "COST_MODEL", "POSITION_MODE", "SIZE_STEP", "INIT_CASH", "SIZE", "PWFO_IS_GRID", "PWFO_OOS_GRID",
      "PWFO_EXPANDING", "PWFO_PARTIAL_LAST", "PWFO_VAL_FRAC", "PWFO_DEFAULT", "PWFO_MIN_WINDOWS", "PWFO_WFE_MIN_T", "SELECT_EVERY",
-     "SELECT_LOOKBACK"}
+     "SELECT_LOOKBACK", "FILL_AUCTION", "SLIPPAGE_BP", "STRESS_MULT", "COST_TABLE", "CASH_YIELD", "MOC_SIZE_FROM"}
 )  # fmt: skip
 TRADING_DAYS = 252
 
@@ -108,6 +108,12 @@ def data_hash(data: dict) -> str:
         parts[f"cost:{s}"] = _sha(d.to_dict("list")) if "half_spread_bp" in d else feature_cache.data_hash(d)
     if data.get("sessions") is not None:
         parts["sessions"] = _sha([str(d.date()) for d in data["sessions"]])
+    for s, pr in (data.get("prints") or {}).items():  # U22: the symbol's auction prints
+        parts[f"prints:{s}"] = "none" if pr is None else feature_cache.data_hash(pr)
+    for k in ("cash_yield", "stress"):  # U22: the T-bill yield and the stress flags per session
+        v = data.get(k)
+        if v is not None:
+            parts[k] = _sha({"index": [str(d) for d in v.index], "values": [float(x) for x in v.to_numpy()]})
     return _sha(parts)
 
 
@@ -115,11 +121,13 @@ def cell_hash(cell: Cell, cfg: RunConfig, dhash: str) -> str:
     return _sha({"spec": cell.spec, "cfg": cfg_fields(cfg), "code": code_hash(), "data": dhash})[:16]
 
 
-def signals_key(symbol: str, cfg: RunConfig, df: pd.DataFrame, context: dict | None = None) -> str:
+def signals_key(symbol: str, cfg: RunConfig, df: pd.DataFrame, context: dict | None = None, sessions=None) -> str:
     key = {"symbol": symbol, "cfg": cfg_fields(cfg, BACKTEST_ONLY), "code": code_hash(),
            "data": feature_cache.data_hash(df)}  # fmt: skip
     if context:
         key["context"] = {k: feature_cache.context_hash(v) for k, v in context.items()}
+    if sessions is not None:  # the rule pass's session clock (U22)
+        key["sessions"] = _sha([str(d.date()) for d in sessions])
     return _sha(key)[:24]
 
 
@@ -144,12 +152,70 @@ class CachedBars:
 
         return load_series(source, name, start, end, allow_holdout=allow_holdout)
 
-    def quotes_table(self, symbols: list[str]) -> pd.DataFrame:
-        """Rows of the quotes half-spread table (data/costs/quotes_half_spread.csv) for `symbols`."""
-        from data.quotes import read_table
+    def quotes_table(self, symbols: list[str], table: str = "year") -> pd.DataFrame:
+        """Rows of the quotes half-spread table for `symbols`: the per-year table (data/costs/quotes_half_spread.csv)
+        or, with table="asof", the as-of table (quotes_half_spread_asof.csv; U22, SPEC §20)."""
+        from data.quotes import read_asof_table, read_table
 
-        table = read_table()
-        return table[table["symbol"].isin(symbols)]
+        t = read_asof_table() if table == "asof" else read_table()
+        return t[t["symbol"].isin(symbols)]
+
+    def prints(self, symbol: str, start: str, end: str, *, allow_holdout: bool) -> pd.DataFrame:
+        """The symbol's auction prints (data.bars.load_prints)."""
+        from data.bars import load_prints
+
+        return load_prints(symbol, start, end, allow_holdout=allow_holdout)
+
+
+def session_clock(source, bars: dict[str, pd.DataFrame], end: str) -> pd.DatetimeIndex:
+    """The exchange calendar's sessions between the first and last data session of `bars` (tz-naive NY dates). Only
+    those reach the PWFO windows and the schedule's clock: the calendar extends a year past today and is refreshed
+    monthly, which must not change a cell hash."""
+    days = pd.DatetimeIndex(sorted({d for df in bars.values() for d in df.index.normalize().tz_localize(None)}))
+    cal = pd.DatetimeIndex(source.sessions(end)).normalize()
+    cal = cal.tz_localize(None) if cal.tz is not None else cal
+    return cal[(cal >= days[0]) & (cal <= days[-1])]
+
+
+def rate_asof(frame: pd.DataFrame, sessions: pd.DatetimeIndex, at: str = "09:30") -> pd.Series:
+    """An exogenous series' value as of each session's `at` (NY), under the point-in-time rule (features.exo_align),
+    indexed by the session date; NaN where no observation is available yet."""
+    from features.exo_align import Exo
+
+    stamps = (pd.DatetimeIndex(sessions) + pd.Timedelta(at + ":00")).tz_localize("America/New_York")
+    return pd.Series(Exo({"x": frame}).asof("x", stamps), index=pd.DatetimeIndex(sessions))
+
+
+def _u22_inputs(cell: Cell, cfg: RunConfig, source, final: bool, bars: dict) -> dict:
+    """The U22 (SPEC §20) inputs of a cell: auction prints per symbol (FILL_AUCTION print), the T-bill cash yield per
+    session (CASH_YIELD tbill), the stress-session flags (STRESS_MULT > 1), the exchange calendar's sessions. A
+    source without prints (a test source) gives none: the simulator then prices at bar prices and counts the
+    fallbacks; a source without the DTB3 series gives no yield, recorded in `notes`."""
+    s = cell.spec
+    out: dict = {"prints": None, "cash_yield": None, "stress": None, "notes": {}}
+    out["sessions"] = session_clock(source, bars, s["end"])  # the PWFO's windows and the cell hash
+    out["clock"] = out["sessions"] if cfg.SESSION_CLOCK == "calendar" else None  # the time model's session clock
+    if cfg.FILL_AUCTION == "print":
+        out["prints"] = {}
+        for sym in cell.symbols:
+            fn = getattr(source, "prints", None)
+            out["prints"][sym] = None if fn is None else fn(sym, s["start"], s["end"], allow_holdout=final)
+            if out["prints"][sym] is None:
+                out["notes"][f"prints:{sym}"] = "unavailable from the data source: auction fills at bar prices"
+    lookback = str((pd.Timestamp(s["start"]) - pd.Timedelta(days=14)).date())
+    if cfg.CASH_YIELD == "tbill":
+        try:
+            dtb3 = source.exo("fred", "DTB3", lookback, s["end"], allow_holdout=final)
+            out["cash_yield"] = rate_asof(dtb3, out["sessions"]) / 100.0
+        except Exception as e:  # noqa: BLE001 — recorded, never silent: the row and the report say so
+            out["notes"]["cash_yield"] = f"unavailable ({type(e).__name__}: {e}): no yield credited"
+    if cfg.STRESS_MULT != 1.0:
+        from utils.config import STRESS_VIX
+
+        vix = source.exo("cboe", "VIX", lookback, s["end"], allow_holdout=final)
+        prev = rate_asof(vix, out["sessions"])  # the previous session's close (available 16:20 ET)
+        out["stress"] = prev >= STRESS_VIX
+    return out
 
 
 def load_cell_data(cell: Cell, cfg: RunConfig, source, final: bool) -> dict:
@@ -164,20 +230,13 @@ def load_cell_data(cell: Cell, cfg: RunConfig, source, final: bool) -> dict:
                                                                          allow_holdout=final)
             for sym in cell.symbols
         }  # fmt: skip
-    elif cfg.COST_MODEL == "quotes":  # SPEC §19: the symbol's rows of the quotes half-spread table
-        table = source.quotes_table(list(cell.symbols))
+    elif cfg.COST_MODEL == "quotes":  # SPEC §19: the symbol's rows of the quotes half-spread table (§20: as of)
+        table = source.quotes_table(list(cell.symbols)) if cfg.COST_TABLE == "year" else \
+            source.quotes_table(list(cell.symbols), table="asof")  # fmt: skip
         cost = {sym: table[table["symbol"] == sym].reset_index(drop=True) for sym in cell.symbols}
         missing = [sym for sym, rows in cost.items() if rows.empty]
         if missing:
             raise ValueError(f"COST_MODEL='quotes': no quotes-table rows for {missing} (run python -m data.quotes)")
-    sessions = None
-    if cell.is_pwfo:
-        # Only the sessions between the first and last data session reach the PWFO (wfo.pwfo.unit_bounds); the
-        # calendar itself extends a year past today and is refreshed monthly, which must not change the cell hash
-        days = bars[cell.symbols[0]].index.normalize().tz_localize(None)
-        cal = pd.DatetimeIndex(source.sessions(s["end"])).normalize()
-        cal = cal.tz_localize(None) if cal.tz is not None else cal
-        sessions = cal[(cal >= days[0]) & (cal <= days[-1])]
     # Feature context (SPEC §15): market / sector bars and exo series, only for cells whose groups read them
     context = {}
     for sym in cell.symbols:
@@ -185,7 +244,8 @@ def load_cell_data(cell: Cell, cfg: RunConfig, source, final: bool) -> dict:
                            exo=lambda *a, **k: source.exo(*a, **k), allow_holdout=final)  # fmt: skip
         if ctx:
             context[sym] = ctx
-    return {"bars": bars, "cost": cost, "sessions": sessions, "context": context}
+    u22 = _u22_inputs(cell, cfg, source, final, bars)
+    return {"bars": bars, "cost": cost, "context": context, **u22}
 
 
 # ── Metrics ──────────────────────────────────────────────────────────────────
@@ -237,17 +297,23 @@ def _diag(df: pd.DataFrame, sig: pd.DataFrame, cfg: RunConfig) -> dict:
 # ── One cell ─────────────────────────────────────────────────────────────────
 
 
-def _signals(sym: str, df: pd.DataFrame, cfg: RunConfig, root: Path, feature_cache_dir, context=None) -> pd.DataFrame:
-    """run_wfo for one symbol (the rule pass for META_MODEL "none"), through the signals cache."""
+def _signals(sym: str, df: pd.DataFrame, cfg: RunConfig, root: Path, feature_cache_dir, context=None,
+             sessions=None) -> pd.DataFrame:  # fmt: skip
+    """run_wfo for one symbol (the rule pass for META_MODEL "none", with the calendar sessions as its schedule clock),
+    through the signals cache."""
     from wfo.rule_pass import rule_signals
     from wfo.wfo_engine import run_wfo
 
-    path = root / "signals" / f"{signals_key(sym, cfg, df, context)}.pkl"
+    rule = cfg.META_MODEL == "none"
+    path = root / "signals" / f"{signals_key(sym, cfg, df, context, sessions if rule else None)}.pkl"
     if path.exists():
         print(f"[EXP]  {sym}: signals cache hit {path.name}")
         return pd.read_pickle(path)
-    fn = rule_signals if cfg.META_MODEL == "none" else run_wfo
-    sig = fn(df, cfg, context=context, symbol=sym, feature_cache_dir=feature_cache_dir)
+    if rule:
+        sig = rule_signals(df, cfg, context=context, symbol=sym, feature_cache_dir=feature_cache_dir,
+                           sessions=sessions)  # fmt: skip
+    else:
+        sig = run_wfo(df, cfg, context=context, symbol=sym, feature_cache_dir=feature_cache_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".pkl")
     os.close(fd)
@@ -278,7 +344,7 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
     row: dict = {}
     if len(sigs) == 1:
         (sym, sig), df = next(iter(sigs.items())), next(iter(data["bars"].values()))
-        res = run_backtest(df.loc[sig.index[0] :], sig, cfg, cost_data=cost.get(sym))
+        res = run_backtest(df.loc[sig.index[0] :], sig, cfg, cost_data=cost.get(sym), **_extra(data, sym))
         eq, trades = res["Meta-filtered"]
         row["sharpe_primary"] = daily_stats(daily_returns(res["Primary only"][0]))["sharpe"]
         row |= diags[sym]
@@ -289,8 +355,8 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
         bars = {s: data["bars"][s].loc[sig.index[0] :] for s, sig in sigs.items()}
         costs = None
         if cfg.COST_MODEL != "slippage":
-            costs = {s: fill_costs(bars[s].index, cfg, cost.get(s)) for s in sigs}
-        eq, trades, _ = simulate_portfolio(bars, sigs, cfg, profile, costs=costs)
+            costs = {s: fill_costs(bars[s].index, cfg, cost.get(s), stress=data.get("stress")) for s in sigs}
+        eq, trades, _ = simulate_portfolio(bars, sigs, cfg, profile, costs=costs, **_extra_many(data, list(sigs)))
         aucs = [d["meta_auc"] for d in diags.values()]
         row |= {
             "kind": "portfolio",
@@ -309,10 +375,40 @@ def _run_wfo_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path,
         "n_trials": cell_trials(cell),
     }
     if "cost_paid" in eq.attrs:  # the family edge floor's totals (portfolio-simulator paths)
-        row |= {"pnl": float(eq.iloc[-1] - cfg.INIT_CASH), "traded_notional": float(eq.attrs["traded_notional"]),
+        # trading P&L: the cash interest credited is not edge (SPEC §22's floors read this)
+        row |= {"pnl": float(eq.iloc[-1] - cfg.INIT_CASH - eq.attrs.get("cash_interest", 0.0)),
+                "traded_notional": float(eq.attrs["traded_notional"]),
                 "cost_paid": float(eq.attrs["cost_paid"]), "init_cash": float(cfg.INIT_CASH)}  # fmt: skip
+        row |= _u22_row(eq, data, out)
     row["calmar"] = row["ret_ann"] / abs(row["max_dd"]) if row["max_dd"] < 0 else np.nan
     return row
+
+
+def _extra(data: dict, sym: str) -> dict:
+    """run_backtest's U22 keyword inputs for one symbol."""
+    prints = data.get("prints") or {}
+    return {"prints": prints.get(sym), "cash_yield": data.get("cash_yield"), "sessions": data.get("clock"),
+            "stress": data.get("stress")}  # fmt: skip
+
+
+def _extra_many(data: dict, syms: list[str]) -> dict:
+    """simulate_portfolio's U22 keyword inputs for several symbols."""
+    prints = data.get("prints") or {}
+    sess = data.get("clock")
+    return {"prints": {s: prints.get(s) for s in syms} if prints else None, "cash_yield": data.get("cash_yield"),
+            "sessions": None if sess is None else dict.fromkeys(syms, sess)}  # fmt: skip
+
+
+def _u22_row(eq: pd.Series, data: dict, out: Path) -> dict:
+    """The U22 fields of a simulated cell's row: the per-session cost ledger (written as daily_costs.csv), auction
+    fallbacks, the cash interest credited and the data notes."""
+    dc = eq.attrs.get("daily_costs")
+    if dc is not None:
+        dc.to_csv(out / "daily_costs.csv")
+    return {"auction_fallbacks": int(eq.attrs.get("auction_fallbacks", 0)),
+            "cash_interest": float(eq.attrs.get("cash_interest", 0.0)),
+            "cash_yield_missing_sessions": int(eq.attrs.get("cash_yield_missing_sessions", 0)),
+            "data_notes": dict(data.get("notes") or {})}  # fmt: skip
 
 
 def _run_rule_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path, feature_cache_dir) -> dict:
@@ -333,7 +429,7 @@ def _run_rule_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path
     context, cost = data.get("context") or {}, data.get("cost") or {}
     sigs = {}
     for sym, df in data["bars"].items():
-        sigs[sym] = _signals(sym, df, cfg, root, feature_cache_dir, context.get(sym))
+        sigs[sym] = _signals(sym, df, cfg, root, feature_cache_dir, context.get(sym), data.get("clock"))
         sigs[sym].to_csv(out / f"signals_{sym}.csv")
     starts = [s.attrs.get("live_start") for s in sigs.values() if s.attrs.get("live_start") is not None]
     if not starts:
@@ -342,9 +438,9 @@ def _run_rule_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path
     bars = {s: data["bars"][s].loc[live:] for s in sigs}
     costs = None
     if cfg.COST_MODEL != "slippage":
-        costs = {s: fill_costs(bars[s].index, cfg, cost.get(s)) for s in sigs}
+        costs = {s: fill_costs(bars[s].index, cfg, cost.get(s), stress=data.get("stress")) for s in sigs}
     eq, trades, _ = simulate_portfolio(bars, sigs, cfg, get_profile(cfg.RISK_PROFILE), side_col="trade_signal",
-                                       size_col="bet_size", costs=costs)  # fmt: skip
+                                       size_col="bet_size", costs=costs, **_extra_many(data, list(sigs)))  # fmt: skip
     # bar timestamps of each position's entry and exit (families/run.py checks that a family's legs never overlap)
     if {"entry_b", "exit_b"} <= set(trades):
         trades = trades.assign(entry_time=eq.index[trades["entry_b"].to_numpy(dtype=int)],
@@ -361,13 +457,17 @@ def _run_rule_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path
         "n_trials": 0,
         "live_start": str(live),
         "init_cash": float(cfg.INIT_CASH),
-        "pnl": float(eq.iloc[-1] - cfg.INIT_CASH),
+        "pnl": float(eq.iloc[-1] - cfg.INIT_CASH - eq.attrs.get("cash_interest", 0.0)),  # trading P&L, no interest
         "traded_notional": float(eq.attrs["traded_notional"]),
         "cost_paid": float(eq.attrs["cost_paid"]),
         "n_oos_events": int(sum(len(s) for s in sigs.values())),
         "n_sided": int(sum(int((s["signed_dir"] != 0).sum()) for s in sigs.values())),
         "skipped_segments": {s: sig.attrs.get("skipped_segments", []) for s, sig in sigs.items()},
+        "cost_table": cfg.COST_TABLE if cfg.COST_MODEL == "quotes" else None,
+        "asof_before_first": int(sum(c.attrs.get("asof_before_first", 0) for c in (costs or {}).values())),
+        "stress_fills": int(sum(c.attrs.get("stress_fills", 0) for c in (costs or {}).values())),
     }
+    row |= _u22_row(eq, data, out)
     row["calmar"] = row["ret_ann"] / abs(row["max_dd"]) if row["max_dd"] < 0 else np.nan
     return row
 
@@ -379,8 +479,8 @@ def _run_pwfo_cell(cell: Cell, cfg: RunConfig, data: dict, out: Path, feature_ca
     (sym, df), cost = next(iter(data["bars"].items())), (data.get("cost") or {})
     (out / "logs").mkdir(exist_ok=True)
     res = run_pwfo(
-        df, cfg, sessions=data["sessions"], cost_data=cost.get(sym), log_dir=out / "logs", symbol=sym,
-        feature_cache_dir=feature_cache_dir, context=(data.get("context") or {}).get(sym),
+        df, cfg, sessions=data["sessions"], cost_data=cost.get(sym), extra=_extra(data, sym), log_dir=out / "logs",
+        symbol=sym, feature_cache_dir=feature_cache_dir, context=(data.get("context") or {}).get(sym),
     )  # fmt: skip
     return _pwfo_row(cell, cfg, res, out)
 
@@ -509,8 +609,8 @@ def run_combo_task(cell: Cell, chash: str, data: dict, final: bool, root, featur
         contextlib.redirect_stdout(log),
     ):
         try:
-            res = combo_job(df, cell.config(final), combo, "days", data["sessions"], cost.get(sym), symbol=sym,
-                            feature_cache_dir=feature_cache_dir,
+            res = combo_job(df, cell.config(final), combo, "days", data["sessions"], cost.get(sym),
+                            _extra(data, sym), symbol=sym, feature_cache_dir=feature_cache_dir,
                             context=(data.get("context") or {}).get(sym))  # fmt: skip
             return res, None, time.time() - t0
         except Exception:  # noqa: BLE001 — recorded as the cell's error row by finish_pwfo_cell
@@ -724,10 +824,11 @@ def _run(cells, ledger, root, source, jobs, final, retry_errors, spec_name, feat
             continue
         cfg = cell.config(final)
         context = data.get("context") or {}
+        sess = data.get("clock") if cfg.META_MODEL == "none" else None
         for sym, df in data["bars"].items():
-            key = signals_key(sym, cfg, df, context.get(sym))
+            key = signals_key(sym, cfg, df, context.get(sym), sess)
             if key not in sig_jobs and not (root / "signals" / f"{key}.pkl").exists():
-                sig_jobs[key] = (sym, df, cfg, context.get(sym))
+                sig_jobs[key] = (sym, df, cfg, context.get(sym), sess)
     if len(sig_jobs) > 1 and jobs > 1:
         print(f"[EXP]  fitting {len(sig_jobs)} per-symbol WFO(s) with {jobs} job(s)")
         par = Parallel(n_jobs=min(jobs, len(sig_jobs)), return_as="generator_unordered")
@@ -795,7 +896,7 @@ def _run(cells, ledger, root, source, jobs, final, retry_errors, spec_name, feat
     return written
 
 
-def _signals_job(key, sym, df, cfg, context, root, feature_cache_dir):
+def _signals_job(key, sym, df, cfg, context, sessions, root, feature_cache_dir):
     root = Path(root)
     (root / "signals").mkdir(parents=True, exist_ok=True)
     with (
@@ -803,7 +904,7 @@ def _signals_job(key, sym, df, cfg, context, root, feature_cache_dir):
         contextlib.redirect_stdout(log),
     ):
         try:
-            _signals(sym, df, cfg, root, feature_cache_dir, context)
+            _signals(sym, df, cfg, root, feature_cache_dir, context, sessions)
             return key, None
         except Exception as e:  # noqa: BLE001 — re-raised (and recorded) by the cell
             return key, f"{type(e).__name__}: {e}"
