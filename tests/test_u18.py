@@ -4,6 +4,8 @@ U18 (PLAN2 Phase 1) tooling: the union of calendar windows (`calendar_drift` wit
 a basket family's instrument sample split.
 """
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -288,3 +290,41 @@ def test_a_registered_spec_with_non_ascii_text_checks_as_unchanged(repo):
     reg = register(p, repo, today="2026-10-10")
     _git(repo, "commit", "-qam", "register")
     assert check_registered(p, repo) == reg
+
+
+# ── Reporting: positions of rolled chains, the program DSR ───────────────────
+
+
+def test_rolled_trades_are_one_position_for_the_per_trade_responses():
+    from families.test import position_returns
+
+    tr = pd.DataFrame({"sym": ["A", "A", "A", "B", "A"], "entry_b": [0, 1, 2, 0, 9],
+                       "rolled": [False, True, True, False, False],
+                       "pnl_pct": [0.01, 0.02, -0.01, 0.03, -0.02]})  # fmt: skip
+    got = sorted(position_returns(tr))
+    assert got == pytest.approx(sorted([1.01 * 1.02 * 0.99 - 1, -0.02, 0.03]))
+    assert list(position_returns(tr.drop(columns="rolled"))) == list(tr["pnl_pct"])
+
+
+def test_the_program_summary_recomputes_dsr_with_the_programs_trials_now(tmp_path):
+    from families.report import program_summary
+    from families.run import program_dsr
+
+    ledger = L.Ledger(tmp_path / "ledger.jsonl")
+    for i, sym in enumerate(["AAA", "BBB"]):
+        fam = {"id": f"Fx{i}", "mechanism": "m", "basket": {"symbols": [sym, "CCC"]}, "timeframe": "1Day",
+               "window": {"start": "2020-01-02"}, "headline": {"primary": {"name": "tsmom", "params": {
+                   "lookback": 63 + i}}, "risk_profile": "basket"}, "test": {"n_boot": 199}}  # fmt: skip
+        path = _write(tmp_path / f"Fx{i}.yaml", fam)
+        prog = tmp_path / "program.yaml"
+        prog.write_text("max_families: 8\nmax_trials: 112\n", encoding="utf-8")
+        run_family(path, ledger=ledger, root=tmp_path / "root", out_dir=tmp_path / "out", source=TrendSource(),
+                   repo=tmp_path, check_registration=False, program=prog, quasi=False)  # fmt: skip
+    first = json.loads((tmp_path / "out" / "Fx0" / "result.json").read_text())
+    assert first["evaluation"]["verdict"]["dsr_n"] == 1  # recorded when Fx0 ran alone
+    s = program_summary(tmp_path / "out", ledger=ledger)
+    text = s["md"].read_text(encoding="utf-8")
+    h = pd.read_csv(tmp_path / "out" / "Fx0" / "streams.csv", index_col=0, parse_dates=True)["headline"].dropna()
+    dsr_now, n, _ = program_dsr(ledger.rows(), h)
+    assert n == 2 and f"{dsr_now:.3f}" in text and "N = 2 program trials now" in text
+    assert "(no)" in text or "(yes)" in text

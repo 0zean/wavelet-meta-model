@@ -214,9 +214,23 @@ def responses(r: pd.Series, trades: pd.DataFrame | None, names: list[str]) -> di
             if trades is None or not len(trades):
                 out[n] = np.nan
             else:
-                p = trades["pnl_pct"].to_numpy(dtype=float)
+                p = position_returns(trades)
                 out[n] = float(p.mean() * 1e4) if n == "mean_per_trade_bp" else float((p > 0).mean())
     return out
+
+
+def position_returns(trades: pd.DataFrame) -> np.ndarray:
+    """Per-unit return of each position: a chain of rolled trades (a trade with `rolled` continues its symbol's
+    previous one, held through a rebalance) is one position, its trades' returns compounded. Without the column, every
+    trade is a position."""
+    t = trades.reset_index(drop=True)
+    if "rolled" not in t or "sym" not in t:
+        return t["pnl_pct"].to_numpy(dtype=float)
+    order = t.sort_values(["sym", "entry_b"], kind="stable") if "entry_b" in t else t
+    rolled = order["rolled"].astype(str).str.lower().isin(("true", "1")).to_numpy()
+    chain = np.cumsum(~rolled)
+    g = (1.0 + order["pnl_pct"].astype(float)).groupby([order["sym"].to_numpy(), chain]).prod() - 1.0
+    return g.to_numpy(dtype=float)
 
 
 def _groups(kind: str, days: pd.DatetimeIndex, state: pd.DataFrame, bench: pd.Series) -> pd.Series | None:
