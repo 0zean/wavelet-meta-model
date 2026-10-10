@@ -53,7 +53,12 @@ def spec_curve(result: dict, path: Path) -> Path | None:
         ax.plot(i, d, "o", color=c)
     ax.axhline(0, color="#6b7280", lw=0.8)
     ax.set_xticks(range(len(pts)), [p[0] for p in pts], rotation=45, ha="right", fontsize=8)
-    ax.set_ylabel("Sharpe (ann.)" if result.get("benchmark") == "cash" else "Δ Sharpe vs benchmark (ann.)")
+    kind = result.get("test", {}).get("kind", "sharpe_vs_benchmark")
+    ax.set_ylabel(
+        {"overlay_alpha": "alpha (ann., excess)", "marginal": "Δ Sharpe core + k·overlay vs core"}.get(
+            kind, "Sharpe (ann.)" if result.get("benchmark") == "cash" else "Δ Sharpe vs benchmark (ann.)"
+        )
+    )
     ax.set_title(f"{result['id']}: specification curve, 95 % intervals\n(headline in orange; variants reported, "
                  f"never selected; benchmark {result.get('benchmark')})", fontsize=9)  # fmt: skip
     fig.tight_layout()
@@ -91,9 +96,22 @@ def family_markdown(result: dict) -> str:
     md.append(f"- Registered: {reg.get('sha', '—')} ({reg.get('date', '—')}); run at {result.get('run_at')}, code "
               f"{str(result.get('code_hash'))[:12]}, git {str(result.get('git_sha'))[:12]}")  # fmt: skip
     weights = ", ".join(f"{k} {v:.2f}" for k, v in result.get("weights", {}).items())
+    wb = result.get("weights_basis") or {}
     md.append(f"- Instruments: {', '.join(result['instruments'])} ({'basket' if result.get('basket') else 'pooled'}, "
-              f"weights {weights}); window {result['window'][0]} → {result['window'][1]}; benchmark "
-              f"{result.get('benchmark')}")  # fmt: skip
+              f"weights {weights}, from the {wb.get('window', '?')} {wb.get('sessions', '')} sessions); window "
+              f"{result['window'][0]} → {result['window'][1]}; benchmark {result.get('benchmark')}")  # fmt: skip
+    ne = result.get("n_eff") or {}
+    if ne.get("n_eff") is not None:
+        md.append(f"- N_eff {_f(ne['n_eff'], 2)} of {ne.get('n')} instruments (the pooled stream's effective count)")
+    t = result.get("test") or {}
+    md.append(f"- Test: {t.get('kind', 'sharpe_vs_benchmark')}, {t.get('sided', 'two')}-sided, at cost "
+              f"{t.get('at_cost', 'registered')}; excess returns: {result.get('rf', 'raw returns')}")  # fmt: skip
+    pw = result.get("power")
+    if pw:
+        md.append(f"- MDE line: {_f(pw['mde_alpha_bp_per_day'], 2)} bp/day at {pw.get('power', 0.8):.0%} power over "
+                  f"{pw['n_days']} days, vol {pw['vol_ann']:.1%}, {pw['families']} families; expected "
+                  f"{_f(pw['expected_alpha_bp_per_day'], 2)} bp/day → "
+                  f"{'a DIAGNOSTIC (below its MDE)' if pw.get('diagnostic') else 'a test'}")  # fmt: skip
     acc = result.get("accounting", {})
     md.append(f"- Trials: family {acc.get('family_trials')} / budget {acc.get('family_budget')}; program "
               f"{acc.get('program_trials')} / {acc.get('max_trials')} trials, {acc.get('program_families')} / "
@@ -108,11 +126,32 @@ def family_markdown(result: dict) -> str:
     h = ev["variants"][HEADLINE]
     c = h["compare"]
     block = result["spec"].get("test", {}).get("block_days", 21)
-    md.append(f"- Sharpe {_f(c['sharpe'], 2)} vs benchmark {_f(c['bench_sharpe'], 2)} on {c['n_days']} days; difference "
-              f"{_f(c['delta_ann'], 2)} (95 % CI {_f(c['ci_ann'][0], 2)} … {_f(c['ci_ann'][1], 2)}), Ledoit–Wolf p = "
-              f"{_f(c['p'], 4)} (block {block} sessions)")  # fmt: skip
+    kind = c.get("kind", "sharpe_vs_benchmark")
+    if kind == "overlay_alpha":
+        md.append(f"- Alpha {_f(c['delta_ann'], 3, pct=True)}/yr ({_f(c.get('alpha_bp_per_day'), 2)} bp/day) on "
+                  f"{c['n_days']} days, excess of the T-bill; bootstrap t {_f(c.get('t'), 2)}, Newey–West t "
+                  f"{_f(c.get('t_nw'), 2)}; {c.get('sided')}-sided p = {_f(c['p'], 4)} (block {block} sessions); "
+                  f"interval {_f(c['ci_ann'][0], 3, pct=True)} … {_f(c['ci_ann'][1], 3, pct=True)}; Sharpe "
+                  f"{_f(c['sharpe'], 2)} (benchmark {_f(c['bench_sharpe'], 2)})")  # fmt: skip
+    elif kind == "marginal":
+        dd = c.get("dd_difference") or {}
+        md.append(f"- Sharpe(core + {_f(c.get('k'), 2)} × overlay) {_f(c.get('portfolio_sharpe'), 2)} vs core "
+                  f"{_f(c.get('core_sharpe'), 2)} on {c['n_days']} days: difference {_f(c['delta_ann'], 2)} "
+                  f"(interval {_f(c['ci_ann'][0], 2)} … {_f(c['ci_ann'][1], 2)}), Ledoit–Wolf {c.get('sided')}-sided "
+                  f"p = {_f(c['p'], 4)}; max drawdown {_f(c.get('dd_portfolio'), 3, pct=True)} vs "
+                  f"{_f(c.get('dd_core'), 3, pct=True)} (difference {_f(dd.get('value'), 3, pct=True)}, interval "
+                  f"{_f((dd.get('ci') or [None, None])[0], 3, pct=True)} … "
+                  f"{_f((dd.get('ci') or [None, None])[1], 3, pct=True)})")  # fmt: skip
+    else:
+        md.append(f"- Sharpe {_f(c['sharpe'], 2)} vs benchmark {_f(c['bench_sharpe'], 2)} on {c['n_days']} days "
+                  f"(excess returns); difference {_f(c['delta_ann'], 2)} (interval {_f(c['ci_ann'][0], 2)} … "
+                  f"{_f(c['ci_ann'][1], 2)}), Ledoit–Wolf {c.get('sided', 'two')}-sided p = {_f(c['p'], 4)} "
+                  f"(block {block} sessions)")  # fmt: skip
+    lk = result.get("looks") or {}
+    md.append(f"- Looks: K = {lk.get('K', '—')} configurations examined on the development window "
+              f"(families/looks.jsonl); Bonferroni bound p × K = {_f(lk.get('bonferroni_p'), 4)}")  # fmt: skip
     md.append(f"- PSR(0) {_f(h.get('psr0'), 3)}; DSR {_f(v.get('dsr'), 3)} (N = {v.get('dsr_n')} program trials, "
-              f"V = {_f(v.get('dsr_v'), 6)})")  # fmt: skip
+              f"V = {_f(v.get('dsr_v'), 6)}) — a ledger diagnostic, not part of the verdict")  # fmt: skip
     if "alpha" in c:
         a = c["alpha"]
         md.append(f"- Alpha {_f(a['alpha_ann'], 3, pct=True)}/yr (NW t {_f(a['alpha_t'], 2)}, p {_f(a['alpha_p'], 4)}),"
@@ -125,8 +164,75 @@ def family_markdown(result: dict) -> str:
               f", median variant {coh.get('median_variant')} (floors {_f(coh.get('median_floors_ok'))}) → "
               f"{'coherent' if coh['coherent'] else 'NOT coherent'}")  # fmt: skip
     md.append(f"- Before Holm across families: p {_f(v['p'], 4)}, floors {_f(v['floors_ok'])}, coherent "
-              f"{_f(coh['coherent'])}, positive {_f(v['positive'])}")  # fmt: skip
+              f"{_f(coh['coherent'])}, positive {_f(v['positive'])} (at cost {v.get('at_cost', 'registered')})")  # fmt: skip
     md.append("")
+    cc = result.get("cost_curve") or {}
+    if cc:
+        md += ["## Cost curve (every variant re-priced from its cost ledger; the verdict reads one column)", ""]
+        cols = list(cc)
+        rows = []
+        for label in ev["variants"]:
+            if label not in cc.get(cols[0], {}):
+                continue
+            row = {"variant": label}
+            for ck in cols:
+                e = cc[ck].get(label)
+                if e is None or "unavailable" in e:
+                    row[ck] = "—"
+                    continue
+                st = e["stats"]
+                cell = f"SR {_f(st['sharpe'], 2)}, ret {_f(st['ret_ann'], 3, pct=True)}, floors {_f(e['floors']['ok'])}"
+                if "compare" in e:
+                    cell = f"{_f(e['compare']['delta_ann'], 3)} (p {_f(e['compare']['p'], 3)}); " + cell
+                row[ck] = cell
+            rows.append(row)
+        md += [_table(rows, ["variant", *cols]), ""]
+        note = ("Columns: `registered` = the simulated costs (quotes half-spread + slippage per side); a number = "
+                "that round-trip cost in bp on every fill; `measured` = the forward test's fill reconciliation. The "
+                "headline column shows its statistic and p first.")  # fmt: skip
+        md += [note, ""]
+    acc = result.get("account") or {}
+    if acc:
+        md += ["## Account check (risk/account.py; nothing here changes a P&L)", ""]
+        trad = acc.get("tradable")
+        md.append(f"- {acc.get('profile')} ({acc.get('kind')} account, equity {acc.get('equity', 0):,.0f}): "
+                  + ("tradable" if trad else ("not checked" if trad is None else "NOT tradable")))  # fmt: skip
+        for r in acc.get("reasons", []):
+            md.append(f"  - {r}")
+        dt, bp = acc.get("day_trades") or {}, acc.get("buying_power") or {}
+        if dt:
+            md.append(f"- Day trades: {dt.get('total')} in total, at most {_f(dt.get('max_in_window'), 0)} in 5 "
+                      f"sessions; PDT rule applies: {_f(dt.get('pdt_applies'))}; first flag {dt.get('first_pdt_flag')}")  # fmt: skip
+        if bp:
+            md.append(f"- Gross exposure: {_f(bp.get('max_gross_intraday'), 2)}× intraday (limit "
+                      f"{_f(bp.get('limit_intraday'), 0)}×), {_f(bp.get('max_gross_overnight'), 2)}× overnight (limit "
+                      f"{_f(bp.get('limit_overnight'), 0)}×); first breach {bp.get('first_breach')}")  # fmt: skip
+        co = acc.get("cost_otherwise") or {}
+        if co:
+            md.append(f"- What the PDT rule would cost on an account under the floor: {_f(co.get('share_of_day_trades'), 3, pct=True)} "
+                      f"of the day trades blocked ({_f(co.get('blocked_day_trades'), 0)})")  # fmt: skip
+        lo = acc.get("locate") or {}
+        if lo.get("bps"):
+            md.append(f"- Locate fees at {lo['bps']} bp/yr on short notional: ≈ {_f(lo.get('cost_frac_per_year'), 4, pct=True)}/yr of equity (estimate)")  # fmt: skip
+        md.append("")
+    fb = result.get("auction_fallbacks") or {}
+    notes = result.get("data_notes") or {}
+    counters = (result.get("counters") or {}).get(HEADLINE) or {}
+    if any(fb.values()) or notes or counters:
+        md += ["## Data notes", ""]
+        if counters:
+            md.append(f"- Headline members: {counters.get('asof_before_first', 0)} session(s) priced with the first "
+                      f"as-of cost table (2016Q1), {counters.get('stress_fills', 0)} bar(s) in stress sessions, "
+                      f"{counters.get('cash_yield_missing_sessions', 0)} session(s) without a cash-yield rate")  # fmt: skip
+        if any(fb.values()):
+            md.append(
+                "- Auction fills priced at the bar (no print cached): "
+                + ", ".join(f"{k} {n}" for k, n in fb.items() if n)
+            )
+        for k, d in notes.items():
+            for kk, vv in d.items():
+                md.append(f"- {k}: {kk}: {vv}")
+        md.append("")
     md += ["## Specification curve (reported; no variant is selected)", "", "![spec curve](spec_curve.png)", ""]
     rows = []
     for k, x in ev["variants"].items():
@@ -248,12 +354,14 @@ UNTESTED = {"p": 1.0, "delta_ann": float("nan"), "floors_ok": False, "coherence"
             "positive": False}  # fmt: skip
 
 
-def program_summary(out_dir, alpha: float = 0.05, ledger=None) -> dict:
+def program_summary(out_dir, alpha: float = 0.05, ledger=None, program=None) -> dict:
     """
-    The program verdict (SPEC §17.3): Holm across the families' headline p-values, floors, coherence →
+    The program verdict (SPEC §17.3, §22): Holm across the families' headline p-values, floors, coherence →
     program_summary.md / .html / .csv. The families are every <out_dir>/<id>/result.json and, with `ledger`, every
-    family with a stage-F variant row there; one without a completed test (an errored headline, a missing result
-    file) enters Holm with p = 1, so a family cannot leave the multiplicity count by failing or being deleted.
+    family with a stage-F variant row there, restricted to the program's listed families when `program` (a
+    program.yaml path with a `families` list; the CLI passes families/program.yaml) is given; one without a completed
+    test (an errored headline, a missing result file) enters Holm with p = 1, so a family cannot leave the
+    multiplicity count by failing or being deleted.
     """
     from families.run import KIND
     from families.test import program_verdict
@@ -268,6 +376,14 @@ def program_summary(out_dir, alpha: float = 0.05, ledger=None) -> dict:
     in_ledger = set()
     if ledger is not None:
         in_ledger = {r["family"] for r in ledger.rows() if r.get("kind") == KIND and r.get("stage") == "F"}
+    # U22: the program's families only (families/program.yaml `families`); the PLAN2 families are a closed program
+    from families.run import program_caps
+
+    caps = program_caps(program) if program is not None else {}
+    listed = caps.get("families")
+    if listed is not None:
+        results = {k: r for k, r in results.items() if k.split(".v")[0] in listed}
+        in_ledger = {f for f in in_ledger if f.split(".v")[0] in listed}
     verdicts = {k: dict(r["evaluation"]["verdict"]) for k, r in results.items() if "evaluation" in r}
     dsr_n = None
     if ledger is not None:  # DSR with the program's trials now, not those counted when each family ran
@@ -282,9 +398,10 @@ def program_summary(out_dir, alpha: float = 0.05, ledger=None) -> dict:
     untested = sorted((set(results) | in_ledger) - set(verdicts))
     verdicts |= {k: dict(UNTESTED) for k in untested}
     table = program_verdict(verdicts, alpha)
-    intro = (f"{len(verdicts)} families, {len(verdicts) - len(untested)} tested. A family passes iff its Holm-adjusted "
-             f"headline p < {alpha}, its headline clears every floor, it is coherent and its difference is positive "
-             "(SPEC §17.3).")  # fmt: skip
+    intro = (f"{len(verdicts)} families, {len(verdicts) - len(untested)} tested"
+             + (f" (program {caps.get('program')}: {', '.join(listed)})" if listed else "")
+             + f". A family passes iff its Holm-adjusted headline p < {alpha}, its headline clears every floor, it is "
+             "coherent and its statistic is positive (SPEC §17.3, §22). The DSR column is a ledger diagnostic.")  # fmt: skip
     md = ["# Hypothesis-family program: summary", "", intro, ""]
     acc = max((r.get("accounting", {}) for r in results.values()), key=lambda a: a.get("program_trials", 0),
               default={})  # fmt: skip
@@ -300,14 +417,15 @@ def program_summary(out_dir, alpha: float = 0.05, ledger=None) -> dict:
                          "verdict": f"no test ({why})"})  # fmt: skip
             continue
         h = r["evaluation"]["variants"][HEADLINE]["compare"]
-        rows.append({"family": t["family"], "sharpe": _f(h["sharpe"], 2), "bench": _f(h["bench_sharpe"], 2),
-                     "Δ": _f(t["delta_ann"], 2), "CI": f"{_f(h['ci_ann'][0], 2)} … {_f(h['ci_ann'][1], 2)}",
+        rows.append({"family": t["family"], "kind": t.get("kind", "sharpe_vs_benchmark"), "sharpe": _f(h["sharpe"], 2),
+                     "bench": _f(h["bench_sharpe"], 2), "statistic": _f(t["delta_ann"], 3),
+                     "CI": f"{_f(h['ci_ann'][0], 2)} … {_f(h['ci_ann'][1], 2)}",
                      "p": _f(t["p"], 4), "p_holm": _f(t["p_holm"], 4), "floors": _f(bool(t["floors_ok"])),
                      "coherence": (f"{_f(r['evaluation']['verdict']['coherence'].get('share'), 2)} "
                                    f"({'yes' if r['evaluation']['verdict']['coherence'].get('coherent') else 'no'})"),
-                     "DSR": _f(t["dsr"], 3), "verdict": "PASS" if t["passes"] else "fail"})  # fmt: skip
-    md += [_table(rows, ["family", "sharpe", "bench", "Δ", "CI", "p", "p_holm", "floors", "coherence", "DSR",
-                         "verdict"]), ""]  # fmt: skip
+                     "DSR": _f(verdicts[t["family"]].get("dsr"), 3), "verdict": "PASS" if t["passes"] else "fail"})  # fmt: skip
+    md += [_table(rows, ["family", "kind", "sharpe", "bench", "statistic", "CI", "p", "p_holm", "floors", "coherence",
+                         "DSR", "verdict"]), ""]  # fmt: skip
     md += [("Coherence: share of variants with the headline's sign (coherent or not: the median variant must also "
             "clear the floors). DSR: " + (f"N = {dsr_n} program trials now (SPEC §17.3)." if dsr_n else
                                           "as recorded when each family ran.")), ""]  # fmt: skip

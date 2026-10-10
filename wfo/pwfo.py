@@ -228,11 +228,12 @@ def wfe(oos: float, is_values, min_t: float) -> tuple[float, float]:
     return (float(oos / m) if m > 0 and t >= min_t else np.nan), float(t)
 
 
-def _equity(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig, cost_data) -> pd.Series:
-    """Meta-filtered, sized equity of `signals` on `df` (run_backtest: cfg.POSITION_MODE, cfg.RISK_PROFILE)."""
+def _equity(df: pd.DataFrame, signals: pd.DataFrame, cfg: RunConfig, cost_data, extra=None) -> pd.Series:
+    """Meta-filtered, sized equity of `signals` on `df` (run_backtest: cfg.POSITION_MODE, cfg.RISK_PROFILE); `extra`
+    = run_backtest's U22 keyword inputs (prints, cash_yield, sessions, stress)."""
     if signals.empty:
         return pd.Series(float(cfg.INIT_CASH), index=df.index, name="equity")
-    return run_backtest(df, signals, cfg, cost_data=cost_data)["Meta-filtered"][0]
+    return run_backtest(df, signals, cfg, cost_data=cost_data, **(extra or {}))["Meta-filtered"][0]
 
 
 class ComboStats(NamedTuple):
@@ -241,7 +242,7 @@ class ComboStats(NamedTuple):
     oos_daily: pd.Series  # stitched OOS daily returns over [first OOS session, last OOS session]
 
 
-def combo_stats(df: pd.DataFrame, run: ComboRun, cfg: RunConfig, cost_data=None) -> ComboStats:
+def combo_stats(df: pd.DataFrame, run: ComboRun, cfg: RunConfig, cost_data=None, extra=None) -> ComboStats:
     """
     OOS: the combo's stitched OOS signals are backtested once over [first OOS bar, end of data) (trades carry across
     window boundaries as they would live) and cut to daily returns on the OOS sessions. Window w's OOS return is the
@@ -258,7 +259,7 @@ def combo_stats(df: pd.DataFrame, run: ComboRun, cfg: RunConfig, cost_data=None)
     win = win.copy()
     first, last = win["oos_start"].dropna().iloc[0], win["oos_last"].dropna().iloc[-1]
     start = df.index.get_loc(first)
-    eq = _equity(df.iloc[start:], signals, cfg, cost_data)
+    eq = _equity(df.iloc[start:], signals, cfg, cost_data, extra)
     oos_daily = daily_returns(eq)
     oos_daily = oos_daily[oos_daily.index <= last.normalize()]
     days = oos_daily.index
@@ -279,7 +280,7 @@ def combo_stats(df: pd.DataFrame, run: ComboRun, cfg: RunConfig, cost_data=None)
         if w not in ins:
             continue
         a, b = df.index.get_loc(s), df.index.get_loc(e)
-        r = daily_returns(_equity(df.iloc[a:b], ins[w], cfg, cost_data))
+        r = daily_returns(_equity(df.iloc[a:b], ins[w], cfg, cost_data, extra))
         is_ret[i], is_sr[i] = _ann(float((1 + r).prod() - 1), len(r)), _sharpe(r)
     win["is_ret_ann"], win["is_sharpe"] = is_ret, is_sr
 
@@ -419,14 +420,15 @@ class PWFOResult(NamedTuple):
     signals: dict[str, pd.DataFrame]  # combo label → OOS signals
 
 
-def combo_job(df, cfg, combo, unit="days", sessions=None, cost_data=None, **prep_kw):
+def combo_job(df, cfg, combo, unit="days", sessions=None, cost_data=None, extra=None, **prep_kw):
     """
     One combo end to end: prepare → run_combo → combo_stats (None if no window could be fit). The returned run
     drops its in-sample frames (combo_stats is their only reader), so it pickles small for a parent process.
+    `extra` = the backtests' U22 inputs (run_backtest: prints, cash_yield, sessions, stress).
     """
     prep = prepare(df, cfg, **prep_kw)
     run = run_combo(df, cfg, prep, combo, unit=unit, sessions=sessions)
-    st = None if run.signals.empty else combo_stats(df, run, cfg, cost_data)
+    st = None if run.signals.empty else combo_stats(df, run, cfg, cost_data, extra)
     return run._replace(in_sample={}), st
 
 
@@ -438,6 +440,7 @@ def run_pwfo(
     unit: str = "days",
     sessions=None,
     cost_data=None,
+    extra=None,
     jobs: int = 1,
     log_dir=None,
     **prep_kw,
@@ -453,10 +456,11 @@ def run_pwfo(
     check_grid(cfg, grid)
     if jobs > 1:
         with ProcessPoolExecutor(max_workers=min(jobs, len(grid))) as ex:
-            futs = [ex.submit(_logged_job, log_dir, df, cfg, c, unit, sessions, prep_kw, cost_data) for c in grid]
+            futs = [ex.submit(_logged_job, log_dir, df, cfg, c, unit, sessions, prep_kw, cost_data, extra)
+                    for c in grid]  # fmt: skip
             outs = [f.result() for f in futs]
     else:
-        outs = [_logged_job(log_dir, df, cfg, c, unit, sessions, prep_kw, cost_data) for c in grid]
+        outs = [_logged_job(log_dir, df, cfg, c, unit, sessions, prep_kw, cost_data, extra) for c in grid]
     return assemble(cfg, grid, outs)
 
 
@@ -575,14 +579,14 @@ def assemble(cfg: RunConfig, grid: list[Combo], outs: list) -> PWFOResult:
     return PWFOResult(summary, windows, returns, choice, pw, stats, sigs)
 
 
-def _logged_job(log_dir, df, cfg, combo, unit, sessions, prep_kw, cost_data):
+def _logged_job(log_dir, df, cfg, combo, unit, sessions, prep_kw, cost_data, extra=None):
     import contextlib
     from pathlib import Path
 
     if log_dir is None:
-        return combo_job(df, cfg, combo, unit, sessions, cost_data, **prep_kw)
+        return combo_job(df, cfg, combo, unit, sessions, cost_data, extra, **prep_kw)
     with (
         open(Path(log_dir) / f"{combo.label}.log", "w", buffering=1, encoding="utf-8") as f,
         contextlib.redirect_stdout(f),
     ):
-        return combo_job(df, cfg, combo, unit, sessions, cost_data, **prep_kw)
+        return combo_job(df, cfg, combo, unit, sessions, cost_data, extra, **prep_kw)

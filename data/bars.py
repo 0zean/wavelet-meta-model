@@ -4,7 +4,9 @@
 Ranges are whole NY trading days: [start, end) with start/end as dates. Native
 timeframes (1Min, 5Min) are fetched from Alpaca, RTH-filtered and cached;
 15Min/30Min/1Hour/1Day are resampled on the fly from cached RTH 5Min bars (cheap,
-and never stale).
+and never stale). `1DayPrint` (U22, SPEC §20) is Alpaca's native daily bar, cached
+for its open and close: the official opening and closing auction prints
+(`load_prints`); its high / low / volume include extended hours and are not used.
 """
 
 import json
@@ -103,7 +105,19 @@ def _fetch(source, symbol: str, timeframe: str, start: pd.Timestamp, end: pd.Tim
     if df is None or df.empty:
         return df
     df = df[~df.index.duplicated(keep="last")].sort_index()
+    if tf.is_daily:  # one bar per exchange session, stamped at the session's NY midnight
+        return session_filter(df, calendar)
     return rth_filter(df, calendar, tf.minutes)
+
+
+def session_filter(df: pd.DataFrame, calendar: pd.DataFrame) -> pd.DataFrame:
+    """Daily bars: keep the rows whose NY date is an exchange session, stamped at that session's midnight (NY)."""
+    df = to_ny(df)
+    day = df.index.normalize()
+    keep = day.tz_localize(None).isin(calendar.index)
+    out = df[keep].copy()
+    out.index = day[keep]
+    return out
 
 
 def _adjustment_changed(cached: pd.DataFrame, fresh: pd.DataFrame) -> bool:
@@ -293,3 +307,64 @@ def _verified_end(
         )
         return new_hi
     return hi
+
+
+# ── Auction prints (U22, SPEC §20) ───────────────────────────────────────────
+
+PRINT_COLUMNS = ["open", "close", "volume"]
+
+
+def load_prints(symbol: str, start, end, **kw) -> pd.DataFrame:
+    """
+    Official auction prints per session: Alpaca's native daily bar (`1DayPrint`) reduced to `open` (the opening
+    auction print), `close` (the closing auction print) and `volume`, indexed by the session's NY midnight. Keyword
+    arguments as load_bars (feed, adjustment, cache_dir, source, refresh, allow_holdout).
+    """
+    from data.timeframes import PRINT_TIMEFRAME
+
+    kw.setdefault("min_session_coverage", 0.0)
+    df = load_bars(symbol, PRINT_TIMEFRAME, start, end, **kw)
+    return df[PRINT_COLUMNS]
+
+
+FORWARD_ACCESS = DEFAULT_CACHE_DIR / "forward_access.jsonl"
+
+
+def log_forward_access(event: dict, path: Path = FORWARD_ACCESS) -> None:
+    """Append an audit record of a read or fetch past HOLDOUT_START (SPEC §18) to data/cache/forward_access.jsonl."""
+    row = {"at": pd.Timestamp.now(tz="UTC").isoformat(), **event}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+
+
+def truncate_forward(cache_dir: Path = DEFAULT_CACHE_DIR, log_path: Path = FORWARD_ACCESS) -> list[dict]:
+    """
+    Drop every cached bar stamped on or after HOLDOUT_START from every bar cache under `cache_dir` (U22: the caches
+    that data/fetch.py topped up to "today" before its default end was HOLDOUT_START), set their coverage_end to
+    HOLDOUT_START and log one `truncate` event per cache touched. Returns the events.
+    """
+    events = []
+    cut = HOLDOUT_START.tz_localize(NY_TZ)
+    for js in sorted(Path(cache_dir).glob("*/*/*/*.json")):
+        npz = js.with_suffix(".npz")
+        if not npz.exists():
+            continue
+        meta = json.loads(js.read_text(encoding="utf-8"))
+        if "coverage_end" not in meta or _day(meta["coverage_end"]) <= HOLDOUT_START:
+            continue
+        df, meta = load_bars_cache(npz, js)
+        keep = df.index < cut
+        dropped = int((~keep).sum())
+        new_meta = {k: v for k, v in meta.items() if k not in ("schema_version", "columns", "n_bars", "first_ts",
+                                                                  "last_ts", "sha256")}  # fmt: skip
+        new_meta["coverage_end"] = HOLDOUT_START.date().isoformat()
+        save_bars(npz, js, df[keep], new_meta)
+        ev = {"event": "truncate", "symbol": meta["symbol"], "timeframe": meta["timeframe"], "feed": meta["feed"],
+              "adjustment": meta["adjustment"], "old_coverage_end": meta["coverage_end"], "dropped_bars": dropped,
+              "new_coverage_end": new_meta["coverage_end"]}  # fmt: skip
+        log_forward_access(ev, log_path)
+        print(f"[DATA]  {meta['symbol']} {meta['timeframe']}: dropped {dropped} bar(s) on / after "
+              f"{HOLDOUT_START.date()} (coverage ended {meta['coverage_end']})")  # fmt: skip
+        events.append(ev)
+    return events

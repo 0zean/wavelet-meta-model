@@ -78,7 +78,8 @@ class AlpacaSource:
             raise ValueError(f"{timeframe} is not a native Alpaca timeframe; resample from {tf.base}")
         if adjustment not in ADJUSTMENTS:
             raise ValueError(f"adjustment must be one of {ADJUSTMENTS}, got {adjustment!r}")
-        alpaca_tf = TimeFrame(tf.minutes, TimeFrameUnit.Minute)
+        # 1DayPrint: Alpaca's daily bar (stamped at NY midnight; its open / close are the official auction prints)
+        alpaca_tf = TimeFrame.Day if tf.is_daily else TimeFrame(tf.minutes, TimeFrameUnit.Minute)
         req = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=alpaca_tf,

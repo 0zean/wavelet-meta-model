@@ -66,8 +66,10 @@ def rule_signals(
     context: dict | None = None,
     symbol: str | None = None,
     feature_cache_dir=None,
+    sessions=None,
 ) -> pd.DataFrame:
-    """The rule pass of cfg.PRIMARY over df (module docstring). Raises if cfg.META_MODEL is not "none"."""
+    """The rule pass of cfg.PRIMARY over df (module docstring). Raises if cfg.META_MODEL is not "none". `sessions`
+    (U22) = the exchange calendar's session dates, the schedule sampler's session clock (features.events)."""
     if cfg.META_MODEL != "none":
         raise ValueError(f"the rule pass needs META_MODEL='none', got {cfg.META_MODEL!r}")
     cfg.holdout_guard(df.index)
@@ -78,7 +80,7 @@ def rule_signals(
     stateful = cfg.VOL_PROFILE == "tod" or bool(fset.per_fold)
     segments = _segments(df.index, cfg, stateful)
     frames, skipped = [], []
-    events = sample_events(df, cfg, symbol=symbol) if not stateful else None
+    events = sample_events(df, cfg, symbol=symbol, sessions=sessions) if not stateful else None
     for k, (start, end, fit_end) in enumerate(segments, start=1):
         if stateful:
             try:
@@ -88,7 +90,8 @@ def rule_signals(
                 skipped.append(k)
                 continue
             X_all = base.iloc[:end].join(fset.transform(df.iloc[:end], states))
-            ev = sample_events(df, cfg, profile=fit_profile(df.iloc[:fit_end], cfg), symbol=symbol)
+            ev = sample_events(df, cfg, profile=fit_profile(df.iloc[:fit_end], cfg), symbol=symbol,
+                               sessions=sessions)  # fmt: skip
         else:
             X_all, ev = base, events
         pos = df.index.get_indexer(ev.index)

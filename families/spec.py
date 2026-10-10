@@ -31,9 +31,17 @@ Family specs (SPEC §17.1): `families/<id>.yaml` → a validated FamilySpec and 
     state_splits: [vix_tercile, macro_day]
     response: [sharpe, max_dd, mean_per_trade_bp, hit_rate]
     sample_splits: [{label: sector, instruments: [XLE, XLF]}, {label: 2016_2019, start: 2016-01-04, end: 2020-01-01}]
-    benchmark: buy_and_hold_ew           # buy_and_hold_ew | buy_and_hold_er | cash
+    benchmark: constant_mix_er           # constant_mix_ew | constant_mix_er | buy_and_hold | cash (PLAN2's
+                                         #   buy_and_hold_ew / buy_and_hold_er are aliases of the constant mixes)
     floors: {min_net_ret: 0.02, min_net_ret_vs_benchmark: null, min_edge_to_cost: 3.0, max_dd: null}
-    test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+    test: {kind: overlay_alpha, sided: one, at_cost: 1.0,    # protocol v3 (U22, SPEC §22): kind sharpe_vs_benchmark
+           alpha: 0.05, block_days: 21, n_boot: 5000,        #   (PLAN2) | overlay_alpha | marginal; sided one | two;
+           coherence_share: 0.667, seed: 0}                  #   at_cost registered | <round-trip bp> | measured
+    power: {n_days: 2400, vol_ann: 0.08, families: 4,       # required by overlay_alpha / marginal: the MDE line
+            mde_alpha_bp_per_day: 3.17, expected_alpha_bp_per_day: 3.5, diagnostic: false}
+    core: {family: F1, variant: headline, k: 1.0}            # marginal: the core family's stream (results dir)
+    account: {kind: margin, equity: 30000, locate_bps: 0}    # the registered account (risk/account.py); default:
+                                                             #   a margin account at the headline cells' INIT_CASH
     overlay: {...}                       # stage G (U19); stored, not read here
     TRIAL_BUDGET: 12
 
@@ -63,7 +71,8 @@ DEV_WINDOW = ("2016-01-04", "2025-10-01")  # SPEC §11.1, [start, end)
 QUASI_WINDOW = ("2025-10-01", "2026-10-01")  # the contaminated quasi-holdout slice: reported, never a gate
 DEFAULT_BUDGET = 12
 MAX_BUDGET = 12  # PLAN2 protocol 3: no family spec (or amendment) may grant itself more variants than this
-BENCHMARKS = ("buy_and_hold_ew", "buy_and_hold_er", "cash")
+BENCHMARKS = ("constant_mix_ew", "constant_mix_er", "buy_and_hold", "cash")
+BENCHMARK_ALIASES = {"buy_and_hold_ew": "constant_mix_ew", "buy_and_hold_er": "constant_mix_er"}  # PLAN2 names
 STATE_SPLITS = (
     "vix_tercile",
     "vix_median",
@@ -71,18 +80,24 @@ STATE_SPLITS = (
     "abs_move_tercile",
     "prior_day_sign",
     "day_of_week",
+    "year",
     "gamma_sign",
 )  # fmt: skip  (gamma_sign: no gamma proxy yet, reported as unavailable)
 RESPONSES = ("sharpe", "sortino", "calmar", "ret_ann", "vol_ann", "max_dd", "skew", "lpm2", "mean_per_trade_bp",
-             "hit_rate", "crisis_return", "exposure")  # fmt: skip
+             "hit_rate", "crisis_return", "exposure", "worst_day", "longest_flat_run")  # fmt: skip
 TOP_KEYS = {"id", "mechanism", "registered", "instruments", "basket", "timeframe", "window", "headline", "variants",
             "state_splits", "response", "sample_splits", "benchmark", "floors", "test", "overlay", "TRIAL_BUDGET",
-            "notes"}  # fmt: skip
+            "notes", "power", "core", "account"}  # fmt: skip
+TEST_KINDS = ("sharpe_vs_benchmark", "overlay_alpha", "marginal")
+POWER_KEYS = {"n_days", "vol_ann", "families", "mde_alpha_bp_per_day", "expected_alpha_bp_per_day", "diagnostic"}
+MDE_TOLERANCE = 0.10  # a recorded MDE must agree with families.power.mde_alpha within this fraction
+ACCOUNT_KEYS = {"kind", "equity", "locate_bps"}
 HEADLINE_KEYS = {"primary", "exit", "sampler", "cost_model", "risk_profile", "sizer", "overrides", "timeframe",
                  "per_instrument", "legs", "model", "feature_groups", "pwfo", "meta_train", "seed"}  # fmt: skip
 PATCH_KEYS = HEADLINE_KEYS - {"per_instrument", "timeframe", "legs"}  # what a per-instrument or leg patch may set
 FLOOR_KEYS = {"min_net_ret": None, "min_net_ret_vs_benchmark": None, "min_edge_to_cost": None, "max_dd": None}
-TEST_DEFAULTS = {"alpha": 0.05, "block_days": 21, "n_boot": 2000, "coherence_share": 0.667, "seed": 0}
+TEST_DEFAULTS = {"alpha": 0.05, "block_days": 21, "n_boot": 5000, "coherence_share": 0.667, "seed": 0,
+                 "kind": "sharpe_vs_benchmark", "sided": "two", "at_cost": "registered"}  # fmt: skip
 HEADLINE = "headline"
 
 
@@ -91,6 +106,7 @@ class Variant:
     label: str
     config: dict  # the headline dict with the variant's changes applied
     changes: dict  # the variant's own (dotted) keys
+    core: dict | None = None  # the `core` block with the variant's `core.*` changes applied (marginal kind)
 
 
 @dataclass
@@ -112,6 +128,9 @@ class FamilySpec:
     budget: int
     registered: dict | None = None
     cells: dict[str, list[Cell]] = field(default_factory=dict)  # variant label → its cells (dev window)
+    power: dict | None = None  # the MDE line (protocol v3)
+    core: dict | None = None  # the core family of a `marginal` test
+    account: dict = field(default_factory=dict)  # the registered account (risk.account)
 
     @property
     def base_id(self) -> str:
@@ -320,7 +339,8 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     headline = doc.get("headline")
     if not isinstance(headline, dict):
         raise TypeError("a family has a headline mapping")
-    variants = [Variant(HEADLINE, copy.deepcopy(headline), {})]
+    core = doc.get("core")
+    variants = [Variant(HEADLINE, copy.deepcopy(headline), {}, copy.deepcopy(core))]
     for v in doc.get("variants") or []:
         if not isinstance(v, dict) or not isinstance(v.get("label"), str) or not v["label"]:
             raise ValueError(f"every variant has a string label (quote one YAML reads as a number); got {v!r}")
@@ -331,9 +351,17 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         if any(k.split(".")[0] in ("instruments", "basket", "timeframe_symbols") for k in changes):
             raise ValueError(f"variant {label!r}: other instruments are a sample split, not a variant")
         cfg = copy.deepcopy(headline)
+        vcore = copy.deepcopy(core)
         for k, x in changes.items():
-            _set_dotted(cfg, k, x)
-        variants.append(Variant(label, cfg, changes))
+            if k == "core" or k.startswith("core."):
+                if core is None:
+                    raise ValueError(f"variant {label!r} changes `core`, which the family does not set")
+                if k == "core":
+                    raise ValueError(f"variant {label!r}: change core.k (or core.variant), not the whole core block")
+                _set_dotted(vcore, k.partition(".")[2], x)
+            else:
+                _set_dotted(cfg, k, x)
+        variants.append(Variant(label, cfg, changes, vcore))
     labels = [v.label for v in variants]
     if len(set(labels)) != len(labels):
         raise ValueError(f"duplicate variant labels {labels}")
@@ -343,9 +371,10 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     if len(variants) > budget:
         raise ValueError(f"{len(variants)} trials (headline + {len(variants) - 1} variants) exceed TRIAL_BUDGET "
                          f"{budget}")  # fmt: skip
-    bench = doc.get("benchmark", "buy_and_hold_ew")
+    bench = doc.get("benchmark", "constant_mix_ew")
+    bench = BENCHMARK_ALIASES.get(bench, bench)
     if bench not in BENCHMARKS:
-        raise ValueError(f"benchmark must be one of {BENCHMARKS}, got {bench!r}")
+        raise ValueError(f"benchmark must be one of {BENCHMARKS} (or a PLAN2 alias), got {bench!r}")
     floors = dict(FLOOR_KEYS)
     extra = set(doc.get("floors") or {}) - set(FLOOR_KEYS)
     if extra:
@@ -372,6 +401,29 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     test |= doc.get("test") or {}
     if not 0 < test["alpha"] < 1 or not 0 < test["coherence_share"] <= 1 or test["n_boot"] < 99:
         raise ValueError(f"test settings out of range: {test}")
+    if test["kind"] not in TEST_KINDS:
+        raise ValueError(f"test.kind must be one of {TEST_KINDS}, got {test['kind']!r}")
+    if test["sided"] not in ("one", "two"):
+        raise ValueError(f"test.sided must be 'one' or 'two', got {test['sided']!r}")
+    ac = test["at_cost"]
+    if not (ac in ("registered", "measured") or (isinstance(ac, (int, float)) and not isinstance(ac, bool)
+                                                 and ac > 0)):  # fmt: skip
+        raise ValueError(f"test.at_cost must be 'registered', 'measured' or a round-trip cost in bp > 0, got {ac!r}")
+    power = _power(doc.get("power"), test)
+    if test["kind"] in ("overlay_alpha", "marginal") and power is None:
+        raise ValueError(f"test.kind {test['kind']!r} needs the `power` block (the MDE line, PLAN3 §4.5)")
+    if test["kind"] == "marginal":
+        if not isinstance(core, dict) or not core.get("family"):
+            raise ValueError("test.kind 'marginal' needs core: {family, variant (headline), k (1.0)}")
+        extra = set(core) - {"family", "variant", "k"}
+        if extra:
+            raise ValueError(f"core takes family, variant and k; got {sorted(extra)}")
+        for v in variants:
+            kk = (v.core or {}).get("k", 1.0)
+            if isinstance(kk, bool) or not isinstance(kk, (int, float)) or not kk > 0:
+                raise ValueError(f"variant {v.label!r}: core.k must be a number > 0, got {kk!r}")
+    elif core is not None:
+        raise ValueError("`core` is read by test.kind 'marginal' only")
     states = list(doc.get("state_splits") or [])
     bad = [s for s in states if s not in STATE_SPLITS]
     if bad:
@@ -404,15 +456,59 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
                              "family or of a sample split")  # fmt: skip
     reg = doc.get("registered")
     fam = FamilySpec(fid, doc, Path(path) if path else None, instruments, basket, tf, window, variants, bench,
-                     floors, test, states, response, samples, budget, reg)  # fmt: skip
+                     floors, test, states, response, samples, budget, reg, power=power, core=core)  # fmt: skip
     fam.cells = {v.label: make_cells(fam, v.config, *window) for v in variants}
+    fam.account = _account(doc.get("account"), fam.cells[HEADLINE][0].config().INIT_CASH)
     seen: dict[str, str] = {}
     for v in variants:  # a variant identical to the headline or to another variant would pad the coherence share
-        key = json.dumps(sorted(c.spec_json() for c in fam.cells[v.label]))
+        key = json.dumps([sorted(c.spec_json() for c in fam.cells[v.label]), v.core], sort_keys=True)
         if key in seen:
             raise ValueError(f"variant {v.label!r} runs the same configuration as {seen[key]!r}")
         seen[key] = v.label
     return fam
+
+
+def _power(block, test: dict) -> dict | None:
+    """The MDE line (PLAN3 §4.5): validated against families.power.mde_alpha; a family expecting less than its MDE
+    must declare itself a diagnostic."""
+    if block is None:
+        return None
+    from families.power import mde_alpha
+
+    if (
+        not isinstance(block, dict)
+        or set(block) - POWER_KEYS
+        or not {"n_days", "vol_ann", "families", "mde_alpha_bp_per_day", "expected_alpha_bp_per_day"} <= set(block)
+    ):
+        raise ValueError(f"power takes n_days, vol_ann, families, mde_alpha_bp_per_day, expected_alpha_bp_per_day "
+                         f"and diagnostic; got {block!r}")  # fmt: skip
+    n, vol, fams = int(block["n_days"]), float(block["vol_ann"]), int(block["families"])
+    ref = mde_alpha(n, vol, alpha=test["alpha"], families=fams, sided=test["sided"])
+    rec, exp = float(block["mde_alpha_bp_per_day"]), float(block["expected_alpha_bp_per_day"])
+    if abs(rec - ref["mde_bp_per_day"]) > MDE_TOLERANCE * ref["mde_bp_per_day"]:
+        raise ValueError(f"power.mde_alpha_bp_per_day {rec} disagrees with families.power.mde_alpha "
+                         f"{ref['mde_bp_per_day']:.3f} (n {n}, vol {vol}, {fams} families, {test['sided']}-sided)")  # fmt: skip
+    diag = bool(block.get("diagnostic", False))
+    if exp < ref["mde_bp_per_day"] and not diag:
+        raise ValueError(f"expected alpha {exp} bp/day is below the MDE {ref['mde_bp_per_day']:.2f}: register the "
+                         "family as a diagnostic (power.diagnostic: true), not as a test")  # fmt: skip
+    return {**ref, "mde_alpha_bp_per_day": rec, "expected_alpha_bp_per_day": exp, "diagnostic": diag}
+
+
+def _account(block, init_cash: float) -> dict:
+    """The registered account: a margin account at the headline cells' INIT_CASH unless the spec says otherwise."""
+    block = dict(block or {})
+    extra = set(block) - ACCOUNT_KEYS
+    if extra:
+        raise ValueError(f"account takes kind, equity and locate_bps; got {sorted(extra)}")
+    kind = block.get("kind", "margin")
+    if kind not in ("margin", "cash"):
+        raise ValueError(f"account.kind must be 'margin' or 'cash', got {kind!r}")
+    eq = float(block.get("equity", init_cash))
+    locate = float(block.get("locate_bps", 0.0))
+    if not eq > 0 or locate < 0:
+        raise ValueError("account.equity must be > 0 and locate_bps >= 0")
+    return {"kind": kind, "equity": eq, "locate_bps": locate, "name": f"{kind}_{eq / 1000:g}k"}
 
 
 def load_family(path) -> FamilySpec:

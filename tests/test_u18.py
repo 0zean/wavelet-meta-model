@@ -228,7 +228,7 @@ class TrendSource:
     def sessions(self, end):
         return pd.bdate_range(self.START, end, inclusive="left")
 
-    def quotes_table(self, symbols):
+    def quotes_table(self, symbols, table="year"):
         return const_quotes_table(symbols, regular=lambda b: 0.5, auction={"open_auction": 0.3, "close_auction": 0.3})
 
     def exo(self, *a, **k):
@@ -298,8 +298,10 @@ def test_a_registered_spec_with_non_ascii_text_checks_as_unchanged(repo):
 def test_rolled_trades_are_one_position_for_the_per_trade_responses():
     from families.test import position_returns
 
+    # `rolled` is set on the trade whose EXIT rolled into the next entry (risk.portfolio close_lot): A's first
+    # three trades are one position (U22 fixed the chain boundary, which this test had the other way round)
     tr = pd.DataFrame({"sym": ["A", "A", "A", "B", "A"], "entry_b": [0, 1, 2, 0, 9],
-                       "rolled": [False, True, True, False, False],
+                       "rolled": [True, True, False, False, False],
                        "pnl_pct": [0.01, 0.02, -0.01, 0.03, -0.02]})  # fmt: skip
     got = sorted(position_returns(tr))
     assert got == pytest.approx(sorted([1.01 * 1.02 * 0.99 - 1, -0.02, 0.03]))

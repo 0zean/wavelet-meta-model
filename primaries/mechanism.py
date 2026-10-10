@@ -164,6 +164,11 @@ class MechanismPrimary(RulePrimary):
     TIMEFRAMES: ClassVar[tuple[str, ...]] = ()
     LONG_ONLY: ClassVar[bool] = False
     ALLOW_FLAT: ClassVar[bool] = True
+    # U22 (SPEC §21): the rule's (side, magnitude) is a target position in [−1, +1] re-evaluated at every event (a
+    # region primary's target is the mean of its cells' positions); the portfolio simulator's roll path trades only
+    # the change between consecutive targets. RunConfig then requires SIZER "rule_size" and SIZE_STEP 0, and the
+    # time exit "next_event" holds each target to the next decision (features/exits.py).
+    ALLOW_CONTINUOUS: ClassVar[bool] = False
     FEATURE_GROUPS: ClassVar[tuple[str, ...]] = ()  # groups the rule reads from X (primary_config adds them)
 
     def validate(self) -> None:  # each subclass checks its own parameters (no bar-window default rule here)

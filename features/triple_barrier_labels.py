@@ -77,6 +77,7 @@ def barrier_exits(
     *,
     vertical_bars: int,
     hold_overnight: bool,
+    slip_through: bool = False,
 ) -> pd.DataFrame:
     """
     First-touch triple-barrier outcome for each event.
@@ -97,6 +98,9 @@ def barrier_exits(
 
     Events whose holding window runs past the end of the data are dropped, and so
     are events whose entry falls in the next session unless `hold_overnight`.
+    `slip_through` (U22, SPEC §20; a stop that is not filled at its price): a sided event's intrabar touch fills at
+    the worse, for the side, of the barrier and the next bar's open, at that next bar when the open is worse (never
+    across a session without `hold_overnight`; gap fills and unsided events are unchanged).
 
     Args:
         df (pd.DataFrame): OHLC data with a DatetimeIndex.
@@ -181,6 +185,14 @@ def barrier_exits(
 
     exit_px = np.select([goes_up, goes_dn, tie_close], [up_px, dn_px, close[xp]], default=close[xp])
     barrier = np.select([goes_up, goes_dn, tie_close], ["upper", "lower", "tie"], default="vertical")
+    if slip_through and touched.any():
+        nxt = np.minimum(xp + 1, n - 1)
+        gap = exit_px == open_[xp]  # a bar that opened beyond the barrier filled at its open: not a stop
+        can = touched & ~gap & (sd != 0) & (xp + 1 <= n - 1) & (xp + 1 <= session_last[e])
+        worse = np.where(sd > 0, np.minimum(exit_px, open_[nxt]), np.maximum(exit_px, open_[nxt]))
+        moved = can & (worse != exit_px)
+        exit_px = np.where(moved, open_[nxt], exit_px)
+        xp = np.where(moved, nxt, xp)
     ret = exit_px / entry - 1.0
 
     return pd.DataFrame(

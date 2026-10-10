@@ -33,7 +33,11 @@ CELLS = {
 }
 OLD_SWITCHES = {"ZOO_FIXED_PARAMS": {}, "CALIBRATION": "crossfit", "OOF_META": "refit", "PWFO_COMBINE": "nested",
                 "COST_MODEL": "slippage", "VOL_PROFILE": "none", "EVENT_SAMPLER": "cusum",
-                "EXIT_MODEL": "triple_barrier"}  # fmt: skip
+                "EXIT_MODEL": "triple_barrier",
+                # U22 (SPEC §20): auction prints, the as-of cost table, the T-bill cash yield, stress costs
+                "FILL_AUCTION": "last_bar", "COST_TABLE": "year", "CASH_YIELD": "none", "STRESS_MULT": 1.0,
+                "SLIPPAGE_BP": {"open": 1.0, "intra": 1.0, "close": 1.0}, "MOC_SIZE_FROM": "fill",
+                "SESSION_CLOCK": "data"}  # fmt: skip
 
 
 def file_hash(path: Path) -> str:

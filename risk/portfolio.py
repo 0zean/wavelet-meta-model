@@ -49,6 +49,22 @@ Scheduled entries (SPEC §16, U16):
   its entry fill). A new bet on the same side with the same committed fraction keeps the old shares (q_new = q_old):
   an unchanged position is held through the rebalance, untraded and at no cost.
 
+U22 (SPEC §20):
+- Auction prints. With cfg.FILL_AUCTION "print" and `prints` (symbol → data.bars.load_prints frame) every fill at an
+  opening / closing auction bar (risk.costs.auction_flags: MOO entries, exits and flattening at a 09:30 bar's open;
+  MOC entries and `vertical` exits at a closing bar) is priced at the session's official print instead of the bar's
+  open / close; a session without a print falls back to the bar price and is counted (`attrs["auction_fallbacks"]`).
+  Gap fills through a barrier and intrabar touches are never auction fills. Marks (equity) stay at bar closes.
+- A market-on-close entry sizes its shares from the last close known at the decision (the previous bar's close), not
+  from the fill price, which is unknown until the auction; `frac` records the intended fraction.
+- Cost ledger: `attrs["daily_costs"]` = per session (NY date): the session's starting equity and, per fill class
+  (risk.costs.FILL_CLASSES: open_auction, open, intra, close, close_auction), the traded notional and the one-way cost
+  paid, so a stream can be re-priced at another cost per class (the family report's cost curve, SPEC §22).
+- Cash yield: `cash_yield` (annual rate per NY session date, the 3-month T-bill as of that session) credits, at each
+  session's first bar, the free cash (max(0, min(cash, equity)) at the previous close: short proceeds beyond the
+  equity earn nothing) × rate of the previous session × calendar days / 360 (`attrs["cash_interest"]`).
+- `sessions` (symbol → the exchange calendar's session dates) is the time model's session clock (features.exits).
+
 With profile "none" on one symbol this is bit-identical to wfo.backtest.simulate_trades + equity_curve.
 """
 
@@ -74,14 +90,14 @@ class _Lot:
     entry_b: int  # union bar of the entry
 
 
-def _bets(bars, signals, cfg, side_col, size_col) -> pd.DataFrame:
+def _bets(bars, signals, cfg, side_col, size_col, sessions=None) -> pd.DataFrame:
     """All candidate bets across symbols with their local and union positions, in (union entry, symbol) order."""
     frames = []
     for sym, df in bars.items():
         sig = signals[sym]
         sig = sig[(sig.index >= df.index[0]) & (sig.index <= df.index[-1])]
         cand = _candidates(sig, side_col, size_col, cfg.SIZE_STEP)
-        ex = _exits(df, cand, cfg)
+        ex = _exits(df, cand, cfg, None if sessions is None else sessions.get(sym))
         ex["side"] = cand.loc[ex.index, "side"].astype(int)
         ex["size"] = cand.loc[ex.index, "size"]
         ex["sym"] = sym
@@ -105,6 +121,9 @@ def simulate_portfolio(
     side_col: str = "trade_signal",
     size_col: str | None = "bet_size",
     costs: dict[str, pd.DataFrame] | None = None,
+    prints: dict[str, pd.DataFrame | None] | None = None,
+    cash_yield: pd.Series | None = None,
+    sessions: dict[str, pd.DatetimeIndex] | None = None,
 ) -> tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
     """
     Portfolio backtest (see the module docstring).
@@ -117,6 +136,10 @@ def simulate_portfolio(
         side_col / size_col: Side {-1, 0, 1} and raw bet-size columns (size_col None → m = 1).
         costs: symbol → one-way cost fraction per bar of bars[symbol] by fill kind (columns open / intra / close,
             risk.costs.fill_costs); None = SLIPPAGE_PCT on every fill.
+        prints: symbol → auction prints (data.bars.load_prints; None for a symbol without), read under
+            cfg.FILL_AUCTION "print" (module docstring).
+        cash_yield: annual rate per NY session date credited on free cash (module docstring); None = no yield.
+        sessions: symbol → the exchange calendar's session dates (the time model's session clock); None = the data's.
 
     Returns:
         (equity, trades, log): close-marked equity on the union timeline (attrs "turnover", "exposure" = share of
@@ -135,6 +158,8 @@ def simulate_portfolio(
         raise ValueError("bars and signals must have the same symbols")
     if costs is not None and set(costs) != set(bars):
         raise ValueError("costs must hold a cost frame for every symbol")
+    from data.timeframes import get_timeframe
+    from risk.costs import FILL_CLASSES, auction_flags
 
     syms = sorted(bars)
     union = bars[syms[0]].index
@@ -160,8 +185,66 @@ def simulate_portfolio(
             for k in fc[s]:
                 fc[s][k][loc[s]] = c[k].to_numpy()
     slip = cfg.SLIPPAGE_PCT
+    # U22: auction bars per symbol on the union timeline, and the official prints where FILL_AUCTION reads them
+    minutes = get_timeframe(cfg.TIMEFRAME).minutes
+    use_prints = cfg.FILL_AUCTION == "print"
+    auc_open, auc_close, pr_open, pr_close = {}, {}, {}, {}
+    for s in syms:
+        io_, ic_ = auction_flags(bars[s].index, minutes)
+        auc_open[s], auc_close[s] = np.zeros(n, bool), np.zeros(n, bool)
+        auc_open[s][loc[s]], auc_close[s][loc[s]] = io_, ic_
+        pr_open[s], pr_close[s] = np.full(n, np.nan), np.full(n, np.nan)
+        pr = None if prints is None else prints.get(s)
+        if use_prints and pr is not None and len(pr):
+            pidx = pd.DatetimeIndex(pr.index)
+            pday = (pidx.tz_convert("America/New_York").tz_localize(None) if pidx.tz is not None else pidx).normalize()
+            bidx = bars[s].index
+            bday = (bidx.tz_convert("America/New_York").tz_localize(None) if bidx.tz is not None else bidx).normalize()
+            po = pd.Series(pr["open"].to_numpy(dtype=float), index=pday).reindex(bday).to_numpy()
+            pc = pd.Series(pr["close"].to_numpy(dtype=float), index=pday).reindex(bday).to_numpy()
+            pr_open[s][loc[s]] = np.where(io_, po, np.nan)
+            pr_close[s][loc[s]] = np.where(ic_, pc, np.nan)
+    fallbacks = 0
 
-    bets = _bets(bars, signals, cfg, side_col, size_col)
+    def px_open(s: str, b: int) -> float:
+        """Reference price of an open fill at bar b: the opening print at an opening-auction bar (FILL_AUCTION print),
+        else the bar's open (counted as a fallback at an auction bar without a print)."""
+        nonlocal fallbacks
+        if use_prints and auc_open[s][b]:
+            v = pr_open[s][b]
+            if not np.isnan(v):
+                return float(v)
+            fallbacks += 1
+        return opn[s][b]
+
+    def px_close(s: str, b: int) -> float:
+        nonlocal fallbacks
+        if use_prints and auc_close[s][b]:
+            v = pr_close[s][b]
+            if not np.isnan(v):
+                return float(v)
+            fallbacks += 1
+        return cls[s][b]
+
+    def fill_class(s: str, b: int, kind: str) -> str:
+        if kind == "open" and auc_open[s][b]:
+            return "open_auction"
+        if kind == "close" and auc_close[s][b]:
+            return "close_auction"
+        return kind
+
+    book_notional = {k: np.zeros(n) for k in FILL_CLASSES}
+    book_cost = {k: np.zeros(n) for k in FILL_CLASSES}
+    rate = None
+    if cash_yield is not None:
+        cy = pd.Series(cash_yield, dtype=float)
+        cidx = pd.DatetimeIndex(cy.index)
+        cidx = (cidx.tz_convert("America/New_York").tz_localize(None) if cidx.tz is not None else cidx).normalize()
+        rate = pd.Series(cy.to_numpy(), index=cidx)
+    sess_day = session.tz_localize(None) if session.tz is not None else session
+    interest_total, yield_missing = 0.0, 0
+
+    bets = _bets(bars, signals, cfg, side_col, size_col, sessions)
     if len(bets):
         bets["entry_b"] = [loc[s][p] for s, p in zip(bets["sym"], bets["entry_pos"])]
         bets["exit_b"] = [loc[s][p] for s, p in zip(bets["sym"], bets["exit_pos"])]
@@ -196,6 +279,15 @@ def simulate_portfolio(
         if b_exit_b[bet] != b or b_phase[bet] > entry_phase:
             return False
         return b_barrier[bet] in ("time", "hysteresis") or (b_barrier[bet] == "vertical" and cfg.EXIT_MODEL == "time")
+
+    def exit_px(i: int, s: str, b: int) -> float:
+        """The exit's reference price: an auction print for a MOC (`vertical` at a closing bar) or MOO (`time` at an
+        opening bar) exit under FILL_AUCTION print, else the exit model's price."""
+        if b_barrier[i] == "vertical" and auc_close[s][b]:
+            return px_close(s, b)
+        if b_barrier[i] in ("time", "hysteresis") and auc_open[s][b]:
+            return px_open(s, b)
+        return float(b_exit_px[i])
 
     cash = float(cfg.INIT_CASH)
     lots: dict[str, _Lot] = {}
@@ -236,6 +328,9 @@ def simulate_portfolio(
             turnover += q * fill / E
             notional += q * px
             cost_cash += q * px * c
+            fcls = fill_class(s, b, kind)
+            book_notional[fcls][b] += q * px
+            book_cost[fcls][b] += q * px * c
         cash += pnl
         info = open_info[s]
         info["pnl"] += pnl
@@ -267,7 +362,10 @@ def simulate_portfolio(
         side = int(b_side[i])
         c_in = cost(s, b, kind)
         fill = px * (1.0 + side * c_in)
-        qty = f * E_dec / fill
+        # a market-on-close order is sized from the last close known at the decision (the previous bar's close); an
+        # open fill keeps sizing from its fill (the U7–U18 convention)
+        ref = mark[s] if kind == "close" and cfg.MOC_SIZE_FROM == "decision" and not np.isnan(mark[s]) else px
+        qty = f * E_dec / (ref * (1.0 + side * c_in))
         if roll:
             old = lots[s]
             if side == old.side and abs(f - open_info[s]["frac"]) <= 1e-12:
@@ -278,10 +376,13 @@ def simulate_portfolio(
             fill = px * (1.0 + side * c_in)
             turnover += traded * px / E_dec
             notional += traded * px
+            book_notional[fill_class(s, b, kind)][b] += traded * px
         else:
             turnover += qty * fill / E_dec
             notional += qty * px
+            book_notional[fill_class(s, b, kind)][b] += qty * px
         cost_cash += qty * px * c_in  # a roll's c_in is already per share of the new position (the traded shares' cost)
+        book_cost[fill_class(s, b, kind)][b] += qty * px * c_in
         lots[s] = _Lot(s, i, side, qty, fill, b)
         busy_until[s] = int(b_exit_pos[i])
         open_info[s] = {
@@ -303,6 +404,17 @@ def simulate_portfolio(
 
     for b in range(n):
         here = [s for s in syms if has[s][b]]
+        if rate is not None and new_session[b] and b > 0:  # interest on the free cash held over the gap (ACT/360)
+            r = rate.get(sess_day[b - 1], np.nan)
+            if np.isnan(r):
+                yield_missing += 1
+            else:
+                free = max(0.0, min(cash, prev_eq))
+                interest = free * float(r) * (sess_day[b] - sess_day[b - 1]).days / 360.0
+                cash += interest
+                prev_eq += interest
+                hwm = max(hwm, prev_eq)
+                interest_total += interest
         # ── decisions at close[b−1]: every input is known at that close (prev_eq, hwm, marks, gate flags). Positions
         # that will gap through a barrier at open[b] are unknown then: they keep their slot and exposure below.
         dd = 1.0 - prev_eq / hwm
@@ -373,26 +485,26 @@ def simulate_portfolio(
         for s in here:
             lt = lots.get(s)
             if lt is not None and b_exit_b[lt.bet] == b and b_phase[lt.bet] == 0 and s not in rolls:
-                close_lot(s, b, b_exit_px[lt.bet], "barrier", "open")
+                close_lot(s, b, exit_px(lt.bet, s, b), "barrier", "open")
         # (2) gate flattening at this symbol's next open
         for s in here:
             if s in flatten:
                 flatten.discard(s)
                 if s in lots:
-                    close_lot(s, b, opn[s][b], "gate", "open")
+                    close_lot(s, b, px_open(s, b), "gate", "open")
                     busy_until[s] = int(np.searchsorted(loc[s], b))
         # (3) drift trims (a position that already gapped out at this open has nothing left to trim)
         for s in [s for s in scale if scale[s] < 1.0 and s in lots and s not in rolls]:
             if scale[s] <= 0:
-                close_lot(s, b, opn[s][b], "trim", "open")
+                close_lot(s, b, px_open(s, b), "trim", "open")
                 busy_until[s] = int(np.searchsorted(loc[s], b))
             else:
-                close_lot(s, b, opn[s][b], "trim", "open", frac_of_lot=1.0 - scale[s])
+                close_lot(s, b, px_open(s, b), "trim", "open", frac_of_lot=1.0 - scale[s])
         # (4) entries at the open
         if cand and not close_entry:
             for f, s, i in cand:
                 if f > 0:
-                    enter(f, s, i, b, opn[s][b], "open", E_dec, s in rolls)
+                    enter(f, s, i, b, px_open(s, b), "open", E_dec, s in rolls)
         # post-open exposure on decision-time marks (entries at their committed fraction)
         if lots:
             ex = [
@@ -407,13 +519,16 @@ def simulate_portfolio(
         for phase in (1, 2):
             for s in sorted((s for s in here if s in lots), key=lambda s: lots[s].bet):
                 lt = lots[s]
-                if b_exit_b[lt.bet] == b and b_phase[lt.bet] == phase and not (phase == 2 and s in rolls):
-                    close_lot(s, b, b_exit_px[lt.bet], "barrier", "intra" if phase == 1 else "close")
+                # a lot that a market-on-close entry rolls at this close is closed by that roll, not here; a lot
+                # entered at this bar's open (a roll at phase 0) may still exit at its close (U22: `next_event`)
+                if b_exit_b[lt.bet] == b and b_phase[lt.bet] == phase and not (phase == 2 and close_entry
+                                                                             and s in rolls):  # fmt: skip
+                    close_lot(s, b, exit_px(lt.bet, s, b), "barrier", "intra" if phase == 1 else "close")
         # (7) market-on-close entries at the close
         if cand and close_entry:
             for f, s, i in cand:
                 if f > 0:
-                    enter(f, s, i, b, cls[s][b], "close", E_dec, s in rolls)
+                    enter(f, s, i, b, px_close(s, b), "close", E_dec, s in rolls)
             in_bar |= bool(lots)
         # ── close: marks, equity, drawdown, gate ────────────────────────────────────────────────────
         for s in here:
@@ -443,6 +558,20 @@ def simulate_portfolio(
     out.attrs["avg_position"] = pos_sum / pos_bars if pos_bars else np.nan
     out.attrs["traded_notional"] = notional  # the family test's edge-to-cost floor (SPEC §17.2)
     out.attrs["cost_paid"] = cost_cash
+    out.attrs["auction_fallbacks"] = fallbacks
+    out.attrs["cash_interest"] = interest_total
+    out.attrs["cash_yield_missing_sessions"] = yield_missing
+    # the per-session cost ledger (module docstring): starting equity = the previous session's last close (the
+    # initial cash for the first), notional and cost paid per fill class
+    sid = np.cumsum(new_session) - 1
+    firsts = np.flatnonzero(new_session)
+    eq_prev = np.r_[float(cfg.INIT_CASH), equity[:-1]]
+    daily = {"equity_start": eq_prev[firsts]}
+    for k in FILL_CLASSES:
+        daily[f"notional_{k}"] = np.bincount(sid, weights=book_notional[k], minlength=len(firsts))
+    for k in FILL_CLASSES:
+        daily[f"cost_{k}"] = np.bincount(sid, weights=book_cost[k], minlength=len(firsts))
+    out.attrs["daily_costs"] = pd.DataFrame(daily, index=pd.DatetimeIndex(sess_day[firsts], name="session"))
     tr = pd.DataFrame(trades)
     if len(tr):
         tr["pnl_pct"] = tr["side"] * (tr["exit_fill"] / tr["entry_fill"] - 1.0)

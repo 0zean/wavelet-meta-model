@@ -1,115 +1,75 @@
-# Session Handoff — U18 Phase 1 family tests (merged): all eight families fail
+# Session Handoff — U22: engine corrections and protocol v3 (branch `unit/22-engine-protocol-v3`)
 
 ## Where it started
-The user asked me to review `handoff.md` (U17 merged as PR #19; the XGBoost thread fix merged as PR #20) and begin U18
-per PLAN2.md. U18 is complete and merged as PR #21 (merge commit aa922fb). Every pre-registered hypothesis family was
-tested once on the development window (2016-01-04 → 2025-09-30). **None passes**, so U19 (ML overlay) and U20 (paper
-trading) have nothing to work on.
+PR #22 (PLAN3) was merged; `main` checked out. The user asked to begin U22 per PLAN3 §5 and gave decisions: Algo Trader
+Plus will be bought before U27 (details to come), G5's point-in-time universe purchase still under consideration, G6
+will run, `INIT_CASH` $30k agreed. U22 was built in full on `unit/22-engine-protocol-v3`; SPEC §20–§22 describe the
+as-built engine; PLAN3 §5 U22 lists every done-when with its evidence; PLAN3 §9 is the status line.
 
-## Results (program summary: `results/families/program_summary.md`)
-
-| family | Sharpe vs equal-risk B&H | Δ (95 % CI) | p (Holm) | fails on |
-|---|---|---|---|---|
-| F1 vol-managed | 0.92 vs 0.83 | +0.09 (−0.22 … 0.40) | 0.55 (1.00) | p; net-return floor (11.5 % vs 12.0 %) |
-| F2 TSMOM basket | 0.23 vs 0.86 | −0.63 (−1.65 … 0.38) | 0.21 (0.83) | p; floor; coherence |
-| F3 overnight | 0.72 vs 0.90 | −0.18 (−0.72 … 0.36) | 0.50 (1.00) | p; floor; coherence |
-| F4 calendar | 0.57 vs 0.67 | −0.10 (−0.91 … 0.71) | 0.81 (1.00) | p; coherence |
-| F5 intraday momentum | −0.12 vs 0.83 | −0.95 (−2.00 … 0.10) | 0.07 (0.43) | p; floors (gross edge 0.8× cost) |
-| F7 gap fade | −0.69 vs 0.87 | −1.55 (−2.55 … −0.56) | 0.006 (0.044) | significantly worse than B&H (sign verified by hand) |
-| F8 macro reaction | −0.29 vs 0.71 | −0.99 (−2.06 … 0.07) | 0.07 (0.43) | p; floors (gross edge negative) |
-| F11 U11 cells, tod σ | −0.30 vs 0.99 | −1.29 (−2.34 … −0.24) | 0.02 (0.13) | p; floors; coherence |
-
-- Program: 8 / 8 families, 44 / 112 trials. F10 was not run (its cross-sectional rank is not built).
-- F11 answers its closure question: deseasonalized volatility reveals no edge in the best U11 cells. The paired tod −
-  plain σ difference is −0.40 (p 0.29) at 30Min and −0.11 (p 0.77) at 1Hour. It is not significantly worse either, so
-  do not say "tod made it worse".
-- Published as a private artifact: https://claude.ai/artifact/5ca2XK2Zc4uGoUdcbLMF5v (version 2, includes F11). To
-  update it, regenerate it with the session scratchpad script `make_summary_page.py`, which is not in the repo.
-
-## Decisions locked (user)
-- **Benchmark** `buy_and_hold_er` for every family (PLAN2 said EW): it matches the pooled streams' equal-risk weights.
-- **Risk profile.** `none` for single-instrument families, `basket` for F2. PLAN2 named `standard`, whose 20 %
-  position cap, drawdown tiers and loss gate would have replaced the rules under test.
-- **F2 not amended.** The review found that its construction caps low-vol assets at m = 1, so the bond / credit /
-  dollar sleeve carries ~0.6–0.7 of the other assets' risk, which is not PLAN2's equal-risk basket. The user chose to
-  keep F2 closed as registered.
-- **Approval before registration.** Each spec batch was approved by the user before registering: F1–F4 at e19b44f,
-  F5/F7/F8 at dd8228d, F11 at ce5dcd2.
-- **Smoke runs.** From the second round on, they ran only after the spec commit, on short early windows, status only.
-
-## What shipped (SPEC §17.6 has the as-built detail)
-- **calendar_drift** takes a window list: one position over the union of windows (schedule `windows`, daily MOC
-  entries rolled, never stacked).
-- **`basket` risk profile**: gross ≤ 1, each side ≤ 1, 50 bp/yr borrow. A basket family's sample split runs its own
-  cell against its own benchmark.
-- **Family spec keys**:
-  - `per_instrument` patches;
-  - per-variant `timeframe`;
-  - `legs`: one cell per instrument and leg, summed per instrument, and the run refuses legs that overlap in time on
-    any bar;
-  - model cells (`model`, `feature_groups`, `pwfo`, `meta_train`, `seed`).
-- **Stage F** may hold model cells. Every family-stage cell counts 0 trials; the variant row counts 1.
-- **Edge-floor totals**: WFO and `average` PWFO rows carry pnl / cost_paid / traded_notional / init_cash, and rule
-  cells' trades.csv carry entry_time / exit_time.
-- **Fixes**:
-  - registration decoded `git show` with cp1252, which refused a spec containing non-ASCII text;
-  - the summary DSR is recomputed with the program's trials at summary time;
-  - the coherence column shows the verdict;
-  - a chain of rolled trades counts as one position;
-  - families sort naturally.
-- `tests/test_u18.py` has 23 tests.
-
-## Key files
-- `families/F1.yaml` … `F5.yaml`, `F7.yaml`, `F8.yaml`, `F11.yaml`. Each header lists its choices and its deviations
-  from PLAN2.
-- `results/families/<id>/` (report.md / .html, result.json, streams.csv, spec_curve.png) and `program_summary.*`.
-- `results/ledger.jsonl`, the canonical program ledger, holds every family variant row and its member cells.
-- PLAN2.md U18 status note: three rounds, each with its review findings.
-- Memory files touched: none.
-
-## Running state
-- `main` = aa922fb (PR #21 merged). The local branch `unit/18-family-dev-tests` and its remote are kept.
-- Background processes: none.
-- Data caches were topped up to 2026-09-30 by the quasi-holdout cells and committed: DIA, IWM, QQQ, GLD, TLT, XLK.
-  TLT's whole history was re-adjusted for a dividend partway through the program (×0.996), so F1's tlt_gld split and
-  F4's dev TLT leg ran on the old vintage.
-- Scratch (disposable) in the session scratchpad:
-  - smoke runs: `smoke18/`, `smoke18b/`, `smoke18c/`;
-  - reviewer probes: `review18/`, `review18b/`, `review18c/`;
-  - U12 parity: `parity18/`;
-  - the artifact page and its generator.
+## What shipped (SPEC §20–§22 have the detail)
+- **Auction prints.** Native `1DayPrint` timeframe (Alpaca daily open / close = the official prints; H/L/volume
+  include extended hours and are unused), `data.bars.load_prints`, cached for the 30-symbol universe through
+  2026-09-30. `RunConfig.FILL_AUCTION` (`print` default, `last_bar` regression): the simulator prices every auction
+  fill at the print, counts fallbacks. Print vs 15:55 bar close: median 0.7–1.3 bp, no sign, up to 288 bp in March
+  2020. F3 / F5 re-run under print: Sharpe −0.017 / −0.042.
+- **Costs.** `SLIPPAGE_BP` per fill kind (or `measured`), `COST_TABLE=asof` (`data/costs/quotes_half_spread_asof.csv`,
+  trailing four completed sample weeks per quarter; fills before 2016-04-01 use the first table, counted),
+  `STRESS_MULT` on previous-VIX ≥ 30 sessions, `CASH_YIELD=tbill` (FRED DTB3 cached, ACT/360 on free cash), the
+  per-session cost ledger by fill class (`daily_costs.csv`) and `families.test.reprice` → the report's cost curve
+  (registered / 0.3 / 1.0 / 2.3 bp / measured). MOC orders are sized from the previous bar's close.
+- **Account profile** `risk/account.py`: PDT rule, Reg-T buying power, cash settlement / no shorts, locate estimate;
+  flags only, never changes a P&L. F5 on $10k: PDT violation from 2016-04-06 (98.7 % of its day trades blocked); on
+  $30k tradable.
+- **Protocol v3** (`families/`): `test.kind` overlay_alpha | marginal | sharpe_vs_benchmark, `sided`, `at_cost`;
+  excess returns everywhere; `power` block with the MDE line (`families/power.py`; the spec loader checks it);
+  `core` for marginal; `account`; benchmarks `constant_mix_ew/er` (PLAN2 names are aliases), drifting `buy_and_hold`;
+  `families/looks.jsonl` (K₀ = 60 seeded; `python -m families look`); DSR out of the verdict; `program.yaml` scoped
+  to G1, G2, G3, G5, G6 (5 families / 42 trials); ex-ante weights (first 252 sessions when the window starts with
+  the data); N_eff; cells coherence hook for U23.
+- **Engine-audit items.** Generic fill-timing test + the ENTRY / EXIT_HYST mutants fail it; per-event causality test
+  + the VOL mutant fails it; `data/fetch.py` defaults to HOLDOUT_START and logs forward fetches; eleven ETF caches
+  truncated with records in `data/cache/forward_access.jsonl`; exchange-calendar session clock (`session_clock`,
+  threaded through sampler / exits / rule pass / runner); `slip_through` barrier option; `ALLOW_CONTINUOUS` primaries
+  with the `next_event` time exit (the simulator's roll path trades only the change; verified by hand).
+- **Fix found on the way.** `position_returns` grouped the last leg of a chain with the first of the next (the `rolled`
+  flag marks the trade whose EXIT rolled); `families.test.chain_ids` fixes it, `risk.account` uses it (and ends a
+  position at a side flip); the test_u18 synthetic case was corrected to the simulator convention.
+- Statistics: overlay-alpha size 0.050 (iid) / 0.045 (GARCH-t) over 1,000 sims; power 0.905 at 3 bp/day, 0.795 at
+  the analytic MDE; MDE at Holm over 4 families 3.17 bp/day (Sharpe 1.0).
 
 ## Verification — how to confirm things still work
-- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q`: 772 passed (~7 min). Run it in
-  the foreground or into a log file; piping a background run through `tail` lost its output twice.
-- `uvx ruff check . && uvx ruff format --check .`: clean.
-- U12 parity: `uv run python scripts/u12_parity.py spec P/parity.yaml`, then
-  `python -m experiments --root P --ledger P/ledger.jsonl run P/parity.yaml --jobs 8`, then
-  `scripts/u12_parity.py check P P/ledger.jsonl`. PASS (8/8).
-- Re-verify a family's registration:
-  `uv run python -c "from families.spec import check_registered as c; print(c('families/F11.yaml'))"`.
-- Regenerate the summary: `PYTHONIOENCODING=utf-8 MPLBACKEND=Agg uv run python -m families summary`.
+- `uvx ruff check . && uvx ruff format --check .` — clean.
+- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — 804 passed
+  (6 min) on the final code, after the adversarial review fixes.
+- Adversarial review (one pass) found two BREAKING, two SEVERE and six MINOR items, all fixed: the account module
+  grouped rolled chains with the old convention (and ignored side flips), the edge floor counted T-bill interest as
+  edge, F3 did not reproduce under the old switches (MOC sizing and the session clock now have switches
+  `MOC_SIZE_FROM` / `SESSION_CLOCK`), the legacy backtest path dropped prints and the yield (`portfolio_path` now
+  routes them), plus the minor items listed in PLAN3 §5 U22. F3 and F5 now reproduce bit for bit under the old
+  switches; the print-only effect is F3 Sharpe 0.725 → 0.707, F5 −0.122 → −0.164.
+- `uv run python scripts/u22_checks.py prints | f5-parity ROOT | print-rerun ROOT | power | tilt | account | mde`.
+- U12 parity: `scripts/u12_parity.py spec` → `python -m experiments --root R --ledger R/ledger.jsonl run` →
+  `scripts/u12_parity.py check` (OLD_SWITCHES now pin the five U22 switches).
 
-## Deferred and known caveats (all disclosed in the PLAN2 U18 note)
-- **Close fills.** "MOC" fills are priced at the last 5Min bar's close (the last continuous trade before 16:00), not
-  the closing-auction print. This affects F3, F4 and F5. U20's reconciliation would measure it.
-- **Size rounding.** SIZE_STEP 0.1 rounds rule magnitudes, so m < 0.05 is never traded: about 12 % of F8's events,
-  and F5's thr0 behaves as an implicit 0.05σ threshold.
-- **`abs_move_tercile`** uses the same day's |benchmark move|, so it is outcome-conditioned for intraday legs.
-- **PWFO cost totals** cover each combo's full OOS span while the stream covers only the common span (F11 edge/cost
-  ≈ 0.70 vs 0.78).
-- **XLK** carries about 4 % of F11's pooled risk.
-- **Quasi-holdout benchmark** drops its first day (2025-10-01) in every family; reported slices only.
-- **Borrow** is charged for bars held + 1 (≈ 20 % over on weekly shorts, ~0.03 %/yr).
-- **Not built**: F10's cross-sectional rank, `path_monotone`, the gamma proxy, stage G (U19).
+## Key files for next session
+- `PLAN3.md` §5 U23 is the next unit (kernels + region primary); SPEC §21 states what U22 built for it
+  (`ALLOW_CONTINUOUS`, `next_event`, `cells_coherence`, the cost curve).
+- `families/test.py`, `families/run.py` (rewritten), `risk/portfolio.py` (prints, ledger, yield), `risk/account.py`,
+  `families/power.py`, `families/looks.py`, `scripts/u22_checks.py`, `tests/test_u22.py`.
+- Scratch outputs of this session (may not survive): `…\scratchpad\f5_parity`, `print_rerun`, `u12`, `review`.
 
-## Open (the user's call)
-- **The program's next step.** All family slots are used and nothing passed. Continuing means amending the program
-  (e.g. raising `families/program.yaml`'s family cap for new hypotheses, which needs new PLAN2 text) rather than
-  running U19 / U20 as planned. The alternative is to close the program with the null as its result.
-- **The handoff commit is unpushed.** This handoff update is committed on local `main` and not pushed.
-- **Remote branches.** Whether to delete the remote `origin/unit/*` branches (carried over).
+## Running state
+- No experiment runs on the canonical ledger; the scratch runs wrote their own ledgers under the session scratchpad.
+- Branch `unit/22-engine-protocol-v3` (from `main` at 682effe); PR to open at the end of the session.
+
+## Deferred + open questions
+- Deferred: the region primary, kernels and `position_backtest` (U23); the measured cost profile files
+  (`data/costs/measured_slippage.csv`, `measured_cost.csv`) are written by U27; `tf_state` / gamma proxy (U26).
+- Open (user): Algo Trader Plus details before U27; the G5 data purchase; the eleven truncated caches are
+  re-fetchable (`python -m data.fetch --end 2026-10-10 …` logs a forward fetch) if ever needed.
+- Open: delete remote `origin/unit/*` branches (carried over).
 
 ## Pick up here
-Ask the user how to proceed with the program, given that every family failed. Do not start U19 or U20: there is no
-passing family to overlay or paper-trade.
+Merge the U22 PR (user's call), then start U23 per PLAN3 §5 on `unit/23-intraday-kernels`: `features/kernels.py`
+(rmedv_all, sg_velocity_all, band_state, session_vwap), `primaries/region.py` (`region_trend`, `ALLOW_CONTINUOUS`,
+`next_event`), `wfo/position_backtest.py` with the parity test, `scripts/u23_kernels.py` budgets.

@@ -20,7 +20,9 @@ from wfo import wfo_engine
 from wfo.backtest import equity_curve, run_backtest, simulate_positions, simulate_trades
 from wfo.wfo_engine import purged, run_wfo, wfo_folds
 
-CFG = RunConfig.for_timeframe("1Day", COST_MODEL="slippage")
+# the pre-U7 single-position path: U22 routes auction prints and the cash yield through the portfolio simulator,
+# so the legacy comparison pins those switches at their old values (scripts/u12_parity.py OLD_SWITCHES)
+CFG = RunConfig.for_timeframe("1Day", COST_MODEL="slippage", FILL_AUCTION="last_bar", CASH_YIELD="none")
 RNG = np.random.default_rng(0)
 P_TRAIN = RNG.uniform(0.3, 0.85, 400)
 RET_TRAIN = RNG.normal(0.001, 0.02, 400)

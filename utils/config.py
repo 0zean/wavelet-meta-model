@@ -10,6 +10,7 @@ there is no module-level config instance. Build one with:
 """
 
 import copy
+import math
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
@@ -17,6 +18,10 @@ import pandas as pd
 
 SEED = 42
 SLIPPAGE_PCT = 0.0001  # 1 basis point (1-way)
+# U22 (SPEC §20): slippage per side in bp by fill kind for the quotes cost model (the U18 value on every kind), and
+# the VIX level (previous session's close) from which a session is a stress session for STRESS_MULT
+DEFAULT_SLIPPAGE_BP = {"open": 1.0, "intra": 1.0, "close": 1.0}
+STRESS_VIX = 30.0
 
 
 # random_state is not set here: RunConfig.__post_init__ stamps SEED into every model's params
@@ -255,6 +260,31 @@ class RunConfig:
     # "slippage" = SLIPPAGE_PCT only (U7–U11 default). Any but "slippage" backtests through the portfolio simulator.
     COST_MODEL: Literal["slippage", "cs", "quotes"] = "quotes"
 
+    # U22 (SPEC §20). Auction fills: "print" prices every opening / closing auction fill at the official print
+    # (data.bars.load_prints: Alpaca's daily open / close) when the session's print is available, else at the bar's
+    # open / close with a counted fallback; "last_bar" = the U13–U18 behaviour (the 09:30 bar's open, the 15:55 bar's
+    # close), kept for regression.
+    FILL_AUCTION: Literal["print", "last_bar"] = "print"
+    # Slippage per side in bp by fill kind (open / intra / close) on top of the quoted half-spread for the non-auction
+    # fills of the quotes model; "measured" reads data/costs/measured_slippage.csv (U27's reconciliation). The U18
+    # value was 1 bp on every kind (SLIPPAGE_PCT, which the slippage / cs models and the sizers still read).
+    SLIPPAGE_BP: dict | str = field(default_factory=lambda: dict(DEFAULT_SLIPPAGE_BP))
+    # Multiplier on the half-spread of every fill in a stress session (the previous session's VIX close >= STRESS_VIX)
+    STRESS_MULT: float = 1.0
+    # Quotes table: "asof" prices a fill with the table built from the sample weeks completed before its quarter
+    # (data/costs/quotes_half_spread_asof.csv); "year" = the U13 per-year medians (a within-year look-ahead)
+    COST_TABLE: Literal["asof", "year"] = "asof"
+    # Idle cash earns the 3-month T-bill (FRED DTB3, point in time; credited at each session start on the free cash
+    # held over the gap, ACT/360); "none" = the U7–U18 zero yield
+    CASH_YIELD: Literal["tbill", "none"] = "tbill"
+    # A market-on-close order's shares: from the last close known at the decision ("decision", the previous bar's
+    # close) or from the fill price ("fill", the U16–U18 convention, unknown until the auction)
+    MOC_SIZE_FROM: Literal["decision", "fill"] = "decision"
+    # The schedule sampler's and time exits' session clock: the exchange calendar ("calendar": a session the data
+    # layer dropped still counts) or the sessions present in the data ("data", the U14–U18 behaviour). It changes the
+    # rule pass's events, so it stays in the signals key.
+    SESSION_CLOCK: Literal["calendar", "data"] = "calendar"
+
     # Holdout (SPEC §9): the WFO refuses data on/after data.bars.HOLDOUT_START unless True
     ALLOW_HOLDOUT: bool = False
 
@@ -294,6 +324,9 @@ class RunConfig:
             if self.SIZER not in ("fixed", "rule_size"):
                 raise ValueError(f"META_MODEL='none' has no meta-probability to size by: SIZER must be 'fixed' or "
                                  f"'rule_size', got {self.SIZER!r}")  # fmt: skip
+            if getattr(cls, "ALLOW_CONTINUOUS", False) and not (self.SIZER == "rule_size" and self.SIZE_STEP == 0):
+                raise ValueError(f"primary {self.PRIMARY!r} targets a continuous position (SPEC §21): SIZER must be "
+                                 f"'rule_size' and SIZE_STEP 0, got {self.SIZER!r} / {self.SIZE_STEP}")  # fmt: skip
             if self.POSITION_MODE != "single":
                 raise ValueError("META_MODEL='none' (the rule pass) simulates POSITION_MODE='single' only")
         if self.PRIMARY_MODEL != "legacy" and self.PRIMARY != "ml_xgb":
@@ -333,6 +366,34 @@ class RunConfig:
             raise ValueError(f"COST_MODEL must be one of ('slippage', 'cs', 'quotes'), got {self.COST_MODEL!r}")
         if self.COST_MODEL != "slippage" and self.POSITION_MODE != "single":
             raise ValueError(f"COST_MODEL={self.COST_MODEL!r} needs POSITION_MODE='single' (the portfolio simulator)")
+        if self.FILL_AUCTION not in ("print", "last_bar"):
+            raise ValueError(f"FILL_AUCTION must be 'print' or 'last_bar', got {self.FILL_AUCTION!r}")
+        sb = self.SLIPPAGE_BP
+        if isinstance(sb, str):
+            if sb != "measured":
+                raise ValueError(f"SLIPPAGE_BP must be a dict by fill kind or 'measured', got {sb!r}")
+        else:
+            if not isinstance(sb, dict) or set(sb) != set(DEFAULT_SLIPPAGE_BP):
+                raise ValueError(
+                    f"SLIPPAGE_BP must set exactly {sorted(DEFAULT_SLIPPAGE_BP)} (bp per side), got {sb!r}"
+                )
+            vals = {}
+            for k, v in sb.items():
+                if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+                    raise ValueError(f"SLIPPAGE_BP[{k!r}] must be a finite number >= 0, got {v!r}")
+                vals[k] = float(v)
+            object.__setattr__(self, "SLIPPAGE_BP", vals)
+        if isinstance(self.STRESS_MULT, bool) or not (isinstance(self.STRESS_MULT, (int, float))
+                                                     and self.STRESS_MULT >= 1):  # fmt: skip
+            raise ValueError(f"STRESS_MULT must be a number >= 1, got {self.STRESS_MULT!r}")
+        if self.COST_TABLE not in ("asof", "year"):
+            raise ValueError(f"COST_TABLE must be 'asof' or 'year', got {self.COST_TABLE!r}")
+        if self.CASH_YIELD not in ("tbill", "none"):
+            raise ValueError(f"CASH_YIELD must be 'tbill' or 'none', got {self.CASH_YIELD!r}")
+        if self.MOC_SIZE_FROM not in ("decision", "fill"):
+            raise ValueError(f"MOC_SIZE_FROM must be 'decision' or 'fill', got {self.MOC_SIZE_FROM!r}")
+        if self.SESSION_CLOCK not in ("calendar", "data"):
+            raise ValueError(f"SESSION_CLOCK must be 'calendar' or 'data', got {self.SESSION_CLOCK!r}")
         if not 0 < self.META_THRESH < 1:
             raise ValueError(f"META_THRESH must be in (0, 1), got {self.META_THRESH}")
         if self.ZOO_CV_SPLITS < 2:

@@ -422,25 +422,50 @@ runs.
 - **Diagnostics ledger.** `families/looks.jsonl` seeded with this session's K₀ = 60 (the §1 scripts, by name
   and configuration count); the scripts copied to `scripts/plan3_diagnostics/` unchanged.
 
-**Done when.**
-- [ ] Hand test: a 15:55-decided MOC fill on SPY 2024-03-04 is priced at the 1Day close (512.30) under
-      `print` and at 512.25 under `last_bar`; F3's and F5's registered headlines re-run under `print` on a
-      scratch ledger and the status note reports the change (expected within ± 0.05 Sharpe; the direction is
-      the finding).
-- [ ] Cost curve: a family report shows the four cost columns; `SLIPPAGE_BP` at 1.0 with `last_bar` and
-      `STRESS_MULT` 1.0 reproduces U18's F5 stream bit for bit.
-- [ ] Account profile: F5's registered headline on $10k is flagged as a PDT violation with the first offending
-      session; on $30k it is not; a cash-account run refuses an unsettled re-entry.
-- [ ] `overlay_alpha` has size 5 ± 1.5 % over 1,000 null simulations (iid and GARCH-t streams) and power
-      ≥ 0.8 on a planted 3 bp/day alpha at 8 % vol over 2,400 days; `marginal` reproduces the U17 Ledoit–Wolf
-      test when the overlay is zero; `families/power.py` returns the MDE used in those simulations within 10 %;
-      Sharpe on excess returns reproduces the audit's 0.11–0.28 tilt on the U18 overlays.
-- [ ] A continuous-position rule that targets +1 every bar equals buy-and-hold intraday less one entry and one
-      exit a day; a rule alternating ±1 every bar pays exactly 2 × cost × notional per bar; a region of two
-      cells with opposite positions nets to zero trades.
-- [ ] The two fill-timing mutants and the VOL mutant fail the new tests; the eleven forward-window caches are
-      truncated with a logged record.
-- [ ] U12 parity PASS with the new switches at their old values; `uv run pytest -q` green; ruff clean.
+**Done when.** (status note, 2026-10-10: every criterion with its command; SPEC §20–§22 describe the as-built)
+- [x] Hand test: a 15:55-decided MOC fill on SPY 2024-03-04 is priced at the 1Day close (512.30) under
+      `print` and at 512.25 under `last_bar` — `tests/test_u22.py::test_real_spy_2024_03_04_moc_fill…` on the cached
+      bars (adjusted prices today: print 496.04 vs 15:55 close 496.00, +0.81 bp; the five sessions 03-04 → 03-08
+      differ by 0.6–1.2 bp with no sign). F3's and F5's registered headlines re-run under `print` with every other
+      switch at its old value, on a scratch ledger (`scripts/u22_checks.py print-rerun`): F3 pooled Sharpe 0.725 →
+      0.707 (Δ −0.018; SPY 0.671 → 0.641, QQQ 0.761 → 0.756), F5 −0.122 → −0.164 (Δ −0.042; IWM −0.464 → −0.587, SPY
+      0.062 → 0.035); the direction is the finding: the auction print costs these two overlays a little, within the
+      expected ± 0.05. Every daily return changes (largest on the March 2020 closes, where the print sits up to 288 bp
+      from the 15:55 bar).
+- [x] Cost curve: `families/run.py` writes `cost_curve` (registered / 0.3 / 1.0 / 2.3 bp / measured) and the report
+      prints it (tests in `tests/test_u22.py`, `tests/test_u17.py` end to end); `SLIPPAGE_BP` 1.0 with `last_bar`,
+      `COST_TABLE=year`, `CASH_YIELD=none`, `STRESS_MULT` 1.0, `MOC_SIZE_FROM=fill` and `SESSION_CLOCK=data`
+      reproduces U18's F5 AND F3 streams bit for bit: `scripts/u22_checks.py f5-parity --family F5 | F3` → the six
+      headline cells' `daily_returns.csv` identical by sha256 (PASS; the adversarial review found the first version
+      unpinned the MOC sizing and the session clock, so F3 did not reproduce until both got switches).
+- [x] Account profile: `scripts/u22_checks.py account` — F5's registered headline on $10k is a PDT violation from
+      its first session (2016-04-06: four day trades, one per instrument; 98.7 % of its day trades would be
+      blocked); on $30k it is tradable; a cash account refuses the shorts, and `tests/test_u22.py` shows a cash
+      account refusing an unsettled re-entry (good-faith violation) on synthetic trades.
+- [x] `overlay_alpha` size and power (`scripts/u22_checks.py power --sims 1000 --n-boot 999`, 2,400 days, 8 % vol):
+      size 0.050 (iid) and 0.045 (GARCH(1,1)-t) over 1,000 null simulations; power 0.905 on a planted 3 bp/day
+      alpha (400 sims) and 0.795 at the analytic MDE of 2.56 bp/day (target 0.80: within 10 %). `marginal`
+      reproduces the paired Ledoit–Wolf test when the overlay is a − core (`tests/test_u22.py`). Sharpe on excess
+      returns (`scripts/u22_checks.py tilt`, FRED DTB3, mean 2.17 %/yr): the U18 benchmarks' Sharpe falls by
+      0.10–0.29 (F1 0.114, F3 0.110, F5 0.114, F2 0.286, F4 0.206, F8 0.207), the audit's 0.11–0.28; the overlays
+      fall further (F5 −0.12 → −0.97) because their simulated cash earned nothing — what `CASH_YIELD=tbill` now
+      credits. MDE at Holm over four families: 3.17 bp/day = 8.0 %/yr = Sharpe 1.0 (`families power`).
+- [x] A continuous-position rule that targets +1 every bar equals buy-and-hold intraday less one entry and one exit
+      a day; a rule alternating ±1 every bar pays exactly c · (q_old + q_new) · px per bar; a region of two cells with
+      opposite positions nets to zero trades (`tests/test_u22.py`, the `test_target` primary with `next_event` exits).
+- [x] The two fill-timing mutants (ENTRY, EXIT_HYST) fail `tests/test_u22.py::test_the_fill_timing_test_catches…`
+      and the VOL mutant fails the per-event causality test (`tests/test_methodology.py`); the eleven forward-window
+      caches (DBC, EEM, EFA, HYG, IEF, LQD, SLV, SVXY, USO, UUP, VNQ) were truncated to HOLDOUT_START with one
+      `truncate` record each in `data/cache/forward_access.jsonl` (`python -m data.fetch --truncate-forward`).
+- [x] U12 parity PASS with the new switches at their old values (`scripts/u12_parity.py` on the final code:
+      the four Stage C PWFO cells reproduce daily_returns.csv and returns_pwfo.csv by sha256, parity: PASS); `uv run pytest -q`: 804 passed (the full suite on the final code, 6 min); ruff clean.
+- [x] Adversarial review (one pass): two BREAKING (the account module's chain convention and a flip inside a chain;
+      the edge floor counted the cash interest as edge), two SEVERE (F3 not reproducible under the old switches: MOC
+      sizing and the session clock were unpinned; the legacy backtest path silently dropped prints and the yield) and
+      six MINOR findings — all fixed (`MOC_SIZE_FROM`, `SESSION_CLOCK`, `portfolio_path`, floors on excess returns,
+      trading P&L without interest, hysteresis open fills at the print, slip-through leaving gap fills alone, the
+      first-table counter by session, the counters surfaced in the report, exits before entries at one instant); the
+      looks ledger is a protocol, not a lock (documented).
 
 **Reviewer focus.** Auction fills that peek (the 1Day close is known only after 16:00: a `close` fill needs a
 decision bar ≤ 15:55 and the next session's `open` fill must use that session's 1Day open); cost on netted
@@ -646,4 +671,10 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
 
 ## 9. Status
 
-- U22–U31 — not started.
+- U22 — built on `unit/22-engine-protocol-v3` (2026-10-10); SPEC §20–§22 written; every done-when criterion above
+  demonstrated (U12 parity and the full suite re-run on the final code after the adversarial review's fixes). Data: auction prints cached for the 30-symbol universe through 2026-09-30
+  (`1DayPrint`), FRED DTB3 cached, the as-of quotes table built, the eleven forward caches truncated and logged.
+  `families/looks.jsonl` seeded with K₀ = 60. `families/program.yaml` scopes the caps to G1, G2, G3, G5, G6 (5 / 42).
+  User decisions received 2026-10-10: Algo Trader Plus will be bought before U27; G5's data purchase still under
+  consideration; G6 will run; `INIT_CASH` $30k agreed (account profile `margin_30k`).
+- U23–U31 — not started.

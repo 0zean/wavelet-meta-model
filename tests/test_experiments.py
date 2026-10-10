@@ -85,7 +85,7 @@ class FakeSource:
     def sessions(self, end):
         return pd.bdate_range("2000-01-03", end, inclusive="left")
 
-    def quotes_table(self, symbols):
+    def quotes_table(self, symbols, table="year"):
         from tests.test_costs import const_quotes_table
 
         return const_quotes_table(symbols)

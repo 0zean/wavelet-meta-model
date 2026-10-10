@@ -10,8 +10,11 @@ class Timeframe:
 
     Native timeframes are fetched from Alpaca as-is. Others are resampled locally
     from RTH 5Min bars anchored at the session open: Alpaca's clock-aligned hourly
-    bars would start at 09:00 and include pre-market minutes, and its daily bars
-    include extended-hours trades (closes up to ~5% off the RTH close in 2020).
+    bars would start at 09:00 and include pre-market minutes, and its daily bars'
+    high / low / volume include extended-hours trades. `1DayPrint` (U22, SPEC §20) is
+    Alpaca's native daily bar kept for its open and close only: they are the official
+    opening and closing auction prints (the closing print lies outside the 15:55 RTH
+    bar), read through data.bars.load_prints for auction fills.
     """
 
     name: str
@@ -37,7 +40,9 @@ TIMEFRAMES: dict[str, Timeframe] = {
     "30Min": Timeframe("30Min", 30, native=False, base="5Min"),
     "1Hour": Timeframe("1Hour", 60, native=False, base="5Min"),
     "1Day": Timeframe("1Day", None, native=False, base="5Min"),
+    "1DayPrint": Timeframe("1DayPrint", None, native=True),
 }
+PRINT_TIMEFRAME = "1DayPrint"
 
 
 def get_timeframe(name: str) -> Timeframe:
