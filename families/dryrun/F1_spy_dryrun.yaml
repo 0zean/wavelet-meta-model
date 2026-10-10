@@ -3,6 +3,7 @@
 # the F1 family test: U18 registers families/F1.yaml (SPY, QQQ, IWM, DIA + the TLT / GLD check) and runs it on the
 # program ledger. Nothing here is a program trial.
 id: F1_spy_dryrun
+registered: {sha: '9e4bebfe42d1046abc50f9df43133b17e3f16d98', date: '2026-10-09'}
 mechanism: >-
   Variance is predictable at a one-month horizon while the equity premium is not proportionally higher when variance
   is high (Moreira & Muir 2017); scaling exposure by sigma*/sigma_hat (capped at 1) raises the Sharpe ratio and cuts
