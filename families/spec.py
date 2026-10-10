@@ -381,7 +381,10 @@ class RegistrationError(RuntimeError):
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=check)
+    # UTF-8, as the spec files are read: the locale's codec (cp1252 on Windows) would make a non-ASCII spec (an en
+    # dash in a mechanism) differ from its own registered version
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8",
+                          check=check)  # fmt: skip
 
 
 def _strip(doc: dict) -> dict:

@@ -7,17 +7,18 @@ a basket family's instrument sample split.
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 from experiments import ledger as L
 from families.run import bh_returns, run_family
-from families.spec import HEADLINE, parse
+from families.spec import HEADLINE, check_registered, parse, register
 from features.exits import exit_frame
 from primaries.mechanism import primary_config
 from risk.portfolio import simulate_portfolio
 from risk.profiles import RiskProfile, get_profile
 from tests.test_costs import const_quotes_table
 from tests.test_u16 import daily, signals_for
-from tests.test_u17 import _write
+from tests.test_u17 import SPEC, _git, _write
 from utils.config import RunConfig
 
 NY = "America/New_York"
@@ -261,3 +262,29 @@ def test_a_basket_familys_instrument_split_is_its_own_portfolio_cell_and_benchma
     ew = T.benchmark("buy_and_hold_ew", bh, T.risk_weights(bh)).iloc[-split["n_days"] :]
     assert split["bench_sharpe"] == pytest.approx(T.sharpe_ann(ew))
     assert split["bench_sharpe"] != pytest.approx(T.sharpe_ann(T.day_index(bh["AAA"]).iloc[-split["n_days"] :]))
+
+
+# ── Registration of a non-ASCII spec ─────────────────────────────────────────
+
+
+@pytest.fixture
+def repo(tmp_path):
+    r = tmp_path / "repo"
+    (r / "families").mkdir(parents=True)
+    _git(r, "init", "-q")
+    _git(r, "config", "user.email", "t@example.com")
+    _git(r, "config", "user.name", "t")
+    return r
+
+
+def test_a_registered_spec_with_non_ascii_text_checks_as_unchanged(repo):
+    # F2's mechanism has an en dash: git's output decoded with the Windows locale codec made it differ from itself
+    p = repo / "families" / "F3_test.yaml"
+    doc = {**SPEC, "mechanism": "Returns accrue overnight – 1–12 σ moves."}
+    p.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8", newline="\n")
+    assert "–" in p.read_text(encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "spec")
+    reg = register(p, repo, today="2026-10-10")
+    _git(repo, "commit", "-qam", "register")
+    assert check_registered(p, repo) == reg
