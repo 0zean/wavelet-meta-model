@@ -19,6 +19,9 @@ Family specs (SPEC §17.1): `families/<id>.yaml` → a validated FamilySpec and 
       timeframe: 5Min                    # optional (U18): the cells' timeframe when it differs from the family's
       per_instrument:                    # optional (U18): a partial headline deep-merged into one instrument's cells
         TLT: {primary: {params: {window: month_end}}}
+      legs:                              # optional (U18): one cell per instrument and leg (a partial headline each);
+        fomc: {primary: {params: {release: fomc}}}         # an instrument's stream is the SUM of its legs' streams,
+        cpi_nfp: {primary: {params: {release: cpi_nfp}}}   # so legs must never hold positions at the same time
     variants:                            # reported only; 1 + len(variants) <= TRIAL_BUDGET
       - {label: no_cost, cost_model: slippage}
       - {label: tod, overrides.VOL_PROFILE: tod}   # dotted keys reach into the headline
@@ -73,7 +76,8 @@ TOP_KEYS = {"id", "mechanism", "registered", "instruments", "basket", "timeframe
             "state_splits", "response", "sample_splits", "benchmark", "floors", "test", "overlay", "TRIAL_BUDGET",
             "notes"}  # fmt: skip
 HEADLINE_KEYS = {"primary", "exit", "sampler", "cost_model", "risk_profile", "sizer", "overrides", "timeframe",
-                 "per_instrument"}  # fmt: skip
+                 "per_instrument", "legs"}  # fmt: skip
+PATCH_KEYS = HEADLINE_KEYS - {"per_instrument", "timeframe", "legs"}  # what a per-instrument or leg patch may set
 FLOOR_KEYS = {"min_net_ret": None, "min_net_ret_vs_benchmark": None, "min_edge_to_cost": None, "max_dd": None}
 TEST_DEFAULTS = {"alpha": 0.05, "block_days": 21, "n_boot": 2000, "coherence_share": 0.667, "seed": 0}
 HEADLINE = "headline"
@@ -158,19 +162,30 @@ def _merge(base: dict, patch: dict) -> dict:
     return out
 
 
-def for_symbol(config: dict, symbol: str | None) -> dict:
-    """A variant config as it runs on `symbol`: its `per_instrument[symbol]` patch merged in, the mapping dropped."""
+def _patch(patch, what: str) -> dict:
+    if not isinstance(patch, dict) or set(patch) - PATCH_KEYS:
+        raise ValueError(f"{what} is a partial headline without per_instrument / legs / timeframe; got {patch!r}")
+    return patch
+
+
+def for_symbol(config: dict, symbol: str | None) -> list[dict]:
+    """
+    A variant config as it runs on `symbol`, one config per leg (one without `legs`): the base, then its
+    `per_instrument[symbol]` patch, then the leg's patch (legs in label order); the mappings are dropped.
+    """
     per = config.get("per_instrument") or {}
     if not isinstance(per, dict):
         raise TypeError("per_instrument maps an instrument to a partial headline")
-    base = {k: v for k, v in config.items() if k != "per_instrument"}
+    legs = config.get("legs")
+    if legs is not None and (not isinstance(legs, dict) or not legs):
+        raise ValueError(f"legs maps a leg label to a partial headline (at least one); got {legs!r}")
+    base = {k: v for k, v in config.items() if k not in ("per_instrument", "legs")}
     patch = per.get(symbol) if symbol is not None else None
-    if patch is None:
-        return base
-    if not isinstance(patch, dict) or set(patch) - (HEADLINE_KEYS - {"per_instrument", "timeframe"}):
-        raise ValueError(f"per_instrument[{symbol}] is a partial headline without per_instrument / timeframe; "
-                         f"got {patch!r}")  # fmt: skip
-    return _merge(base, patch)
+    if patch is not None:
+        base = _merge(base, _patch(patch, f"per_instrument[{symbol}]"))
+    if legs is None:
+        return [base]
+    return [_merge(base, _patch(legs[k], f"leg {k!r}")) for k in sorted(legs)]
 
 
 def cell_raw(config: dict, symbols, timeframe: str, start: str, end: str) -> dict:
@@ -178,8 +193,8 @@ def cell_raw(config: dict, symbols, timeframe: str, start: str, end: str) -> dic
     unknown = set(config) - HEADLINE_KEYS
     if unknown:
         raise ValueError(f"unknown headline / variant key(s) {sorted(unknown)}; expected {sorted(HEADLINE_KEYS)}")
-    if config.get("per_instrument"):
-        raise ValueError("cell_raw takes a config resolved for its symbol (for_symbol)")
+    if config.get("per_instrument") or config.get("legs"):
+        raise ValueError("cell_raw takes a config resolved for its symbol and leg (for_symbol)")
     timeframe = str(config.get("timeframe") or timeframe)
     prim = config.get("primary")
     if isinstance(prim, str):
@@ -223,17 +238,20 @@ def cell_raw(config: dict, symbols, timeframe: str, start: str, end: str) -> dic
 
 
 def make_cells(fam: FamilySpec, config: dict, start: str, end: str, symbols=None) -> list[Cell]:
-    """Stage-F cells of one configuration: one per instrument, or the basket's one portfolio cell."""
+    """Stage-F cells of one configuration: one per instrument (and leg), or the basket's one portfolio cell."""
     syms = list(symbols or fam.instruments)
     groups = [syms] if fam.basket else [[s] for s in syms]
-    if fam.basket and config.get("per_instrument"):
-        raise ValueError("per_instrument is for pooled instruments; a basket is one portfolio cell")
+    if fam.basket and (config.get("per_instrument") or config.get("legs")):
+        raise ValueError("per_instrument and legs are for pooled instruments; a basket is one portfolio cell")
     cells = []
     for g in groups:
-        cfg = for_symbol(config, None if fam.basket else g[0])
-        cell = Cell(normalize(cell_raw(cfg, g, fam.timeframe, start, end)), RULE_STAGE)
-        cell.config()  # validate the RunConfig now
-        cells.append(cell)
+        for cfg in for_symbol(config, None if fam.basket else g[0]):
+            cell = Cell(normalize(cell_raw(cfg, g, fam.timeframe, start, end)), RULE_STAGE)
+            cell.config()  # validate the RunConfig now
+            cells.append(cell)
+    keys = [c.spec_json() for c in cells]
+    if len(set(keys)) != len(keys):
+        raise ValueError("two legs of one instrument run the same cell: a leg must change the configuration")
     return cells
 
 

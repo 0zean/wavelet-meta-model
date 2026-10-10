@@ -342,6 +342,10 @@ def _run_rule_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path
         costs = {s: fill_costs(bars[s].index, cfg, cost.get(s)) for s in sigs}
     eq, trades, _ = simulate_portfolio(bars, sigs, cfg, get_profile(cfg.RISK_PROFILE), side_col="trade_signal",
                                        size_col="bet_size", costs=costs)  # fmt: skip
+    # bar timestamps of each position's entry and exit (families/run.py checks that a family's legs never overlap)
+    if {"entry_b", "exit_b"} <= set(trades):
+        trades = trades.assign(entry_time=eq.index[trades["entry_b"].to_numpy(dtype=int)],
+                               exit_time=eq.index[trades["exit_b"].to_numpy(dtype=int)])  # fmt: skip
     trades.to_csv(out / "trades.csv")
     m = strategy_metrics(eq, trades, cfg.bars_per_year)
     daily = daily_returns(eq)

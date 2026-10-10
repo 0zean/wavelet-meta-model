@@ -146,6 +146,46 @@ def _vhash(fam: FamilySpec, label: str, members: list[str]) -> str:
     return hashlib.sha256(json.dumps([fam.id, label, sorted(members), families_code_hash()]).encode()).hexdigest()[:16]
 
 
+def _check_disjoint(sym: str, trades: list[pd.DataFrame | None]) -> None:
+    """Raise when two legs' positions on one symbol overlap in time (entry before another leg's open position exits)."""
+    parts = []
+    for i, t in enumerate(trades):
+        if t is None or not len(t):
+            continue
+        if not {"entry_time", "exit_time"} <= set(t):
+            raise ValueError(f"{sym}: leg trades without entry_time / exit_time (re-run the cells)")
+        parts.append(pd.DataFrame({"entry": pd.to_datetime(t["entry_time"], utc=True),
+                                   "exit": pd.to_datetime(t["exit_time"], utc=True), "leg": i}))  # fmt: skip
+    if len(parts) < 2:
+        return
+    iv = pd.concat(parts, ignore_index=True).sort_values(["entry", "exit"], kind="stable")
+    for i, g in iv.groupby("leg"):
+        others = iv[iv["leg"] != i]
+        # a position [entry, exit) of leg i clashes with any other leg's position that starts before it exits and
+        # exits after it starts
+        e, x = others["entry"].to_numpy(), others["exit"].to_numpy()
+        for a, b in zip(g["entry"].to_numpy(), g["exit"].to_numpy()):
+            hit = (e < b) & (x > a)
+            if hit.any():
+                raise ValueError(f"{sym}: legs hold positions at the same time ({pd.Timestamp(a)} … "
+                                 f"{pd.Timestamp(b)}); legs must be disjoint in time")  # fmt: skip
+
+
+def _by_symbol(cells, members: list[str], root: Path) -> dict[str, pd.Series]:
+    """Symbol → its daily stream: the sum of its legs' streams on the union of their days (one cell without legs).
+    Legs are separate full-size positions, so their positions on one symbol must never overlap in time (raises)."""
+    by: dict[str, list[str]] = {}
+    for c, h in zip(cells, members):
+        by.setdefault(c.symbols[0], []).append(h)
+    streams = {}
+    for sym, hs in by.items():
+        if len(hs) > 1:
+            _check_disjoint(sym, [_read(root, h, "trades.csv") for h in hs])
+        frame = pd.concat([T.day_index(_stream(root, h)) for h in hs], axis=1, sort=True).fillna(0.0)
+        streams[sym] = frame.sum(axis=1).rename("ret")
+    return streams
+
+
 def _pooled(fam: FamilySpec, cells, rows_by_hash, hashes, root, weights) -> dict:
     """Members → status, pooled stream, summed cost totals, trades, per-instrument streams."""
     members = [hashes[(c.stage, c.spec_json())] for c in cells]
@@ -154,7 +194,7 @@ def _pooled(fam: FamilySpec, cells, rows_by_hash, hashes, root, weights) -> dict
            ("error" if "error" in stat else "no_fit")}  # fmt: skip
     if out["status"] != "ok":
         return out
-    streams = {c.symbols[0] if not fam.basket else "_basket": _stream(root, h) for c, h in zip(cells, members)}
+    streams = {"_basket": _stream(root, members[0])} if fam.basket else _by_symbol(cells, members, root)
     out["per_instrument"] = {} if fam.basket else streams
     out["stream"] = streams["_basket"].rename("ret") if fam.basket else T.pool(streams, weights)
     # cash totals per unit of each member's starting capital, mixed with the pooled stream's weights (a basket: its own)
@@ -262,19 +302,18 @@ def run_family(
 
     sample_streams = {}
     for label, cs in split_cells.items():
-        syms = [x for c in cs for x in c.symbols]  # a basket split is one portfolio cell over all its symbols
+        syms = sorted({x for c in cs for x in c.symbols})  # a basket split is one cell; legs share a symbol
         sbh = bh_returns(source, syms, fam.timeframe, start, end)
         sw = T.risk_weights(sbh)
         hs = [hashes[(c.stage, c.spec_json())] for c in cs]
         if all(rows_by_hash.get(h, {}).get("status") == "ok" for h in hs):
-            r = (_stream(root, hs[0]).rename("ret") if fam.basket
-                 else T.pool({c.symbols[0]: _stream(root, h) for c, h in zip(cs, hs)}, sw))  # fmt: skip
+            r = _stream(root, hs[0]).rename("ret") if fam.basket else T.pool(_by_symbol(cs, hs, root), sw)
             sample_streams[label] = (r, T.benchmark(fam.benchmark, sbh, sw))
     qslice = None
     if quasi_cells:
         hs = [hashes[(c.stage, c.spec_json())] for c in quasi_cells]
         if all(rows_by_hash.get(h, {}).get("status") == "ok" for h in hs):
-            qs = {("_basket" if fam.basket else c.symbols[0]): _stream(root, h) for c, h in zip(quasi_cells, hs)}
+            qs = {"_basket": _stream(root, hs[0])} if fam.basket else _by_symbol(quasi_cells, hs, root)
             qr = qs["_basket"] if fam.basket else T.pool(qs, weights)
             qbh = bh_returns(source, fam.instruments, fam.timeframe, *QUASI_WINDOW)
             qslice = (qr.loc[QUASI_WINDOW[0] :], T.benchmark(fam.benchmark, qbh, weights))

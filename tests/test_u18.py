@@ -20,7 +20,7 @@ from risk.portfolio import simulate_portfolio
 from risk.profiles import RiskProfile, get_profile
 from tests.test_costs import const_quotes_table
 from tests.test_u16 import daily, signals_for
-from tests.test_u17 import SPEC, _git, _write
+from tests.test_u17 import SPEC, OvernightSource, _git, _write
 from utils.config import RunConfig
 
 NY = "America/New_York"
@@ -328,3 +328,104 @@ def test_the_program_summary_recomputes_dsr_with_the_programs_trials_now(tmp_pat
     dsr_now, n, _ = program_dsr(ledger.rows(), h)
     assert n == 2 and f"{dsr_now:.3f}" in text and "N = 2 program trials now" in text
     assert "(no)" in text or "(yes)" in text
+
+
+# ── Legs: one cell per instrument and leg, summed per instrument, disjoint in time ──
+
+F8_LIKE = {
+    "id": "F8_like",
+    "mechanism": "Post-release continuation.",
+    "instruments": ["SPY", "TLT"],
+    "timeframe": "5Min",
+    "headline": {"primary": {"name": "event_reaction", "params": {"observe_min": 15, "hold_min": 90}},
+                 "legs": {"fomc": {"primary": {"params": {"release": "fomc"}}},
+                          "cpi_nfp": {"primary": {"params": {"release": "cpi_nfp"}}}}},
+    "variants": [{"label": "obs30", "primary.params.observe_min": 30, "primary.params.hold_min": 75},
+                 {"label": "fomc_only", "legs": {"fomc": {"primary": {"params": {"release": "fomc"}}}}}],
+    "sample_splits": [{"label": "qqq", "instruments": ["QQQ"]}],
+    "test": {"n_boot": 199},
+}  # fmt: skip
+
+
+def test_legs_make_one_cell_per_instrument_and_leg():
+    fam = parse(F8_LIKE)
+    cells = fam.cells[HEADLINE]
+    assert [(c.symbols[0], c.config().PRIMARY_PARAMS["release"]) for c in cells] == [
+        ("SPY", "cpi_nfp"), ("SPY", "fomc"), ("TLT", "cpi_nfp"), ("TLT", "fomc")]  # fmt: skip
+    assert {c.config().EVENT_PARAMS["entry_times"][0] for c in cells} == {"09:45", "14:15"}
+    obs = fam.cells["obs30"]  # a base change reaches every leg
+    assert {c.config().EVENT_PARAMS["entry_times"][0] for c in obs} == {"10:00", "14:30"}
+    assert [c.config().PRIMARY_PARAMS["release"] for c in fam.cells["fomc_only"]] == ["fomc", "fomc"]
+
+
+@pytest.mark.parametrize(
+    "change, match",
+    [
+        ({"legs": {}}, "at least one"),
+        ({"legs": {"a": {"timeframe": "1Day"}}}, "partial headline"),
+        ({"legs": {"a": {"primary": {"params": {"release": "fomc"}}}, "b": {"primary": {"params": {"release": "fomc"}}}}},
+         "same cell"),
+    ],
+)  # fmt: skip
+def test_bad_legs_are_refused(change, match):
+    doc = {**F8_LIKE, "variants": [], "headline": {**F8_LIKE["headline"], **change}}
+    with pytest.raises((ValueError, TypeError), match=match):
+        parse(doc)
+    basket = {**{k: v for k, v in F8_LIKE.items() if k not in ("instruments", "sample_splits", "variants")},
+              "basket": {"symbols": ["SPY", "TLT"]}}  # fmt: skip
+    with pytest.raises(ValueError, match="basket"):
+        parse(basket)
+
+
+def _cell_dir(root, h, days, rets, trades):
+    from pathlib import Path
+
+    d = Path(root) / "cells" / h
+    d.mkdir(parents=True)
+    pd.Series(rets, index=pd.DatetimeIndex(days, tz="UTC"), name="ret").to_csv(d / "daily_returns.csv")
+    pd.DataFrame(trades, columns=["entry_time", "exit_time"]).to_csv(d / "trades.csv")
+
+
+def test_leg_streams_sum_per_instrument_and_overlapping_legs_are_refused(tmp_path):
+    from families.run import _by_symbol
+
+    class C:
+        def __init__(self, s):
+            self.symbols = (s,)
+
+    t = lambda s: pd.Timestamp(s, tz=NY).tz_convert("UTC")
+    _cell_dir(
+        tmp_path, "a", ["2024-01-02", "2024-01-03"], [0.01, 0.0], [(t("2024-01-02 09:45"), t("2024-01-02 11:15"))]
+    )
+    _cell_dir(
+        tmp_path, "b", ["2024-01-03", "2024-01-04"], [0.02, -0.01], [(t("2024-01-03 14:15"), t("2024-01-03 15:45"))]
+    )
+    _cell_dir(tmp_path, "c", ["2024-01-02"], [0.005], [])
+    got = _by_symbol([C("SPY"), C("SPY"), C("TLT")], ["a", "b", "c"], tmp_path)
+    assert got["SPY"].round(10).tolist() == [0.01, 0.02, -0.01] and got["TLT"].tolist() == [0.005]
+    _cell_dir(tmp_path, "d", ["2024-01-03"], [0.0], [(t("2024-01-03 15:00"), t("2024-01-04 09:30"))])
+    with pytest.raises(ValueError, match="same time"):
+        _by_symbol([C("SPY"), C("SPY")], ["b", "d"], tmp_path)
+
+
+def test_a_legs_family_runs_end_to_end_and_overlapping_window_legs_fail_loudly(tmp_path):
+    prog = tmp_path / "program.yaml"
+    prog.write_text("max_families: 8\nmax_trials: 112\n", encoding="utf-8")
+    src = OvernightSource(1e-3)
+    doc = {**F8_LIKE, "window": {"start": "2022-01-03"}, "variants": [], "sample_splits": []}
+    res = run_family(_write(tmp_path / "F8_like.yaml", doc), ledger=L.Ledger(tmp_path / "l.jsonl"),
+                     root=tmp_path / "root", out_dir=tmp_path / "out", source=src, repo=tmp_path,
+                     check_registration=False, program=prog, quasi=False)  # fmt: skip
+    rows = [r for r in L.Ledger(tmp_path / "l.jsonl").rows() if r.get("kind") == "family_variant"]
+    assert len(rows) == 1 and rows[0]["status"] == "ok" and len(rows[0]["members"]) == 4
+    assert res["evaluation"]["variants"][HEADLINE]["compare"]["n_days"] > 0
+    # two calendar legs that both hold the FOMC eve → day: the run refuses to sum them
+    bad = {"id": "F4_bad", "mechanism": "m", "instruments": ["SPY"], "timeframe": "5Min",
+           "window": {"start": "2022-01-03"}, "floors": {"min_net_ret": 0.02}, "test": {"n_boot": 199},
+           "headline": {"primary": {"name": "calendar_drift", "params": {"window": "fomc_pre"}},
+                        "legs": {"pre": {"primary": {"params": {"window": "fomc_pre"}}},
+                                 "day": {"primary": {"params": {"window": "fomc_day"}}}}}}  # fmt: skip
+    with pytest.raises(ValueError, match="same time"):
+        run_family(_write(tmp_path / "F4_bad.yaml", bad), ledger=L.Ledger(tmp_path / "l2.jsonl"),
+                   root=tmp_path / "root", out_dir=tmp_path / "out", source=src, repo=tmp_path,
+                   check_registration=False, program=prog, quasi=False)  # fmt: skip
