@@ -1228,6 +1228,18 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   buy-and-hold of all the split's symbols (before U18 it used the first symbol only).
 - **Risk profile in Phase 1.** PLAN2 U18 names `standard`; its 20 % position cap, drawdown tiers and daily-loss gate
   would replace the self-sized rules under test, so single-instrument families register `none` and F2 `basket`.
+- **Legs.** `headline.legs: {label: <partial headline>}` (≥ 1; a variant may replace the mapping): one cell per
+  instrument and leg, built as base → `per_instrument[SYM]` → the leg's patch (legs in label order); two legs that
+  build the same cell are refused, and legs are refused for a basket. An instrument's stream is the SUM of its legs'
+  daily streams (each leg trades at full size on its own capital), then pooled with the equal-risk weights; cost
+  totals add over legs with their symbol's weight. Legs must be disjoint in time: rule cells' trades.csv carry
+  entry_time / exit_time (bar stamps), and the run raises when two legs' positions on one symbol share any bar.
+- **Program DSR** is recomputed by `families summary` with the program's counted trials at that time (N, and V over
+  their latest per-period Sharpes), so it moves as families are added.
+- **Caveats found in the U18 review** (reported, not changed): rule magnitudes go through SIZE_STEP (0.1) rounding,
+  so m < 0.05 is not traded; `abs_move_tercile` uses the same day's |benchmark move| (outcome-conditioned for
+  intraday legs inside the day); close fills price at the last 5Min bar's close (the last continuous trade before
+  16:00), not the closing-auction print.
 
 ---
 
