@@ -477,3 +477,12 @@ def test_a_family_with_a_meta_model_runs_pwfo_members_that_count_no_trials(tmp_p
         parse({**doc, "headline": {"primary": {"name": "overnight", "params": {}}, "pwfo": {"is_grid": [252]}}})
     with pytest.raises(TypeError, match="mechanism primary"):
         parse({**doc, "headline": {"primary": {"name": "sma_cross", "params": {}}}})
+
+
+def test_families_sort_naturally_in_the_program_verdict():
+    from families.test import family_order, program_verdict
+
+    v = {"p": 0.5, "delta_ann": 0.1, "floors_ok": False, "coherence": {"coherent": False}, "positive": True}
+    ids = ["F11", "F2", "F1.v2", "F1", "F10"]
+    assert sorted(ids, key=family_order) == ["F1", "F1.v2", "F2", "F10", "F11"]
+    assert list(program_verdict(dict.fromkeys(ids, v))["family"]) == ["F1", "F1.v2", "F2", "F10", "F11"]

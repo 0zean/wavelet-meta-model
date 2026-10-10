@@ -9,6 +9,8 @@ responses are computed by `describe` and never enter a verdict. No variant can r
 the spec's first variant by construction (families/spec.py) and every function here takes it by label.
 """
 
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -336,6 +338,11 @@ def _slice(r: pd.Series, b: pd.Series, fam: FamilySpec) -> dict:
 # ── Program verdict (SPEC §17.3) ─────────────────────────────────────────────
 
 
+def family_order(fid: str) -> list:
+    """Natural sort key: F2 before F11, an amendment after its family (F1, F1.v2, F2, ..., F11)."""
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", fid)]
+
+
 def program_verdict(families: dict[str, dict], alpha: float = 0.05) -> pd.DataFrame:
     """
     Holm over the families' headline p-values; a family passes iff its Holm-adjusted p < alpha, its headline clears
@@ -346,7 +353,7 @@ def program_verdict(families: dict[str, dict], alpha: float = 0.05) -> pd.DataFr
 
     if not families:
         return pd.DataFrame(columns=["family", "p", "p_holm", "floors_ok", "coherent", "positive", "passes"])
-    ids = sorted(families)
+    ids = sorted(families, key=family_order)
     p = np.array([families[f]["p"] for f in ids], dtype=float)
     adj = holm(np.nan_to_num(p, nan=1.0))
     rows = []

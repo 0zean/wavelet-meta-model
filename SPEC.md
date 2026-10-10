@@ -1234,6 +1234,16 @@ advantages. Adopted overlays replace the headline in the registry; others are di
   daily streams (each leg trades at full size on its own capital), then pooled with the equal-risk weights; cost
   totals add over legs with their symbol's weight. Legs must be disjoint in time: rule cells' trades.csv carry
   entry_time / exit_time (bar stamps), and the run raises when two legs' positions on one symbol share any bar.
+- **Model cells in a family (F11).** A headline with `model: {meta: ...}` builds model cells (a WFO, or a PWFO with
+  `pwfo`) in stage F, with any registered primary and the keys `feature_groups`, `pwfo`, `meta_train`, `seed`; rule
+  cells stay stage F only. Every family-stage cell counts 0 trials (the variant row counts 1). WFO rows and `average`
+  PWFO rows carry pnl / cost_paid / traded_notional / init_cash for the edge floor: a PWFO row's are the mean over its
+  run combos of each combo's stitched-OOS totals (ComboStats.summary oos_pnl_frac / oos_cost_frac /
+  oos_notional_frac) — the combos' full OOS spans, while the `average` stream covers only their common span (for F11
+  the IS-504 combo's first ~250 OOS days enter the totals, not the stream; edge / cost moves by ≈ ±0.1). PWFO members
+  write no trades.csv, so per-trade responses are not available for them. A PWFO stream starts after the longest
+  IS's burn-in and ends at the last full OOS window (PWFO_PARTIAL_LAST false).
+- **Order.** Families sort naturally (F1, F1.v2, F2, …, F10, F11) in the program verdict and summary.
 - **Program DSR** is recomputed by `families summary` with the program's counted trials at that time (N, and V over
   their latest per-period Sharpes), so it moves as families are added.
 - **Caveats found in the U18 review** (reported, not changed): rule magnitudes go through SIZE_STEP (0.1) rounding,

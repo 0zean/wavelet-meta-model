@@ -260,7 +260,9 @@ def program_summary(out_dir, alpha: float = 0.05, ledger=None) -> dict:
 
     out_dir = Path(out_dir)
     results = {}
-    for p in sorted(out_dir.glob("*/result.json")):
+    from families.test import family_order
+
+    for p in sorted(out_dir.glob("*/result.json"), key=lambda p: family_order(p.parent.name)):
         r = json.loads(p.read_text(encoding="utf-8"))
         results[r["id"]] = r
     in_ledger = set()

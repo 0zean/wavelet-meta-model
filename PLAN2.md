@@ -998,7 +998,7 @@ decision; cost model under-estimation for the two-fills-a-day families.
 **Cost.** Compute: F1/F3/F4 minutes; F2 < 1 h; F5/F7/F8 ≈ 1–3 h each (5Min bars, 4–14 instruments, no
 model fits). 1 session of orchestration.
 
-**Status (2026-10-10).** ✅ Complete: F1–F5, F7, F8 registered and run; all seven fail. Branch `unit/18-family-dev-tests`.
+**Status (2026-10-10).** ✅ Complete: F1–F5, F7, F8 and F11 registered and run; all eight fail. Branch `unit/18-family-dev-tests`.
 
 **First round (F1–F4).**
 - **Tooling added** (SPEC §17.6): union of calendar windows (`calendar_drift` window list; schedule `windows`), the
@@ -1079,9 +1079,48 @@ model fits). 1 session of orchestration.
   - MINOR, disclosed: on early closes F5's 15:30 entry maps to the last bar (a 5-minute hold; ~9 trades per
     instrument; SPEC §13 behaviour).
   - Note: the program DSR uses V over every counted trial, so a family's DSR moves when unrelated families run.
-- **Not run:** F10 (the cross-sectional rank is not built) and F11 (optional); the program has 1 family and 72 trials
-  left under its caps.
-- 770 tests pass (21 in `tests/test_u18.py`); ruff clean.
+- **Not run:** F10 (the cross-sectional rank is not built).
+
+**Third round (F11, at the user's request).**
+- **Tooling** (SPEC §17.6): model cells in family tests (stage F holds model cells; family-stage cells count 0 trials;
+  family specs take `model`, `feature_groups`, `pwfo`, `meta_train`, `seed`; WFO / PWFO rows carry the edge floor's
+  cash totals). U12 parity PASS (8/8) after the change.
+- **Spec** `families/F11.yaml`: the three U11 Stage C finalists with donchian_breakout / rf_ldp_fast (QQQ, SPY, XLK
+  30Min, each with its U11 sizer, feature groups and feature selection) under today's engine (PWFO `average` over IS
+  504 / 756 × OOS 21) with VOL_PROFILE `tod`; 2 × 2 trials: tod / plain σ (the U11-labelling control) at 30Min /
+  1Hour. Committed unregistered (ce5dcd2); status-only smoke runs on 2016-01 → 2018-09 (every cell failed: no full
+  IS-756 window) and → 2019-03 (all ok); the user approved; registered at ce5dcd2 (commit 509f5f7); run.
+- **Result: fail.**
+
+| trial | Sharpe vs benchmark | Δ (95 % CI) | p | floors |
+|---|---|---|---|---|
+| headline (30Min, tod) | −0.30 vs 0.99 | −1.29 (−2.34 … −0.24) | 0.019 (Holm 0.13) | net −1.9 %/yr; edge / cost 0.78 → fail |
+| plain_sigma (30Min, plain σ) | 0.09 | −0.89 (−2.14 … 0.36) | 0.16 | fail |
+| hourly (1Hour, tod) | −0.16 | −1.15 (−2.25 … −0.05) | 0.040 | fail |
+| hourly_plain (1Hour, plain σ) | −0.05 | −1.04 (−2.21 … 0.13) | 0.078 | fail |
+
+  Not coherent (the median variant fails the floors). PLAN2's question gets its expected answer: deseasonalizing
+  volatility reveals no edge in these cells, so the U11 null was not a labelling artefact. The paired comparison
+  (reported, not a registered test; Ledoit–Wolf on the same days) is tod − plain σ = −0.40 (−1.13 … 0.34), p 0.29 at
+  30Min and −0.11 (−0.81 … 0.59), p 0.77 at 1Hour: tod is not significantly worse either. The stream runs 2019-01-04 →
+  2025-09-10 (IS-756 burn-in; last full OOS window), so the "2016_2019" split is 2019 only.
+- **Program:** 8 / 8 families, 44 / 112 trials; no family passes. Holm (8 families): F7 0.044 (on the losing side),
+  F11 0.13, the rest ≥ 0.43.
+- **Adversarial review** (F11): no BREAKING or SEVERE. Each cell's RunConfig matches its U11 Stage C cell except
+  VOL_PROFILE, the PWFO grid and the inert TEST / PWFO_DEFAULT; the tod profile is fitted on in-sample bars only and
+  changes the labelling (QQQ: 8,120 vs 6,173 events, median barrier 0.41 % vs 0.69 %); the dev and quasi cells give
+  identical per-combo returns on shared days (no full-series look-ahead); a QQQ cell re-run is byte-identical; trial
+  keys of every registered spec re-parse identically under HEAD.
+  - MINOR, fixed: families sort naturally in the summary (F11 sorted between F1 and F2).
+  - MINOR, disclosed: PWFO cost totals cover each combo's full OOS span, the stream only the common span (edge /
+    cost ≈ 0.70 instead of 0.78 on the common span; every variant stays far below 3).
+  - MINOR, disclosed: XLK's linear-sized stream (0.85 % vol) carries ~4 % of the pooled risk, so the pooled test is
+    in effect QQQ + SPY (the program's equal-risk weights come from buy-and-hold volatility).
+  - MINOR, disclosed: PWFO members write no trades.csv, so mean_per_trade_bp and hit_rate are "—".
+  - MINOR, deferred: the quasi slice's benchmark drops 2025-10-01 (`bh_returns` from the slice start loses its first
+    day; every family's quasi slice), and F11's quasi stream ends 2026-09-11 (last full OOS window). Reported slices
+    only.
+- 772 tests pass (23 in `tests/test_u18.py`); ruff clean.
 
 ### U19 — Phase 2: meta-labeling overlay on passing families
 
@@ -1174,7 +1213,7 @@ gate 3 %; kill switch at 15 % drawdown); the same family test; budget 8.
   flat sides, `rule_size`; status note under U16).
 - U17 — ✅ complete 2026-10-10 (branch `unit/17-family-tests`; rule pass, `families/` test, registration, budgets,
   reports; status note under U17).
-- U18 — ✅ complete 2026-10-10 (branch `unit/18-family-dev-tests`; F1–F5, F7, F8 registered and run, all fail; no family goes to U19; status note under U18).
+- U18 — ✅ complete 2026-10-10 (branch `unit/18-family-dev-tests`; F1–F5, F7, F8, F11 registered and run, all fail; no family goes to U19; status note under U18).
 - U19 — not started.
 - U20 — not started.
 - U21 — not started (gated).
