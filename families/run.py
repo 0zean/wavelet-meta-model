@@ -161,11 +161,11 @@ def _check_disjoint(sym: str, trades: list[pd.DataFrame | None]) -> None:
     iv = pd.concat(parts, ignore_index=True).sort_values(["entry", "exit"], kind="stable")
     for i, g in iv.groupby("leg"):
         others = iv[iv["leg"] != i]
-        # a position [entry, exit) of leg i clashes with any other leg's position that starts before it exits and
-        # exits after it starts
+        # times are bar stamps and a close fill exits at its bar's stamp, so a position holds its entry and exit
+        # bars inclusive: two legs clash when they share any bar (conservative: back-to-back legs on one bar clash)
         e, x = others["entry"].to_numpy(), others["exit"].to_numpy()
         for a, b in zip(g["entry"].to_numpy(), g["exit"].to_numpy()):
-            hit = (e < b) & (x > a)
+            hit = (e <= b) & (x >= a)
             if hit.any():
                 raise ValueError(f"{sym}: legs hold positions at the same time ({pd.Timestamp(a)} … "
                                  f"{pd.Timestamp(b)}); legs must be disjoint in time")  # fmt: skip

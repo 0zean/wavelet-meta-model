@@ -406,6 +406,14 @@ def test_leg_streams_sum_per_instrument_and_overlapping_legs_are_refused(tmp_pat
     _cell_dir(tmp_path, "d", ["2024-01-03"], [0.0], [(t("2024-01-03 15:00"), t("2024-01-04 09:30"))])
     with pytest.raises(ValueError, match="same time"):
         _by_symbol([C("SPY"), C("SPY")], ["b", "d"], tmp_path)
+    # same-bar cases (U18 review): both legs inside one early-close bar; a close fill and an open fill on one bar
+    _cell_dir(tmp_path, "e", ["2024-11-29"], [0.0], [(t("2024-11-29 12:55"), t("2024-11-29 12:55"))])
+    _cell_dir(tmp_path, "f", ["2024-11-29"], [0.0], [(t("2024-11-29 12:55"), t("2024-11-29 12:55"))])
+    _cell_dir(tmp_path, "g", ["2024-01-03"], [0.0], [(t("2024-01-03 14:15"), t("2024-01-03 15:55"))])  # close fill
+    _cell_dir(tmp_path, "h", ["2024-01-03"], [0.0], [(t("2024-01-03 15:55"), t("2024-01-04 09:30"))])  # 15:55 open
+    for pair in (["e", "f"], ["g", "h"]):
+        with pytest.raises(ValueError, match="same time"):
+            _by_symbol([C("SPY"), C("SPY")], pair, tmp_path)
 
 
 def test_a_legs_family_runs_end_to_end_and_overlapping_window_legs_fail_loudly(tmp_path):
