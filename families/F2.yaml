@@ -11,6 +11,7 @@
 #   long-only; monthly rebalance. The equity-only basket is a sample split. PLAN2's "blended" lookback has no
 #   implementation and is left out.
 id: F2
+registered: {sha: 'e19b44f22d84e998031544bf49c375b348964d1b', date: '2026-10-10'}
 mechanism: >-
   Slow information diffusion, under-reaction and herding create 1–12 month return continuation within asset classes;
   vol-scaling equalizes risk across assets (Moskowitz, Ooi & Pedersen 2012; Hurst, Ooi & Pedersen 2017).

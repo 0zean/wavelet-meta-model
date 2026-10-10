@@ -10,6 +10,7 @@
 #   the regular spread plus slippage, instead of the opening auction).
 # - The intraday leg (aux b) has no primary; IWM / DIA (aux c) are a sample split.
 id: F3
+registered: {sha: 'e19b44f22d84e998031544bf49c375b348964d1b', date: '2026-10-10'}
 mechanism: >-
   Almost all of the index return accrues from close to open while the intraday return is near zero or negative
   (Lou, Polk & Skouras 2019); overnight information arrival met by intraday liquidity provision, clientele

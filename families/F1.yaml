@@ -10,6 +10,7 @@
 # - variants: the PLAN2 state axes (σ̂ ∈ 63d RV, EWM span 33, VIX; σ* ∈ 10 %, 20 %), one change each. The VIX variant
 #   starts later (vol_state's GARCH needs 500 sessions); coherence reads it on the headline's days.
 id: F1
+registered: {sha: 'e19b44f22d84e998031544bf49c375b348964d1b', date: '2026-10-10'}
 mechanism: >-
   Variance is highly predictable at a one-month horizon while the equity premium is not proportionally higher when
   variance is high (Moreira & Muir 2017); scaling exposure by sigma*/sigma_hat, capped at 1 for a retail account,

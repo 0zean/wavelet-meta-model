@@ -12,6 +12,7 @@
 # - risk_profile none (see F1.yaml) and benchmark buy_and_hold_er.
 # - Variants: each leg alone, PLAN2's window definitions (TOM −2/+2) and the OPEX-week and CPI/NFP legs on.
 id: F4
+registered: {sha: 'e19b44f22d84e998031544bf49c375b348964d1b', date: '2026-10-10'}
 mechanism: >-
   Scheduled flows and scheduled information concentrate returns on known days: the pre-FOMC announcement drift
   (Lucca & Moench 2015), turn-of-month pension and payroll flows (Etula, Rinne, Suominen & Vaittinen 2020) and
