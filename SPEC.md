@@ -1509,6 +1509,104 @@ prints K and the Bonferroni bound p × K next to the bootstrap p.
 the spec's account; the report states whether the headline is tradable on the registered account, the first
 offending session and what the PDT rule would cost otherwise.
 
-## §23 Reserved (U23: intraday kernels and the region primary)
+## §23 Intraday kernels and the region primary (U23; PLAN3 §5 U23)
+
+**Kernels** (`features/kernels.py`; numba, structure of arrays, float64 accumulators and storage, no `fastmath`).
+Bars are 5Min, stamped at their open in NY time; a session is a NY date of the data (`session_layout` gives each bar's
+session, its session's first bar, its position p in the session and its time-of-day slot). Every N-bar window stays
+inside one session: at p < N − 1 the estimator is NaN, else it reads bars p − N + 1 … p of that session (the session's
+first close is in the window, the previous session's close is not; the RMV repo's gap-contamination finding).
+- `rmedv_all(x, start, ns)`: Siegel's repeated-median slope of x (log close) over the last N bars for every N in one
+  pass: for each point the median of its N − 1 pairwise slopes, then the median of the N medians (numpy's mean of the
+  two middle values for even counts); scipy.stats.siegelslopes(method="hierarchical") is the oracle. A NaN or inf
+  input raises (numba's median would hide it inside a finite slope).
+- `sg_velocity_all(x, start, ns, degree)`: the Savitzky–Golay endpoint derivative of the degree-d least-squares
+  polynomial over the last N bars, one FIR per (N, d) (`sg_weights`: fit on centred, scaled abscissae; Σ w = 0 to
+  rounding, so the window is differenced against its last value before the dot product). Degree 1 is the
+  least-squares slope; Meyers' nth-order fixed-memory polynomial velocity is the degree-n endpoint derivative.
+- `prior_sigma(x, sess, k)`: per bar, the σ (ddof 0, PLAN3 §1.2's diagnostic) of the within-session 1-bar log returns
+  of the k sessions before the bar's session (overnight returns excluded); NaN for the first k sessions. Known at the
+  open, refit every session, never reading the current one.
+- `band_state(open, close, sess, slot, lookback, min_count)`: Zarattini, Aziz & Barbon's noise band. band(d, b) = the
+  mean over the `lookback` sessions before d of |close at slot b / that session's open − 1| (simple returns, as the
+  paper; sessions without a bar at slot b skipped, NaN with fewer than `min_count` = lookback // 2 values, NaN for the
+  first `lookback` sessions). With hi = max(open_d, close_{d−1}) and lo = min(open_d, close_{d−1}) (the gap
+  adjustment), the distance is (close / hi − 1) / band above hi, (close / lo − 1) / band below lo, else 0, so a long
+  breakout of the VM-band (close > hi · (1 + VM · band)) is distance > VM.
+- `session_vwap(close, volume, sess)`: Σ close · volume / Σ volume from the session's first bar (NaN before any
+  volume).
+Storage is float64, not PLAN3 §6's float32: at 190k bars × 5 lookbacks the saving is 4 MB, and float64 keeps a
+threshold comparison off the rounding boundary the RMV repo documents for float32 storage. PLAN3 §5's `tod_sigma` is
+not used: G1's registered normalization is the previous sessions' σ above.
+
+**Region primary** (`primaries/region.py`, `region_trend`, a MechanismPrimary with `ALLOW_CONTINUOUS`; PLAN3 §3 G1).
+Parameters (defaults = R₀): `estimators` [band, rmedv, sgv], `n_list` [6, 9, 12, 18, 24], `theta_list` [0.75, 1.0, 1.5,
+2.0], `vm_list` [1.0, 1.25, 1.5], `band_lookback` 14, `sigma_sessions` 5, `sg_degree` 1, `cadence` 30 (5 / 15 / 30 / 60),
+`first` "10:00", `exit` "close" | "HH:MM", `band_stop` "vwap" | null, `vel_stop` null | "vwap", `vel_mode` "sar" |
+"flat_inside". Cells (43 at the defaults, named `band_vm1.25`, `rmedv_n12_t1`, `sgv_n24_t0.75`, …):
+- band × VM: +1 while the distance > VM, −1 while < −VM, else 0; with `band_stop` "vwap" a long also needs close >
+  VWAP and a short close < VWAP (the paper's trailing stop at max(band, VWAP); no VWAP yet: flat). Stateless.
+- rmedv / sgv × N × θ: v = slope · √N / σ₅ (slope of log close per bar, σ₅ = `prior_sigma` over `sigma_sessions`).
+  "sar" (stop-and-reverse, Meyers' RMedV form): +1 after v > θ, −1 after v < −θ, held through decisions without a
+  signal or with v undefined; "flat_inside": sign(v) while |v| > θ, else 0. `vel_stop` "vwap" flattens a long whose
+  close is not above the VWAP (a short not below) and the state stays flat until the next signal.
+- Every cell starts each session flat (no state crosses a session) and is flat while its estimator is undefined: the
+  first N − 1 bars of a session (N = 24 is first defined at the 11:25 bar, so its first decision is 11:30), the first
+  `band_lookback` / `sigma_sessions` sessions.
+Decisions are the schedule sampler's entry times (`marks()`): `first`, then the `cadence` grid anchored at 09:30 below
+16:00 (R₀: 10:00, 10:30, …, 15:30, twelve per session); the decision is read at the close of the bar before the mark
+(the 09:55 bar for 10:00) and fills at the mark's bar open; the `next_event` exit holds each target to the next
+decision's fill, the last to the closing auction (the official print under FILL_AUCTION "print"). On a 13:00 early
+close the marks at or past the close map to the session's last bar (features.events.schedule_events), so the last
+decision is read at 12:50 and the position exits at the 13:00 auction. `exit` "HH:MM" (a variant) adds that mark as a
+decision whose target is 0 for every cell and drops the later marks; every session's last decision is then flat too,
+so a session without the exit bar (an early close, a missing bar) is flat from its last decision's fill rather than
+held into its auction (U23 review). A SAR cell's state runs over every scheduled
+decision (schedule_events on the primary's bars), whichever events the rule pass keeps. `rule()` = (sign, |mean|)
+of the cells' positions at the events (the target in [−1, +1]; the portfolio simulator's roll path trades only the
+change, SPEC §21); `cells(df, X, cfg)` = every cell's position at the events (the specification curve's input);
+`cell_matrix(df, cfg)` = the same at every scheduled decision. `needs_groups()` is empty (PLAN3 §5 said "the session
+group only"; the cells read bars only, and a feature group would drop events whose group columns are NaN). The
+config sets SIZE_STEP 0 and the `rule_size` sizer (SPEC §21). Deferred to U24's variants: the MODWT-slope estimator and
+the vol-targeted size (G1 variants 6 and 7).
+
+The normalization follows PLAN3 §3 G1's text (√N and σ₅, the RMV repo's `RMedV · xmult · √N` with xmult replaced by
+1 / σ₅). PLAN3 §1.2's diagnostic SAR rule thresholded slope / σ₅ without √N: its "N = 6, 0.75 σ" cell is θ = 0.75 · √6
+= 1.84 here, and R₀'s θ = 0.75 at N = 6 is 0.31 in the diagnostic's units. U24 registers R₀ and decides which reading
+it states (an open decision of the user's, PLAN3 §7 item 6).
+
+**Position backtest** (`wfo/position_backtest.py`). `decision_grid(df, cfg, sessions)` = the schedule's decision
+bars, each session's first / last bar and whether that last bar is the closing-auction bar. `position_backtest(df,
+targets, cfg, *, costs, prints, cash_yield, profile, sessions, grid)` = per session × series (a DataFrame of targets in
+[−1, 1] at decision bars; a decision missing is flat): end-of-session equity, daily return, cost paid, traded notional
+and fills, from one numba pass per series over every bar. The accounting is the portfolio simulator's on one symbol
+(shares sized from the decision-time equity, a roll at the same side and fraction keeps the shares and trades nothing,
+a changed target trades |Δq| at the bar's `open` cost, the session's last position exits at the closing print with the
+last bar's `close` cost, a session without its closing-auction bar has a flat last decision, the daily loss gate of a
+profile flattens at the next open and blocks the session, the cash yield accrues on the free cash at each session's
+first bar). Costs: a fill_costs frame, a scalar one-way cost on every fill (the cost curve: a round trip of X bp =
+X / 2 bp per fill) or SLIPPAGE_PCT. Only a profile's `daily_loss` is modelled (caps, a vol target, drawdown tiers and
+borrow raise: they couple symbols through the simulator); a NaN target raises (a flat decision is 0 or absent). Parity with simulate_portfolio through the rule pass is
+bit-exact on cached SPY 2024 (the region and three cells, profiles `none` and a 2 % gate; quotes as-of costs, closing
+prints, T-bill yield), on a synthetic series where the gate fires, and over SPY and QQQ 2016-01-04 → 2025-09-30 with
+the calendar clock and the gate (max |Δ daily return| = 0; `scripts/u23_kernels.py budgets`).
+
+**Budgets** (i9, one core, `scripts/u23_kernels.py budgets`; it prints timings, shapes and parity residuals only, so
+no look is taken): all estimators for SPY 2016–2025 (190,402 bars, N ∈ {6, 9, 12, 18, 24}) 1.2 s warm (1.5 s with the
+first call; budget 5 s); the 43-cell region positions at 29,304 decisions 1.3 s (10 s); the specification curve, 43
+cells × 4 costs over 2,450 sessions, 0.13 s (5 s); the G1 headline on SPY + QQQ (rule pass, portfolio simulator with
+the gate, prints, as-of costs and the yield, and the 5,000-resample overlay-alpha bootstrap) 14 s (120 s).
+
+Tests (tests/test_u23.py): rmedv = scipy on 4,400 random (N, t) pairs (bit-equal) and the Meyers 2005 / 2025 worked
+examples (exactly 1.0), ramps, even-count medians; sgv degree 1 = the least-squares slope to 1e-12 and degrees 2–3
+exact on polynomials; the band, VWAP and σ₅ against pandas references on sessions with a missing bar, an early close
+and a missing last bar; a planted +5 % overnight gap (the first N − 1 velocities of the session NaN, the N-th equal,
+and windows allowed to straddle the open would read the gap); causality of every kernel at four cuts with a planted
+peek per kernel caught (one bar; σ₅'s reads the current session); the region primary's causality at eight decisions
+with a planted one-bar peek in the repeated median caught; the schedule (09:55 … 15:25 decisions, fills at the next
+bar's open, exits at the next decision's fill or the 15:55 auction, the U22 fill-timing invariant), the mean-cell rule,
+the exit and cadence variants; SAR state reset per session, flat_inside, the VWAP stop and forced-flat decisions by
+hand; σ₅ blind to its own session; the position backtest's parity with the simulator (synthetic with the gate firing
+and the yield; cached SPY 2024) and its many-series, scalar-cost and yield-only identities.
 
 ## §24 Reserved (U26: time–frequency state)

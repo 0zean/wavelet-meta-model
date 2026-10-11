@@ -498,17 +498,37 @@ backtest, and reproduce the harness's backtest on a sample — fast enough that 
 - `scripts/u23_kernels.py`: timings and the RMV-repo parity numbers (worked examples from Meyers 2005 p.2 and
   2025 p.2 = 1.0 exactly; 4,400 random (N, t) pairs vs scipy within float64).
 
-**Done when.**
-- [ ] Oracles: `rmedv_all` = scipy to 1e-9 on 4,400 pairs over all N; `sg_velocity_all` degree 1 = the
-      least-squares slope to 1e-12; the band state matches a pandas reference on 20 sessions; VWAP matches.
-- [ ] Causality (SPEC §8) for every kernel and for `region_trend` (bars after the decision bar perturbed; a
-      planted one-bar peek in any kernel fails), plus the U22 fill-timing test.
-- [ ] Session boundaries: a kernel window never contains bars from two sessions (test on a planted +5 %
-      overnight gap: the first N − 1 velocities of the session are NaN, the N-th is unaffected).
-- [ ] Parity: `position_backtest` vs `simulate_portfolio` on SPY 2024 for three cells and the region.
-- [ ] **Budgets** (i9, one core): all estimators for SPY 2016–2025 (190k bars), N ∈ {6, 9, 12, 18, 24}: ≤ 5 s;
-      43-cell region positions for one instrument: ≤ 10 s; specification curve (43 cells × 4 costs): ≤ 5 s;
-      the whole G1 headline on SPY + QQQ including the bootstrap: ≤ 2 min.
+**Done when.** (status note, 2026-10-10: every criterion with its command; SPEC §23 describes the as-built)
+- [x] Oracles (`scripts/u23_kernels.py parity`, `tests/test_u23.py`): `rmedv_all` equals scipy's siegelslopes
+      (hierarchical) on 4,400 random (N, t) pairs over N ∈ {6, 9, 12, 18, 24}, all 4,400 bit-equal (max |Δ| = 0);
+      Meyers 2005 p.2 and 2025 p.2 worked examples = 1.0 exactly; `sg_velocity_all` degree 1 = the least-squares
+      slope to 7.2e-16 (≤ 1e-12), degrees 2–3 exact on polynomials; the band state, VWAP and σ₅ match pandas
+      references on the last 20 of 40 sessions with a missing bar, a 13:00 early close and a missing last bar.
+- [x] Causality: every kernel at four cuts (mid-session, a session's first and last bar) with a planted peek per
+      kernel caught (one bar; σ₅'s plant reads the current session, since a one-bar shift of a per-session value is
+      known at the next open); `region_trend`'s cells at eight decisions with every bar after the decision bar
+      replaced, and a planted one-bar peek in the repeated median caught; the U22 fill-timing invariant on the region's
+      events (entries at the bar after the decision, exits at the next decision's fill or the 15:55 auction).
+- [x] Session boundaries: a planted +5 % overnight gap leaves the first N − 1 velocities of the session NaN and the
+      N-th on unchanged (rmedv, sgv degrees 1 and 2); windows allowed to straddle the open would read it (the test
+      bites); SAR state resets every session (by hand).
+- [x] Parity: `position_backtest` = `simulate_portfolio` through the rule pass, max |Δ daily return| = 0 (bit-exact)
+      on cached SPY 2024 for three cells (rmedv N 12 θ 1.0; sgv N 24 θ 0.75; band VM 1.25) and the region, under
+      profile `none` and a 2 % loss gate (quotes as-of costs, closing prints, T-bill yield); on a synthetic series
+      where the gate fires; and over SPY and QQQ 2016-01-04 → 2025-09-30 with the calendar clock and the gate
+      (`scripts/u23_kernels.py budgets`).
+- [x] **Budgets** (i9, one core, `scripts/u23_kernels.py budgets`, timings only — no look): all estimators for SPY
+      2016–2025 (190,402 bars, five lookbacks) 1.2 s warm (1.5 s first call; ≤ 5 s); 43-cell region positions at
+      29,304 decisions 1.3 s (≤ 10 s); specification curve 43 cells × 4 costs 0.13 s (≤ 5 s); the G1 headline on
+      SPY + QQQ including the 5,000-resample bootstrap 14 s (≤ 2 min).
+- [x] Tests and lint: `uv run pytest -q` — 819 passed on the final code (after the review fixes, 5 min); ruff clean.
+- [x] Adversarial review (one pass): no BREAKING or SEVERE finding; parity held bit-exact in every configuration the
+      reviewer built (early closes, missing 09:30 / 10:00 / 15:30 / 15:55 bars, a dropped session under both clocks,
+      cadence 5 / 15 / 60, `first` 09:35, `exit` 15:30, sign flips, targets of 5e-324, fractions 5e-13 apart, gates
+      firing at decision bars, partial yields and prints). Four MINOR findings, all fixed: the `exit` "HH:MM" variant
+      held an early-close (or missing-exit-bar) session into its auction (now flat from the last decision's fill);
+      NaN targets were read as flat by `position_backtest` (now raise); numpy integers were refused as lookbacks;
+      the √N decision was recorded in SPEC only (now §7 item 6).
 
 **Reviewer focus.** Normalization leaking (σ from the current session), stop-and-reverse state carried across
 sessions, decisions at HH:00/HH:30 using the bar that *ends* at that time (decision at the 09:55 bar's close
@@ -660,6 +680,13 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
 4. **`INIT_CASH` for the registered specs** ($30k proposed: above the PDT floor, so the paper account mirrors
    a tradable live account).
 5. **The eleven forward-window caches**: truncate on the next top-up (proposed) or keep with a logged record.
+6. **The velocity normalization R₀ registers (U24; raised by U23).** §3 G1 states v = slope · √N / σ₅ (the RMV
+   repo's form, as built); §1.2's diagnostic SAR rule used slope / σ₅ without √N
+   (`scripts/plan3_diagnostics/positions.py`). The diagnostic's "N = 6, 0.75 σ" cell is θ = 0.75 · √6 = 1.84 under
+   √N, and R₀'s θ = 0.75 at N = 6 is 0.31 in the diagnostic's units, so §1.2's magnitudes do not describe R₀'s
+   velocity cells as written. Options: register √N as stated (the θ grid then means "the window's move in σ₅ units
+   of a √N-bar random walk"), or drop √N so the grid matches the diagnostic. Either is one parameter in
+   `region_trend`'s normalization; it must be settled before the G1 spec is committed.
 
 ## 8. Deferred / out of scope
 
@@ -677,4 +704,9 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
   `families/looks.jsonl` seeded with K₀ = 60. `families/program.yaml` scopes the caps to G1, G2, G3, G5, G6 (5 / 42).
   User decisions received 2026-10-10: Algo Trader Plus will be bought before U27; G5's data purchase still under
   consideration; G6 will run; `INIT_CASH` $30k agreed (account profile `margin_30k`).
-- U23–U31 — not started.
+- U23 — built on `unit/23-intraday-kernels` (2026-10-10); SPEC §23 written; every done-when criterion above
+  demonstrated (`scripts/u23_kernels.py parity | budgets`, `tests/test_u23.py`); budgets 1.2 s / 1.3 s / 0.13 s / 14 s
+  against 5 / 10 / 5 / 120 s; `position_backtest` bit-exact with the portfolio simulator over SPY and QQQ
+  2016–2025. No look taken (the scripts print timings and parity residuals only; `families/looks.jsonl` unchanged).
+  Open for U24: §7 item 6 (the √N normalization) before G1's registration.
+- U24–U31 — not started.

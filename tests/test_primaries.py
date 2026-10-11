@@ -20,8 +20,9 @@ from wfo.wfo_engine import purged, run_wfo, wfo_folds
 
 CFG5 = RunConfig.for_timeframe("5Min")
 CFGD = RunConfig.for_timeframe("1Day")
-# the U4 rules; the SPEC §16 mechanism primaries (flat sides, their own samplers) are covered by tests/test_u16.py
-RULES = sorted(n for n in REGISTRY if n != "ml_xgb" and n not in MECHANISM)
+# the U4 rules; the SPEC §16 mechanism primaries (flat sides, their own samplers) are covered by tests/test_u16.py and
+# the SPEC §23 region primary by tests/test_u23.py
+RULES = sorted(n for n in REGISTRY if n not in ("ml_xgb", "region_trend") and n not in MECHANISM)
 GROUPS = ["wavelet_core", "trend", "volatility"]  # static groups only: no per-fold fit needed
 WFO_COLUMNS = [*PRIMARY_COLUMNS, "meta_prob", "trade_signal", "width", "fold", "primary", "bet_size"]
 
@@ -203,7 +204,7 @@ def test_ml_primary_learns_a_planted_side():
 
 def test_registry_and_params():
     assert set(REGISTRY) == {"ml_xgb", "sma_cross", "bollinger_mr", "wavelet_trend", "donchian_breakout",
-                             *MECHANISM}  # fmt: skip
+                             "region_trend", *MECHANISM}  # fmt: skip
     assert set(MECHANISM) == {"vol_target", "tsmom", "overnight", "calendar_drift", "intraday_momentum", "gap_fade",
                               "event_reaction", "weekly_reversal"}  # fmt: skip
     assert RunConfig().PRIMARY == "ml_xgb" and RunConfig.legacy_5min().PRIMARY == "ml_xgb"
