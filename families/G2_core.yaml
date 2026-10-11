@@ -15,6 +15,7 @@
 # - test / floors: F1's (Sharpe vs the benchmark, two-sided; net ≥ 0.8 × the benchmark's); required by the spec loader,
 #   never evaluated (the core is not run as a family).
 id: G2_core
+registered: {sha: '4208d7bf2bc47097b5f91f320fe96cad69cfffe8', date: '2026-10-11'}
 mechanism: >-
   Variance is highly predictable at a one-month horizon while the equity premium is not proportionally higher when
   variance is high (Moreira & Muir 2017); scaling index exposure by sigma*/sigma_hat, capped at 1 for a retail account,

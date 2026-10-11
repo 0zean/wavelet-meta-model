@@ -2,6 +2,7 @@
 # its own four instruments with F1's equal-risk weights (families/F1.yaml at e19b44f), re-run under U22's engine as
 # G2_core is. A CORE, not a hypothesis family (G2_core.yaml's header: run in G2's batch, no trial, no Holm).
 id: G2_core4
+registered: {sha: '4208d7bf2bc47097b5f91f320fe96cad69cfffe8', date: '2026-10-11'}
 mechanism: >-
   Variance is highly predictable at a one-month horizon while the equity premium is not proportionally higher when
   variance is high (Moreira & Muir 2017); scaling index exposure by sigma*/sigma_hat, capped at 1, cuts drawdowns at
