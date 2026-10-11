@@ -695,11 +695,32 @@ sessions' 5Min returns): Goertzel band power via `fastgoertzel` at periods 2–6
 `available_at` 16:20 ET); `vol_state` gains `skew`, `vvix`, `vvix_vix`. `fastgoertzel` added as a pinned
 dependency (parity with a numpy Goertzel on 1,000 random windows).
 
-**Done when.**
-- [ ] Causality and `available_at` tests for every new column; the stationarity guard passes.
-- [ ] Diagnostic recorded: G1 headline P&L by tercile of each new state on the dev window (a split table in the
-      G1 report, re-rendered); the §1.1 session-shift null test reproduced from the group's own code.
-- [ ] Budget: the whole `tf_state` group for SPY 2016–2025 ≤ 10 s.
+**Done when.** (status note, 2026-10-11: every criterion with its evidence; SPEC §24 describes the as-built)
+- [x] Causality and `available_at` tests for every new column; the stationarity guard passes.
+  - `tf_state` (11 columns) runs in tests/test_features.py's causality test over every registered group (random walk
+    after the cut, truncation). tests/test_u26.py adds:
+    - the session window: previous sessions only, the gap excluded, scale-free;
+    - the spectral and MODWT state on white noise and AR(1);
+    - the bands' periods.
+  - `vol_state`'s `skew`, `vvix`, `vvix_vix` run in tests/test_u15.py's exo perturbation, plus a 999-planted SKEW /
+    VVIX close that is invisible before 16:20. VVIX / VIX is built on common dates.
+  - Guard: `scripts/u26_tf_state.py budget` passes tf_state and vol_state on SPY and QQQ 2016–2025.
+  - `fastgoertzel` is pinned at 0.1.9, not 1.x: 1.x requires numpy ≥ 2.2, and `uv add` moved numpy 1.26 → 2.4 (the
+    bit-exact pins). 0.1.9 evaluates bin int(f · M), so f = k / M hits bin k − 1 for 18 of 192 bins. It is called at
+    (k + 0.5) / M; parity with a numpy DFT on 1,000 random windows (tests/test_u26.py).
+- [x] Diagnostic recorded:
+  - The look `families/G1 U26 splits` (n = 15, K 171 → 186) was recorded before `python -m families splits G1`.
+  - 15 split tables were added to G1's stored result: `gamma_sign` and 14 terciles (11 tf_state columns, SKEW, VVIX,
+    VVIX / VIX). Only the state-splits section of the report was rewritten (`families.run.add_splits`), after the
+    stored `year` and `vol_quintile` tables were reproduced exactly. No re-run, no trial.
+  - Result: no tf_state column or the gamma sign separates G1's P&L. Low SKEW and low VVIX / VIX (the high-VIX
+    states) separate most, which most likely restates the reported VIX / vol effect. Reported only (SPEC §24).
+  - The §1.1 session-shift null was reproduced with `goertzel_power` beside the original numpy power: every window's
+    p is equal (`scripts/u26_tf_state.py null`). Same configurations as K₀, so no new look.
+- [x] Budget: `tf_state` on SPY 2016–2025 (190,402 bars) takes 0.69 s against 10 s; the null takes 9 s.
+- [x] Tests and lint: the full suite passes; ruff is clean. tests/test_u26.py has 22 tests.
+- [x] Adversarial review (one pass, before the splits were read): no BREAKING or SEVERE finding. The five MINORs
+      (add_splits robustness, report ordering, a tautological test) were fixed (SPEC §24).
 
 **Cost.** 1 session. Depends on U22; parallel with U23.
 
@@ -829,4 +850,10 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
   - Program verdict: G1 PASS (Holm 0.010). `families/registry.yaml` holds G1 only.
   - Looks K = 171.
   - The user's G3 decisions are recorded in the U25 note.
-- U26–U31 — not started. Next: U27 with G1 (needs Algo Trader Plus), or U26 / U28 meanwhile.
+- U26 — built on `unit/26-tf-state` (2026-10-11); SPEC §24 written.
+  - `tf_state` group: Goertzel band power and tilt, flatness, Haar MODWT energy, lag-1 autocorrelation, vol-of-vol.
+  - SKEW / VVIX are in `vol_state`.
+  - 15 splits were added to G1's report after a look (K = 186). No tf_state column or the gamma sign separates G1's
+    P&L; the CBOE splits restate the vol effect.
+  - fastgoertzel is pinned at 0.1.9 (numpy stays 1.26).
+- U27–U31 — not started. Next: U27 with G1 (needs Algo Trader Plus), or U28 (G6) meanwhile.

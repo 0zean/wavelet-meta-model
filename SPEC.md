@@ -1680,6 +1680,40 @@ on common observation dates); `VOL_STATE_EXO` lists the two new series, so a vol
   4e-10). Shares of windows with p < 0.05: SPY 1/d 0.00, 2/d 0.05, 3/d 0.03, 1/w 0.08; QQQ 0.05, 0.00, 0.00, 0.12.
   These are PLAN3 §1.1's figures: no daily cycle. The four configurations are K₀'s, so no new look.
 
+**Review (one pass, before the splits were read).** No BREAKING or SEVERE finding. The reviewer rebuilt the spectral
+columns and `ac1` with `np.fft` on 40 real sessions (2e-12), matched the CBOE as-of ranks by brute force (holidays
+included), and truncated real SPY bars mid-session without moving an earlier value. MINORs fixed:
+- A full re-render reordered the run's tables (result.json is key-sorted). `families.report.replace_splits` now
+  rewrites only the state-splits section, in the spec's order and then the added order.
+- `add_splits` now refuses:
+  - an empty check (the check could pass vacuously);
+  - a split whose input did not load (it was written "unavailable");
+  - a split already stored (no overwrite);
+  - a call without a look labelled `look` recorded after the run and after any earlier addition (CLI `--look`).
+- The as-of test now checks against a brute force instead of the code's own expression.
+
+Reading caveats:
+- The tf_state terciles are n/a for the first 116 headline days (the 252-rank needs 126 sessions of state); the CBOE
+  terciles have no n/a.
+- Trailing-rank terciles of trending series are unequal in size (SKEW 742 / 677 / 1,017 days).
+
+**G1's U26 splits** (`python -m families splits G1 --look "families/G1 U26 splits"`, 2026-10-11).
+- The look (n = 15, K 171 → 186) was recorded before the splits were computed. The stored `year` and `vol_quintile`
+  tables were reproduced exactly from streams.csv first.
+- Headline excess at 1.0 bp, bp/day by group:
+  - `gamma_sign`: long gamma (ac1 < 0, 1,526 days) 1.90 vs short gamma (910 days) 2.41; no separation (G3's gamma
+    gate failed at −0.45 Δ Sharpe).
+  - tf_state terciles, t1 / t2 / t3:
+    - tilt 2.87 / 0.85 / 2.68; pow_hf 2.35 / 2.68 / 1.57; pow_lf 2.82 / 1.54 / 2.15; flatness 2.57 / 3.10 / 0.89;
+    - modwt_e1 … e5: 1.93 / 2.09 / 2.57, 2.74 / 1.73 / 2.11, 2.15 / 0.77 / 3.74, 2.63 / 0.47 / 3.37,
+      3.27 / 1.14 / 2.14;
+    - ac1 2.51 / 1.71 / 2.37; vov 2.23 / 1.43 / 2.86.
+    - None is monotone, and every interval overlaps the others. The microstructure state does not separate G1's P&L.
+  - CBOE terciles, t1 / t2 / t3: SKEW 4.42 / 2.12 / 0.36; VVIX 1.98 / 0.41 / 3.56; VVIX / VIX 5.55 / 0.54 / 0.50.
+    - Low SKEW and low VVIX / VIX are the high-VIX states, so these most likely restate the VIX-tercile and
+      vol-quintile effect already reported (VIX high 4.20 vs low 0.18).
+- Reported, never tested. No gate or variant may be built on them without a new registered family and its MDE line.
+
 ## §25 G1 registration and the region family layer (U24; PLAN3 §5 U24)
 
 **The registered spec** (`families/G1.yaml`, committed at c168961, registered on 2026-10-11). Its headline is R₀ exactly as
