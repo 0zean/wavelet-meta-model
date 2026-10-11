@@ -2,8 +2,8 @@
 
 **Mechanism.** Within a session, a move that exceeds the typical move from the open for that time of day reveals a persistent order imbalance (institutional parent orders worked through the day, leveraged-ETF and option-hedging flows that buy into rises and sell into falls), which continues at the 30–90-minute horizon while the 5–10-minute horizon reverts; a smoothed velocity or a band breakout decided every 30 minutes and held until it reverses earns that continuation, long volatility and flat overnight (Zarattini, Aziz & Barbon 2024; Meyers 2025, 2026).
 
-- Registered: c1689612eef33fd87f87ec99bc793cd3038bbc7b (2026-10-11); run at 2026-10-11T04:01:53.030381+00:00, code 2994b5e83c6e, git da97726c77b7
-- Instruments: QQQ, SPY (pooled, weights QQQ 0.50, SPY 0.50, from the equal 0 sessions); window 2016-01-04 → 2025-10-01; benchmark constant_mix_ew
+- Registered: c1689612eef33fd87f87ec99bc793cd3038bbc7b (2026-10-11); run at 2026-10-11T04:30:44.047948+00:00, code 2994b5e83c6e, git d0a31c0192af
+- Instruments: QQQ, SPY (pooled, weights QQQ 0.50, SPY 0.50, equal weights); window 2016-01-04 → 2025-10-01; benchmark constant_mix_ew
 - N_eff 1.06 of 2 instruments (the pooled stream's effective count)
 - Test: overlay_alpha, one-sided, at cost 1.0; excess returns: FRED DTB3 as of each session's open, ACT/360
 - MDE line: 3.17 bp/day at 80% power over 2400 days, vol 8.0%, 4 families; expected 3.00 bp/day → a DIAGNOSTIC (below its MDE)
@@ -13,29 +13,29 @@
 ## Headline test
 
 - Alpha 5.3 %/yr (2.09 bp/day) on 2436 days, excess of the T-bill; bootstrap t 2.59, Newey–West t 2.70; one-sided p = 0.0034 (block 21 sessions); interval 2.0 % … —; Sharpe 0.80 (benchmark 0.83)
-- Looks: K = 60 configurations examined on the development window (families/looks.jsonl); Bonferroni bound p × K = 0.2040
+- Looks: K = 158 configurations examined on the development window (families/looks.jsonl); Bonferroni bound p × K = 0.5371
 - PSR(0) 0.995; DSR 0.476 (N = 55 program trials, V = 0.000987) — a ledger diagnostic, not part of the verdict
 - Alpha 5.3 %/yr (NW t 2.74, p 0.0061), beta -0.00
-- Floors: min_net_ret 0.052 vs 0.030 → ok; min_edge_to_cost 2.990 vs 2.000 → ok
+- Floors: min_edge_to_cost 2.990 vs 2.000 → ok; min_net_ret 0.052 vs 0.030 → ok
 - Coherence (cells, the verdict's): 86 (instrument, cell) points, share with the headline's sign 0.965 (needs 0.667), median cell 1.77 bp/day → coherent
 - Coherence (variants, reported): 10 variants, share with the headline's sign 1.00, median variant vel_vwap_stop (floors yes) → coherent
 - Before Holm across families: p 0.0034, floors yes, coherent yes, positive yes (at cost 1.0)
 
 ## Cost curve (every variant re-priced from its cost ledger; the verdict reads one column)
 
-| variant | registered | 0.3 | 1.0 | 2.3 |
+| variant | 0.3 | 1.0 | 2.3 | registered |
 |---|---|---|---|---|
-| headline | 0.024 (p 0.108); SR 0.70, ret 4.5 %, floors no | 0.070 (p 0.000); SR 1.40, ret 9.4 %, floors yes | 0.053 (p 0.003); SR 1.13, ret 7.5 %, floors yes | 0.020 (p 0.152); SR 0.64, ret 4.1 %, floors no |
-| cadence15 | SR 0.64, ret 4.2 %, floors no | SR 1.58, ret 11.0 %, floors yes | SR 1.24, ret 8.5 %, floors yes | SR 0.60, ret 3.9 %, floors no |
-| cadence5 | SR 0.32, ret 2.0 %, floors no | SR 1.41, ret 10.1 %, floors yes | SR 1.02, ret 7.2 %, floors yes | SR 0.30, ret 1.9 %, floors no |
-| first0935 | SR 0.70, ret 4.5 %, floors no | SR 1.40, ret 9.4 %, floors yes | SR 1.13, ret 7.5 %, floors yes | SR 0.64, ret 4.1 %, floors no |
-| exit1530 | SR 0.28, ret 1.5 %, floors no | SR 1.20, ret 7.0 %, floors yes | SR 0.91, ret 5.2 %, floors no | SR 0.39, ret 2.1 %, floors no |
-| vel_vwap_stop | SR 0.60, ret 4.1 %, floors no | SR 1.28, ret 9.2 %, floors yes | SR 1.02, ret 7.2 %, floors yes | SR 0.54, ret 3.6 %, floors no |
-| vel_flat_inside | SR -0.07, ret -0.4 %, floors no | SR 1.24, ret 5.3 %, floors yes | SR 0.81, ret 3.4 %, floors no | SR 0.00, ret -0.1 %, floors no |
-| modwt | SR 0.68, ret 4.3 %, floors no | SR 1.37, ret 9.2 %, floors yes | SR 1.11, ret 7.3 %, floors yes | SR 0.62, ret 3.9 %, floors no |
-| vol_target | SR 0.62, ret 2.8 %, floors no | SR 1.55, ret 7.4 %, floors yes | SR 1.20, ret 5.6 %, floors yes | SR 0.54, ret 2.5 %, floors no |
-| fill_1555 | SR 0.71, ret 4.5 %, floors no | SR 1.41, ret 9.4 %, floors yes | SR 1.14, ret 7.5 %, floors yes | SR 0.65, ret 4.1 %, floors no |
-| stress_2x | SR 0.70, ret 4.4 %, floors no | SR 1.41, ret 9.5 %, floors yes | SR 1.15, ret 7.6 %, floors yes | SR 0.65, ret 4.1 %, floors no |
+| cadence15 | SR 1.58, ret 11.0 %, floors yes | SR 1.24, ret 8.5 %, floors yes | SR 0.60, ret 3.9 %, floors no | SR 0.64, ret 4.2 %, floors no |
+| cadence5 | SR 1.41, ret 10.1 %, floors yes | SR 1.02, ret 7.2 %, floors yes | SR 0.30, ret 1.9 %, floors no | SR 0.32, ret 2.0 %, floors no |
+| exit1530 | SR 1.20, ret 7.0 %, floors yes | SR 0.91, ret 5.2 %, floors no | SR 0.39, ret 2.1 %, floors no | SR 0.28, ret 1.5 %, floors no |
+| fill_1555 | SR 1.41, ret 9.4 %, floors yes | SR 1.14, ret 7.5 %, floors yes | SR 0.65, ret 4.1 %, floors no | SR 0.71, ret 4.5 %, floors no |
+| first0935 | SR 1.40, ret 9.4 %, floors yes | SR 1.13, ret 7.5 %, floors yes | SR 0.64, ret 4.1 %, floors no | SR 0.70, ret 4.5 %, floors no |
+| headline | 0.070 (p 0.000); SR 1.40, ret 9.4 %, floors yes | 0.053 (p 0.003); SR 1.13, ret 7.5 %, floors yes | 0.020 (p 0.152); SR 0.64, ret 4.1 %, floors no | 0.024 (p 0.108); SR 0.70, ret 4.5 %, floors no |
+| modwt | SR 1.37, ret 9.2 %, floors yes | SR 1.11, ret 7.3 %, floors yes | SR 0.62, ret 3.9 %, floors no | SR 0.68, ret 4.3 %, floors no |
+| stress_2x | SR 1.41, ret 9.5 %, floors yes | SR 1.15, ret 7.6 %, floors yes | SR 0.65, ret 4.1 %, floors no | SR 0.70, ret 4.4 %, floors no |
+| vel_flat_inside | SR 1.24, ret 5.3 %, floors yes | SR 0.81, ret 3.4 %, floors no | SR 0.00, ret -0.1 %, floors no | SR -0.07, ret -0.4 %, floors no |
+| vel_vwap_stop | SR 1.28, ret 9.2 %, floors yes | SR 1.02, ret 7.2 %, floors yes | SR 0.54, ret 3.6 %, floors no | SR 0.60, ret 4.1 %, floors no |
+| vol_target | SR 1.55, ret 7.4 %, floors yes | SR 1.20, ret 5.6 %, floors yes | SR 0.54, ret 2.5 %, floors no | SR 0.62, ret 2.8 %, floors no |
 
 Columns: `registered` = the simulated costs (quotes half-spread + slippage per side); a number = that round-trip cost in bp on every fill; `measured` = the forward test's fill reconciliation. The headline column shows its statistic and p first.
 
@@ -115,7 +115,7 @@ Every cell at cost 1.0, alpha bp/day (excess), sorted by the pooled cell:
 | rmedv_n9_t1 | 0.06 | 0.18 | 0.12 | -2.23 … 2.47 | 0.03 |
 | rmedv_n9_t0.75 | 0.48 | -0.44 | 0.02 | -2.46 … 2.51 | 0.01 |
 
-*each cell re-simulated by wfo.position_backtest on the member's inputs; the measured profile is per fill class and is not re-simulated here*
+*each cell re-simulated by wfo.position_backtest on the member's inputs; `measured` prices decision fills at the profile's `open` class and the closing fill at `close_auction` (`close` under FILL_AUCTION last_bar)*
 
 ## Trade statistics (headline; booked costs)
 
@@ -140,17 +140,17 @@ Round trips per day: traded notional / the session's starting equity / 2, averag
 
 | variant | status | start | days | sharpe | Δ vs bench | CI | p | Δ on headline days | net ret | max dd | floors |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| headline | ok | 2016-01-25 | 2436 | 0.80 | 0.05 | 0.02 … — | 0.0034 | — | 7.5 % | -9.7 % | yes |
 | cadence15 | ok | 2016-01-25 | 2436 | 0.91 | 0.06 | 0.03 … — | 0.0006 | 0.06 | 8.5 % | -5.5 % | yes |
 | cadence5 | ok | 2016-01-25 | 2436 | 0.71 | 0.05 | 0.02 … — | 0.0034 | 0.05 | 7.2 % | -10.6 % | yes |
-| first0935 | ok | 2016-01-25 | 2436 | 0.80 | 0.05 | 0.02 … — | 0.0034 | 0.05 | 7.5 % | -9.7 % | yes |
 | exit1530 | ok | 2016-01-26 | 2435 | 0.54 | 0.03 | -0.00 … — | 0.0546 | 0.03 | 5.2 % | -12.0 % | no |
-| vel_vwap_stop | ok | 2016-01-25 | 2436 | 0.71 | 0.05 | 0.02 … — | 0.0070 | 0.05 | 7.2 % | -9.8 % | yes |
-| vel_flat_inside | ok | 2016-01-25 | 2436 | 0.30 | 0.01 | -0.01 … — | 0.1564 | 0.01 | 3.4 % | -6.1 % | no |
-| modwt | ok | 2016-01-25 | 2436 | 0.77 | 0.05 | 0.02 … — | 0.0050 | 0.05 | 7.3 % | -10.4 % | yes |
-| vol_target | ok | 2016-02-03 | 2429 | 0.73 | 0.03 | 0.01 … — | 0.0064 | 0.03 | 5.6 % | -5.4 % | yes |
 | fill_1555 | ok | 2016-01-25 | 2436 | 0.81 | 0.05 | 0.02 … — | 0.0032 | 0.05 | 7.5 % | -9.2 % | yes |
+| first0935 | ok | 2016-01-25 | 2436 | 0.80 | 0.05 | 0.02 … — | 0.0034 | 0.05 | 7.5 % | -9.7 % | yes |
+| headline | ok | 2016-01-25 | 2436 | 0.80 | 0.05 | 0.02 … — | 0.0034 | — | 7.5 % | -9.7 % | yes |
+| modwt | ok | 2016-01-25 | 2436 | 0.77 | 0.05 | 0.02 … — | 0.0050 | 0.05 | 7.3 % | -10.4 % | yes |
 | stress_2x | ok | 2016-01-25 | 2436 | 0.81 | 0.05 | 0.02 … — | 0.0030 | 0.05 | 7.6 % | -9.3 % | yes |
+| vel_flat_inside | ok | 2016-01-25 | 2436 | 0.30 | 0.01 | -0.01 … — | 0.1564 | 0.01 | 3.4 % | -6.1 % | no |
+| vel_vwap_stop | ok | 2016-01-25 | 2436 | 0.71 | 0.05 | 0.02 … — | 0.0070 | 0.05 | 7.2 % | -9.8 % | yes |
+| vol_target | ok | 2016-02-03 | 2429 | 0.73 | 0.03 | 0.01 … — | 0.0064 | 0.03 | 5.6 % | -5.4 % | yes |
 
 Coherence reads each variant's Δ on the days it shares with the headline (column 'Δ on headline days'); the curve and the p-values are each variant's own sample.
 
@@ -158,87 +158,89 @@ Coherence reads each variant's Δ on the days it shares with the headline (colum
 
 | variant | crisis_return | exposure | hit_rate | longest_flat_run | max_dd | mean_per_trade_bp | ret_ann | sharpe | skew | vol_ann | worst_day |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| headline | 2020-02-19..2020-03-24: -4.9 %; 2022-01-03..2022-10-13: 20.8 % | 1.000 | 0.447 | 0 | -0.097 | -3.832 | 0.075 | 1.135 | 1.840 | 0.066 | -0.026 |
-| cadence15 | 2020-02-19..2020-03-24: -2.0 %; 2022-01-03..2022-10-13: 22.2 % | 1.000 | 0.409 | 0 | -0.055 | -7.732 | 0.085 | 1.236 | 1.820 | 0.068 | -0.026 |
-| cadence5 | 2020-02-19..2020-03-24: -5.7 %; 2022-01-03..2022-10-13: 21.1 % | 1.000 | 0.369 | 0 | -0.106 | -9.930 | 0.072 | 1.021 | 2.490 | 0.070 | -0.028 |
-| first0935 | 2020-02-19..2020-03-24: -4.9 %; 2022-01-03..2022-10-13: 20.8 % | 1.000 | 0.447 | 0 | -0.097 | -3.860 | 0.075 | 1.134 | 1.840 | 0.066 | -0.026 |
-| exit1530 | 2020-02-19..2020-03-24: -9.3 %; 2022-01-03..2022-10-13: 10.9 % | 1.000 | 0.436 | 0 | -0.120 | -5.581 | 0.052 | 0.913 | 1.266 | 0.058 | -0.025 |
-| vel_vwap_stop | 2020-02-19..2020-03-24: -5.6 %; 2022-01-03..2022-10-13: 14.0 % | 1.000 | 0.409 | 0 | -0.098 | -3.508 | 0.072 | 1.024 | 1.919 | 0.070 | -0.023 |
-| vel_flat_inside | 2020-02-19..2020-03-24: -3.1 %; 2022-01-03..2022-10-13: 7.3 % | 1.000 | 0.353 | 0 | -0.061 | -7.723 | 0.034 | 0.805 | 2.018 | 0.043 | -0.020 |
-| modwt | 2020-02-19..2020-03-24: -5.7 %; 2022-01-03..2022-10-13: 20.3 % | 1.000 | 0.441 | 0 | -0.104 | -4.797 | 0.073 | 1.107 | 1.689 | 0.066 | -0.024 |
-| vol_target | 2020-02-19..2020-03-24: 1.4 %; 2022-01-03..2022-10-13: 12.2 % | 1.000 | 0.447 | 0 | -0.054 | -3.681 | 0.056 | 1.196 | 1.459 | 0.047 | -0.021 |
-| fill_1555 | 2020-02-19..2020-03-24: -4.3 %; 2022-01-03..2022-10-13: 20.7 % | 1.000 | 0.447 | 0 | -0.092 | -3.768 | 0.075 | 1.143 | 1.634 | 0.065 | -0.026 |
-| stress_2x | 2020-02-19..2020-03-24: -4.5 %; 2022-01-03..2022-10-13: 20.8 % | 1.000 | 0.447 | 0 | -0.093 | -3.997 | 0.076 | 1.148 | 1.912 | 0.065 | -0.025 |
+| cadence15 | 2020-02-19..2020-03-24: -2.1 %; 2022-01-03..2022-10-13: 20.8 % | 0.998 | 0.261 | 2 | -0.068 | -9.488 | 0.062 | 0.914 | 1.824 | 0.068 | -0.026 |
+| cadence5 | 2020-02-19..2020-03-24: -5.8 %; 2022-01-03..2022-10-13: 19.8 % | 0.998 | 0.236 | 2 | -0.128 | -10.122 | 0.049 | 0.710 | 2.491 | 0.070 | -0.028 |
+| exit1530 | 2020-02-19..2020-03-24: -9.3 %; 2022-01-03..2022-10-13: 9.7 % | 0.997 | 0.285 | 2 | -0.121 | -11.075 | 0.030 | 0.535 | 1.269 | 0.058 | -0.025 |
+| fill_1555 | 2020-02-19..2020-03-24: -4.4 %; 2022-01-03..2022-10-13: 19.4 % | 0.997 | 0.291 | 2 | -0.092 | -10.346 | 0.052 | 0.808 | 1.640 | 0.065 | -0.026 |
+| first0935 | 2020-02-19..2020-03-24: -5.0 %; 2022-01-03..2022-10-13: 19.4 % | 0.997 | 0.290 | 2 | -0.097 | -10.383 | 0.052 | 0.801 | 1.845 | 0.066 | -0.026 |
+| headline | 2020-02-19..2020-03-24: -4.9 %; 2022-01-03..2022-10-13: 19.5 % | 0.997 | 0.291 | 2 | -0.097 | -10.369 | 0.052 | 0.802 | 1.845 | 0.066 | -0.026 |
+| modwt | 2020-02-19..2020-03-24: -5.7 %; 2022-01-03..2022-10-13: 19.0 % | 0.998 | 0.286 | 1 | -0.105 | -10.786 | 0.050 | 0.775 | 1.694 | 0.066 | -0.024 |
+| stress_2x | 2020-02-19..2020-03-24: -4.5 %; 2022-01-03..2022-10-13: 19.5 % | 0.997 | 0.291 | 2 | -0.093 | -10.402 | 0.052 | 0.813 | 1.917 | 0.065 | -0.025 |
+| vel_flat_inside | 2020-02-19..2020-03-24: -3.2 %; 2022-01-03..2022-10-13: 6.1 % | 0.997 | 0.281 | 2 | -0.062 | -8.389 | 0.012 | 0.295 | 2.024 | 0.043 | -0.020 |
+| vel_vwap_stop | 2020-02-19..2020-03-24: -5.6 %; 2022-01-03..2022-10-13: 12.8 % | 0.997 | 0.247 | 2 | -0.098 | -10.130 | 0.049 | 0.714 | 1.924 | 0.070 | -0.023 |
+| vol_target | 2020-02-19..2020-03-24: 1.3 %; 2022-01-03..2022-10-13: 11.0 % | 0.998 | 0.291 | 2 | -0.063 | -10.335 | 0.033 | 0.728 | 1.462 | 0.047 | -0.021 |
+
+Responses, splits and slices below: excess of the T-bill, at cost 1.0; mean_per_trade_bp and hit_rate are per position (a chain of rolled legs, ended at a side flip: Σ cash pnl / its largest leg notional) from the booked-cost trades.
 
 ## State splits (headline; reported with 95 % Newey–West intervals, not tested)
-
-**vol_quintile**
-
-| group | n_days | mean_bp | ci_bp | sharpe |
-|---|---|---|---|---|
-| n/a | 238 | -0.49 | -4.09 … 3.11 | -0.29 |
-| q1 low | 510 | 0.98 | -0.84 … 2.79 | 0.73 |
-| q2 | 434 | 2.12 | -0.48 … 4.71 | 1.20 |
-| q3 | 397 | 1.70 | -1.35 … 4.76 | 0.94 |
-| q4 | 397 | 4.97 | 1.04 … 8.91 | 1.89 |
-| q5 high | 460 | 7.06 | 0.94 … 13.17 | 1.56 |
-
-**vix_tercile**
-
-| group | n_days | mean_bp | ci_bp | sharpe |
-|---|---|---|---|---|
-| high | 812 | 4.86 | 0.89 … 8.84 | 1.27 |
-| low | 812 | 1.08 | -0.28 … 2.45 | 0.83 |
-| mid | 812 | 2.92 | 0.95 … 4.88 | 1.48 |
 
 **day_of_week**
 
 | group | n_days | mean_bp | ci_bp | sharpe |
 |---|---|---|---|---|
-| Friday | 490 | 3.65 | 0.06 … 7.25 | 1.41 |
-| Monday | 454 | 4.32 | 0.77 … 7.87 | 1.83 |
-| Thursday | 492 | 2.91 | -1.15 … 6.97 | 1.09 |
-| Tuesday | 502 | -0.02 | -3.07 … 3.03 | -0.01 |
-| Wednesday | 498 | 4.06 | 0.01 … 8.11 | 1.41 |
+| Friday | 490 | 3.03 | -0.56 … 6.62 | 1.17 |
+| Monday | 454 | 2.52 | -1.10 … 6.14 | 1.07 |
+| Thursday | 492 | 2.31 | -1.75 … 6.37 | 0.87 |
+| Tuesday | 502 | -0.81 | -3.85 … 2.23 | -0.33 |
+| Wednesday | 498 | 3.47 | -0.58 … 7.52 | 1.21 |
+
+- gamma_sign: unavailable
 
 **macro_day**
 
 | group | n_days | mean_bp | ci_bp | sharpe |
 |---|---|---|---|---|
-| macro | 299 | 0.89 | -3.96 … 5.75 | 0.31 |
-| other | 2137 | 3.24 | 1.59 … 4.89 | 1.26 |
+| macro | 299 | 0.28 | -4.57 … 5.13 | 0.10 |
+| other | 2137 | 2.34 | 0.69 … 3.99 | 0.91 |
 
 **opex_day**
 
 | group | n_days | mean_bp | ci_bp | sharpe |
 |---|---|---|---|---|
-| opex | 116 | 4.90 | -1.13 … 10.93 | 1.98 |
-| other | 2320 | 2.86 | 1.26 … 4.45 | 1.09 |
+| opex | 116 | 4.29 | -1.70 … 10.29 | 1.74 |
+| other | 2320 | 1.98 | 0.38 … 3.57 | 0.76 |
+
+**vix_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| high | 812 | 4.20 | 0.21 … 8.18 | 1.09 |
+| low | 812 | 0.18 | -1.15 … 1.52 | 0.14 |
+| mid | 812 | 1.88 | -0.08 … 3.85 | 0.96 |
+
+**vol_quintile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 363 | -0.46 | -3.01 … 2.08 | -0.30 |
+| q1 low | 497 | 0.49 | -1.78 … 2.76 | 0.28 |
+| q2 | 362 | 0.58 | -2.12 … 3.28 | 0.31 |
+| q3 | 365 | 0.71 | -2.35 … 3.77 | 0.36 |
+| q4 | 404 | 4.25 | 0.16 … 8.33 | 1.63 |
+| q5 high | 445 | 6.35 | 0.45 … 12.26 | 1.44 |
 
 **year**
 
 | group | n_days | mean_bp | ci_bp | sharpe |
 |---|---|---|---|---|
-| 2016 | 238 | -0.49 | -4.09 … 3.11 | -0.29 |
-| 2017 | 251 | 0.49 | -1.50 … 2.47 | 0.42 |
-| 2018 | 251 | 8.48 | 3.09 … 13.86 | 2.73 |
-| 2019 | 252 | 0.26 | -2.08 … 2.59 | 0.19 |
-| 2020 | 253 | 2.45 | -3.54 … 8.44 | 0.72 |
-| 2021 | 252 | 1.29 | -1.72 … 4.30 | 0.68 |
-| 2022 | 251 | 7.94 | -0.05 … 15.94 | 1.94 |
-| 2023 | 250 | 3.71 | 0.64 … 6.79 | 1.80 |
-| 2024 | 252 | 4.40 | 0.68 … 8.13 | 1.99 |
-| 2025 | 186 | 0.12 | -6.59 … 6.83 | 0.03 |
-
-- gamma_sign: unavailable
+| 2016 | 238 | -0.62 | -4.22 … 2.98 | -0.36 |
+| 2017 | 251 | 0.12 | -1.87 … 2.10 | 0.10 |
+| 2018 | 251 | 7.69 | 2.32 … 13.07 | 2.48 |
+| 2019 | 252 | -0.58 | -2.91 … 1.76 | -0.43 |
+| 2020 | 253 | 2.30 | -3.69 … 8.29 | 0.68 |
+| 2021 | 252 | 1.27 | -1.74 … 4.28 | 0.67 |
+| 2022 | 251 | 7.15 | -0.89 … 15.19 | 1.75 |
+| 2023 | 250 | 1.67 | -1.41 … 4.75 | 0.80 |
+| 2024 | 252 | 2.38 | -1.34 … 6.11 | 1.07 |
+| 2025 | 186 | -1.59 | -8.31 … 5.13 | -0.46 |
 
 ## Sample splits (headline; reported)
 
 | split | n_days | sharpe | bench_sharpe | ret | max_dd | mean_bp |
 |---|---|---|---|---|---|---|
-| iwm_dia | 2436 | -0.26 | 0.70 | -15.3 % | -17.3 % | -0.61 |
-| 2016_2019 | 992 | 1.11 | 1.26 | 24.0 % | -4.0 % | 2.21 |
-| 2020_2025 | 1444 | 1.17 | 0.84 | 62.3 % | -9.7 % | 3.46 |
+| 2016_2019 | 992 | 0.84 | 1.17 | 17.6 % | -4.5 % | 1.68 |
+| 2020_2025 | 1444 | 0.80 | 0.72 | 38.5 % | -9.7 % | 2.37 |
+| iwm_dia | 2436 | -0.08 | 0.59 | -6.2 % | -16.8 % | -0.20 |
 
 ## Quasi-holdout slice (reported; never a gate)
 
@@ -246,14 +248,14 @@ Coherence reads each variant's Δ on the days it shares with the headline (colum
 
 | slice | n_days | sharpe | bench_sharpe | ret | max_dd | mean_bp |
 |---|---|---|---|---|---|---|
-| 2025-10 → 2026-09 | 250 | -1.11 | 1.18 | -6.0 % | -7.5 % | -2.42 |
+| 2025-10 → 2026-09 | 250 | -0.61 | 1.18 | -3.4 % | -5.3 % | -1.34 |
 
 ## Per-instrument headline Sharpe (raw and James–Stein shrunk toward the family mean)
 
 | instrument | sharpe | sharpe_js |
 |---|---|---|
-| QQQ | 0.74 | 0.74 |
-| SPY | 0.61 | 0.61 |
+| QQQ | 0.85 | 0.85 |
+| SPY | 0.69 | 0.69 |
 
 ## Registered vs run spec
 

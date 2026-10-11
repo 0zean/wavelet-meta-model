@@ -551,13 +551,59 @@ one}`; MDE line; floors at 1.0 bp pending the measured cost; `INIT_CASH` 30,000)
 2016-01 → 2016-06 after the spec commit; registration; the run; the report; an adversarial review of
 registration, fills and the bootstrap.
 
-**Done when.**
-- [ ] Spec committed before any ledger row; MDE recorded; `looks.jsonl` unchanged by the run.
-- [ ] Report: headline alpha with its interval at four costs; the specification curve over 86 cells; splits;
-      the quasi-holdout slice with its note; per-instrument results with N_eff; trade statistics (round
-      trips/day, hit rate, skew, worst day, longest flat run); the account check.
-- [ ] Decision rule applied as registered: G1 proceeds to U25 iff the headline passes `overlay_alpha` at 1.0 bp
-      and the sign holds on ≥ 2/3 of cells; otherwise the family is closed and the program moves to U28/U29.
+**Done when.** (status note, 2026-10-11: every criterion with its evidence; SPEC §25 describes the as-built)
+- [x] Spec committed before any ledger row; MDE recorded; `looks.jsonl` unchanged by the run.
+  - `families/G1.yaml` was committed at c168961 and registered at c168961 (commit da97726, `python -m families
+    register`).
+  - The status-only smoke ran after the spec commit (`scripts/u24_g1.py smoke`, 2016-01-04 → 2016-07-01): all 11
+    trials, the IWM/DIA split and the 86-cell curve ran in 12 s, with region parity 0.0.
+  - The ledger held no G1 row before the run.
+  - MDE line: 3.17 bp/day (Sharpe 1.00) at 2,400 days, 8 % vol, 4 families. The expected 3.0 bp/day is below it, so G1
+    is registered as a DIAGNOSTIC (the user's choice, 2026-10-10).
+  - The run left `families/looks.jsonl` byte-identical (`git diff --quiet`). One look, `families/G1.yaml (U24 run)`
+    with n = 98, was then recorded before the report was read. K is now 158.
+  - IWM and DIA are a sample split, not a variant (the loader refuses instruments as a variant), which leaves 10
+    variants.
+- [x] Report (`results/families/G1/report.md`):
+  - the headline alpha with its interval at four costs (the cost curve);
+  - the specification curve over 86 cells (`cells_curve.png` and the table), with the region re-simulated by
+    position_backtest equal to the members exactly (max |Δ| 0 over 2,432 / 2,436 days);
+  - the splits and the quasi-holdout slice with its note;
+  - per-instrument alpha and Sharpe, and N_eff 1.06;
+  - trade statistics: 0.99 round trips/day, hit rate 0.29 per position, skew +1.85, worst day −2.6 %, longest flat run
+    2 sessions, long 0.80 / short 0.22 bp/day;
+  - the account check: margin_30k tradable, PDT not binding, at most 1.00× gross intraday.
+  - Compute: the whole run took 75 s on the i9 against a 10-minute budget, and the re-run 62 s.
+- [x] Decision rule applied as registered: **G1 proceeds to U25.**
+  - Headline overlay alpha at 1.0 bp: 2.09 bp/day = 5.3 %/yr excess, one-sided block-bootstrap p 0.0034 (bootstrap t
+    2.59, Newey–West t 2.70), beta −0.00.
+  - Holm over the program's tested families (G1 alone) gives p 0.0034. The most stringent Holm step over the four
+    families PLAN3 holds at once gives 0.0136. Both are below 0.05.
+  - Floors: net 5.2 %/yr ≥ 3 %; edge-to-cost 2.99 ≥ 2.
+  - The sign holds on 83 / 86 cells (0.965 ≥ 0.667), median cell 1.77 bp/day. All 10 variants have the headline's sign.
+  - Caveats, reported and not gates:
+    - The verdict depends on the cost. At the booked costs (quotes + 1 bp slippage per side, ≈ 2.6 bp round trip)
+      p is 0.108 and the floors fail; at 2.3 bp p is 0.152 and the cells share is 0.663. U27's measured fills decide.
+    - The Bonferroni bound over K looks is 0.20 at K = 60 and 0.54 at K = 158.
+    - R₀ on IWM/DIA has the wrong sign: −0.20 bp/day, Sharpe −0.08. PLAN3's core claim ("IWM and DIA show the same
+      sign") does not hold on the development window.
+    - The quasi-holdout slice is −1.34 bp/day, Sharpe −0.61 over 250 days.
+    - The return sits in the top two vol quintiles (q4 4.3, q5 6.4 bp/day; q1–q3 0.5–0.7). The core claim said "top
+      three quintiles"; the data show two. This is G3's premise.
+    - 2018 and 2022 carry the result (7.7 and 7.2 bp/day). 2016, 2017, 2019 and 2025 are ≤ 0.1.
+    - The 2020 crisis window is −4.9 % (the vol-targeted variant +1.3 %).
+- [x] Tests and lint: `uv run pytest -q` passes 841 on the final code; ruff is clean. tests/test_u24.py has 22 tests.
+- [x] Adversarial review (one pass): no BREAKING finding. The reviewer reproduced the headline bit for bit from the
+      members' cost ledgers. Four SEVERE reporting defects were fixed and G1 re-run (same trial keys; verdict inputs
+      unchanged):
+      - splits, slices, responses and per-instrument Sharpe read raw returns at booked costs (now excess, at the
+        verdict's cost);
+      - position returns compounded unweighted legs (now Σ cash pnl / the largest leg notional, split at side flips);
+      - exposure and flat runs counted T-bill days;
+      - the cells were not re-simulated at a measured cost.
+      MINOR fixes: parity enforced, live_start checked, vol_quintile re-ranked, header text. MINOR deferred with
+      reasons (SPEC §25): the loss gate per member rather than per account (11 sessions), vix_tercile's full-sample
+      cuts (to U26), early-close off-grid decisions, QQQ's two dropped sessions.
 
 **Reviewer focus.** Any dependence of R₀ on the §1 diagnostics beyond what the spec states; the cost model's
 fill kinds on half-hour fills (non-auction) vs the close (auction); the PDT counter on a 2-instrument region.
@@ -714,4 +760,12 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
   2016–2025. No look taken (the scripts print timings and parity residuals only; `families/looks.jsonl` unchanged).
   Normalization per the Meyers papers (user, 2026-10-10; §7 item 6): RMedV · √N · xmult and the T+1 polynomial
   velocity / its SD, refit over 21 sessions (window confirmed by the user, 2026-10-10). PR #24 merged.
-- U24–U31 — not started.
+- U24 — built and run on `unit/24-g1-dev-test` (2026-10-11); SPEC §25 written.
+  - G1 registered at c168961 as a diagnostic (expected 3.0 < MDE 3.17 bp/day) and run once (75 s).
+  - Headline alpha 2.09 bp/day at 1.0 bp, one-sided p 0.0034; floors and cells coherence (83/86) pass. **G1 proceeds
+    to U25** under the registered rule.
+  - The result is cost-bound: it fails at the booked ≈ 2.6 bp and at 2.3 bp.
+  - IWM/DIA show the wrong sign, the quasi-holdout slice is negative, and the edge sits in the top two vol quintiles.
+    All three are reported in the U24 note above.
+  - Looks K = 158 (G1's run recorded as n = 98 before its report was read).
+- U25–U31 — not started.

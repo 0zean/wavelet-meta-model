@@ -416,7 +416,14 @@ def family_markdown(result: dict) -> str:
         "",
     ]
     ac = d.get("at_cost")
-    md += [f"Responses, splits and slices below: excess of the T-bill{f', at cost {ac}' if ac else ''}.", ""]
+    md += [
+        (
+            f"Responses, splits and slices below: excess of the T-bill{f', at cost {ac}' if ac else ''}; "
+            "mean_per_trade_bp and hit_rate are per position (a chain of rolled legs, ended at a side flip: Σ cash pnl / "
+            "its largest leg notional) from the booked-cost trades."
+        ),
+        "",
+    ]
     md += ["## State splits (headline; reported with 95 % Newey–West intervals, not tested)", ""]
     for k, s in d.get("state_splits", {}).items():
         if s.get("unavailable"):
