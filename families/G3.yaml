@@ -13,6 +13,7 @@
 #   at a 1.0 bp round trip (as G1). Floors: net excess return ≥ 0.9 × G1's on the same days (PLAN3); gross edge ≥ 2 ×
 #   the cost (PLAN3 §4.4).
 # - Coherence over the variants (§17): the share with the headline's sign ≥ 2/3 and the median variant's floors.
+# - The reference pins G1's registered sha (c168961): a run refuses G1 registered at any other sha (U25 review).
 # - Variants (3; PLAN3 lists 5): the bottom two quintiles; size ∝ the vol quintile (⌈5 · rank⌉ / 5); the revealed-gamma
 #   gate (flat when the lag-1 autocorrelation of 5Min returns over the previous 5 sessions is negative). Dropped
 #   (the user, 2026-10-11): "band dollar width < 2 × the round-trip cost" can never fire on these bars (the 10:00 band's
@@ -53,7 +54,7 @@ headline:
   risk_profile: loss_gate
   overrides: {INIT_CASH: 30000, FILL_AUCTION: print, COST_TABLE: asof, CASH_YIELD: tbill, SESSION_CLOCK: calendar,
               STRESS_MULT: 1.0}
-reference: {family: G1, variant: headline}
+reference: {family: G1, variant: headline, sha: 'c1689612eef33fd87f87ec99bc793cd3038bbc7b'}
 variants:
   - {label: gate_q2, primary.params.gate: {kind: vol_quantile, below: 0.4, sessions: 252}}
   - {label: size_quintile, primary.params.gate: {kind: vol_size, sessions: 252}}

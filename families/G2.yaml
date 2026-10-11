@@ -18,6 +18,8 @@
 #   15 % target; σ_overlay 8 %, PLAN3 §3 G1), reference Sharpe 0.7 (the core's excess), Holm over 4 families: MDE
 #   Δ Sharpe 0.53. Expected 0.45 (PLAN3 §3 G2: core ≈ 0.9 → portfolio 1.2–1.5); G1's realized alpha implies less
 #   (≈ 0.25). Below the MDE: registered as a DIAGNOSTIC, as G1 (the test, floors and coherence run unchanged).
+# - The core block pins each core's registered sha (G2_core and G2_core4 at 4208d7b): a run refuses a core registered
+#   at any other sha, so the core cannot be changed after G2's result (U25 review).
 # - No state or sample splits: they would describe the overlay stream, which is G1's (its report has them).
 id: G2
 mechanism: >-
@@ -49,12 +51,12 @@ headline:
   risk_profile: loss_gate
   overrides: {INIT_CASH: 30000, FILL_AUCTION: print, COST_TABLE: asof, CASH_YIELD: tbill, SESSION_CLOCK: calendar,
               STRESS_MULT: 1.0}
-core: {family: G2_core, variant: headline, k: 1.0}
+core: {family: G2_core, variant: headline, k: 1.0, sha: '4208d7bf2bc47097b5f91f320fe96cad69cfffe8'}
 variants:
   - {label: k0.5, core.k: 0.5}
   - {label: k2, core.k: 2.0}
   - {label: core_bh, core.variant: benchmark}
-  - {label: core_f1_4, core.family: G2_core4}
+  - {label: core_f1_4, core.family: G2_core4, core.sha: '4208d7bf2bc47097b5f91f320fe96cad69cfffe8'}
   - {label: overlay_vol_target, primary.params.vol_target: 0.10, primary.params.vol_cap: 2.0}
 response: [sharpe, ret_ann, vol_ann, max_dd, skew, worst_day, crisis_return]
 benchmark: constant_mix_ew

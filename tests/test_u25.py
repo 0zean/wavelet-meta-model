@@ -415,7 +415,16 @@ def test_g2_g3_and_the_cores_are_registered_as_plan3_states_them():
     g3 = fam["G3"].headline.config["primary"]["params"]
     assert g3["gate"] == {"kind": "vol_quantile", "below": 0.2, "sessions": 252}
     assert {k: v for k, v in g3.items() if k != "gate"} == fam["G1"].headline.config["primary"]["params"]
-    assert fam["G3"].reference == {"family": "G1", "variant": "headline"} and fam["G3"].test["kind"] == "paired"
+    g1sha = fam["G1"].doc["registered"]["sha"]
+    assert (
+        fam["G3"].reference == {"family": "G1", "variant": "headline", "sha": g1sha}
+        and fam["G3"].test["kind"] == "paired"
+    )
+    assert (
+        {v.core["sha"] for v in fam["G2"].variants}
+        == {fam["G2_core"].doc["registered"]["sha"]}
+        == {fam["G2_core4"].doc["registered"]["sha"]}
+    )
     assert [v.label for v in fam["G3"].variants] == [HEADLINE, "gate_q2", "size_quintile", "gamma_gate"]
     assert fam["G3"].floors["min_net_ret_vs_reference"] == 0.9 and fam["G3"].power["diagnostic"]
     g2 = fam["G2"]
