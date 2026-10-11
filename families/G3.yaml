@@ -24,6 +24,7 @@
 #   §3 G1's expected); Holm over 4 families: MDE Δ Sharpe 0.28. Expected +0.2 (PLAN3 §3 G3: +0.1 to +0.3). Below the
 #   MDE: registered as a DIAGNOSTIC, as G1.
 id: G3
+registered: {sha: 'e66c3143ce0532885cdc0d3da92b6b2dbd93b0df', date: '2026-10-11'}
 mechanism: >-
   Hedging flows and order imbalances scale with volatility; in calm sessions the noise band is narrow and the
   continuation G1 trades is below its cost. Realized volatility is persistent (parameter rank is not: the RMV repo),

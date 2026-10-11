@@ -22,6 +22,7 @@
 #   at any other sha, so the core cannot be changed after G2's result (U25 review).
 # - No state or sample splits: they would describe the overlay stream, which is G1's (its report has them).
 id: G2
+registered: {sha: 'e66c3143ce0532885cdc0d3da92b6b2dbd93b0df', date: '2026-10-11'}
 mechanism: >-
   A zero-beta, long-volatility intraday overlay (G1: trend continuation after a move beyond the day's noise band,
   flat overnight) earns most when a long-only core loses (2018, 2020, 2022); adding it to a volatility-managed index
