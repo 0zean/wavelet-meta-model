@@ -44,11 +44,12 @@ Family specs (SPEC §17.1): `families/<id>.yaml` → a validated FamilySpec and 
     # marginal / paired (U25): {n_days, rho, sharpe_ref, families, mde_delta_sharpe, expected_delta_sharpe, diagnostic}
     # floors (U25): max_dd_vs_core x (marginal: |max DD(core + k·overlay)| ≤ x · |max DD(core)|),
     #               min_net_ret_vs_reference x (paired: net excess return ≥ x × the reference's on the same days)
-    core: {family: G2_core, variant: headline, k: 1.0}       # marginal: the core family's stream (U25: its cells run
+    core: {family: G2_core, variant: headline, k: 1.0,      # marginal: the core family's stream (U25: its cells run
+           sha: <G2_core's registered sha>}                  #   (the sha pins the core: a run refuses another)
                                                              #   in this family's batch; variant `benchmark` = its
                                                              #   benchmark); variants may change core.k / .variant /
                                                              #   .family
-    reference: {family: G1, variant: headline}               # paired (U25): the stream this one is tested against,
+    reference: {family: G1, variant: headline, sha: <sha>}   # paired (U25): the stream this one is tested against,
                                                              #   its cells re-run in the batch and priced at each cost
     account: {kind: margin, equity: 30000, locate_bps: 0}    # the registered account (risk/account.py); default:
                                                              #   a margin account at the headline cells' INIT_CASH
@@ -455,9 +456,9 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         if not isinstance(core, dict) or not core.get("family"):
             raise ValueError("test.kind 'marginal' needs core: {family, variant (headline), k (1.0)}")
         for v in variants:
-            extra = set(v.core or {}) - {"family", "variant", "k"}
+            extra = set(v.core or {}) - {"family", "variant", "k", "sha"}
             if extra:
-                raise ValueError(f"core takes family, variant and k; got {sorted(extra)}")
+                raise ValueError(f"core takes family, variant, k and sha; got {sorted(extra)}")
             kk = (v.core or {}).get("k", 1.0)
             if isinstance(kk, bool) or not isinstance(kk, (int, float)) or not kk > 0:
                 raise ValueError(f"variant {v.label!r}: core.k must be a number > 0, got {kk!r}")
@@ -466,8 +467,9 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         raise ValueError("`core` is read by test.kind 'marginal' only")
     reference = doc.get("reference")
     if test["kind"] == "paired":
-        if not isinstance(reference, dict) or not reference.get("family") or set(reference) - {"family", "variant"}:
-            raise ValueError("test.kind 'paired' needs reference: {family, variant (headline)}")
+        if not isinstance(reference, dict) or not reference.get("family") or \
+                set(reference) - {"family", "variant", "sha"}:  # fmt: skip
+            raise ValueError("test.kind 'paired' needs reference: {family, variant (headline), sha}")
         _family_id(reference["family"], "reference.family")
         if reference["family"].split(".v")[0] == fid.split(".v")[0]:
             raise ValueError("a paired family's reference is another family")

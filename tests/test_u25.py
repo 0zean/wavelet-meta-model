@@ -436,3 +436,76 @@ def test_g2_g3_and_the_cores_are_registered_as_plan3_states_them():
         assert c.window == fam["G2"].window
     prog = yaml.safe_load((ROOT / "families" / "program.yaml").read_text(encoding="utf-8"))
     assert "G2_core" not in prog["families"] and {"G2", "G3"} <= set(prog["families"])
+
+
+# ── U25 review: pinned cores, identical streams, a losing reference ──────────
+
+
+def _git(repo, *args):
+    import subprocess
+
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+
+def test_a_core_changed_after_the_result_is_refused(tmp_path):
+    """The reviewer's SEVERE scenario: a core edited and re-registered after G2's run must not be read silently."""
+    from experiments import ledger as L
+    from families.run import run_family
+    from families.spec import register
+    from tests.test_u17 import OvernightSource
+
+    repo = tmp_path / "repo"
+    fams = repo / "families"
+    fams.mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "x@y")
+    _git(repo, "config", "user.name", "x")
+    core = _region_doc(id="C1", variants=[])
+    core["headline"]["primary"]["params"]["vm_list"] = [1.5]
+    (fams / "C1.yaml").write_text(yaml.safe_dump(core, sort_keys=False), encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "core")
+    sha = register(fams / "C1.yaml", repo)["sha"]
+    _git(repo, "commit", "-qam", "register core")
+    unpinned = _marginal_doc(variants=[])
+    pinned = _marginal_doc(variants=[], core={"family": "C1", "variant": "headline", "k": 1.0, "sha": sha})
+    prog = tmp_path / "program.yaml"
+    prog.write_text("program: P\nfamilies: [G2]\nmax_families: 5\nmax_trials: 42\n", encoding="utf-8")
+    kw = {"ledger": L.Ledger(tmp_path / "ledger.jsonl"), "root": tmp_path / "root", "source": OvernightSource(0.0),
+              "repo": repo, "program": prog, "quasi": False}  # fmt: skip
+    for doc, ok in ((unpinned, False), (pinned, True)):
+        (fams / "G2.yaml").write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-qm", "g2")
+        register(fams / "G2.yaml", repo)
+        _git(repo, "commit", "-qam", "register g2")
+        if ok:
+            assert (
+                run_family(fams / "G2.yaml", out_dir=tmp_path / "out", **kw)["refs"]["C1"]["registered"]["sha"] == sha
+            )
+        else:
+            with pytest.raises(ValueError, match="pins"):
+                run_family(fams / "G2.yaml", out_dir=tmp_path / "out", **kw)
+            (fams / "G2.yaml").unlink()
+            _git(repo, "commit", "-qam", "drop unpinned")
+    core["headline"]["primary"]["params"]["vm_list"] = [1.25]  # the core changed after the result
+    (fams / "C1.yaml").write_text(yaml.safe_dump(core, sort_keys=False), encoding="utf-8")
+    _git(repo, "commit", "-qam", "new core")
+    register(fams / "C1.yaml", repo)
+    _git(repo, "commit", "-qam", "re-register core")
+    with pytest.raises(ValueError, match="pins"):
+        run_family(fams / "G2.yaml", out_dir=tmp_path / "out", **kw)
+
+
+def test_a_paired_stream_identical_to_its_reference_has_no_statistic_and_a_losing_reference_floor():
+    d = _days(300)
+    ref = pd.Series(np.random.default_rng(5).normal(1e-4, 0.006, 300), index=d)
+    test = {"kind": "paired", "sided": "one", "block_days": 21, "n_boot": 99, "alpha": 0.05, "seed": 0}
+    c = T.compare(ref, ref, "constant_mix_ew", test, ref=ref)  # a gate that never closed: no crash
+    assert c["p"] == 1.0 and np.isnan(c["delta_ann"]) and "error" in c
+    costs = {"pnl": 1.0, "cost_paid": 0.1, "traded_notional": 10.0}
+    lose = pd.Series(-4e-4, index=d) + ref * 0
+    for a, ok in ((lose * 1.05, True), (lose * 1.2, False)):  # not lower than a losing reference by more than 10 %
+        f = T.floors(a, ref, costs, {"min_net_ret_vs_reference": 0.9}, None, lose)["min_net_ret_vs_reference"]
+        rc = T.stream_stats(lose)["ret_ann"]
+        assert f["threshold"] == pytest.approx(1.1 * rc) and f["ok"] is ok

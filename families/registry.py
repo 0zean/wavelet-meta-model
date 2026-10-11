@@ -42,7 +42,7 @@ def _program_row(fid: str, out_dir: Path, program) -> dict:
     if fid not in verdicts:
         raise RegistryError(f"{fid} has no result in {out_dir} (or is not a family of the program)")
     table = program_verdict(verdicts)
-    return table.set_index("family").loc[fid].to_dict()
+    return {**table.set_index("family").loc[fid].to_dict(), "holm_families": sorted(verdicts)}
 
 
 def add_entry(fid: str, out_dir, path=REGISTRY, program=None, freeze_date: str | None = None) -> dict:
@@ -51,6 +51,8 @@ def add_entry(fid: str, out_dir, path=REGISTRY, program=None, freeze_date: str |
 
     out_dir = Path(out_dir)
     result = json.loads((out_dir / fid / "result.json").read_text(encoding="utf-8"))
+    if not (result.get("registered") or {}).get("sha"):
+        raise RegistryError(f"{fid}'s result is not from a registered run (a dry run without the registration check)")
     row = _program_row(fid, out_dir, program or PROGRAM)
     if not row["passes"]:
         raise RegistryError(f"{fid} does not pass the program verdict (p_holm {row['p_holm']:.4f}, floors "
@@ -76,6 +78,7 @@ def add_entry(fid: str, out_dir, path=REGISTRY, program=None, freeze_date: str |
             "p_holm": float(row["p_holm"]),
             "floors_ok": bool(row["floors_ok"]),
             "coherent": bool(row["coherent"]),
+            "holm_families": row["holm_families"],  # the Holm at entry time; a later family does not re-adjust it
         },
         "freeze_date": freeze_date or str(dt.date.today()),
     }

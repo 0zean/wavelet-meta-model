@@ -131,6 +131,16 @@ def _region_md(result: dict) -> list[str]:
         return []
     ck = _verdict_cost(result)
     md = ["## Region cells (the specification curve over every cell; reported, the region is the headline)", ""]
+    if (result.get("spec", {}).get("headline", {}).get("primary", {}).get("params") or {}).get("gate") or \
+            (result.get("test") or {}).get("kind") in ("marginal", "paired"):  # fmt: skip
+        md += [
+            (
+                "*The cells are the region's ungated, unscaled positions (the gate and the vol target scale the region "
+                "only); with a marginal or paired test they are the overlay's / reference's cells, and their alpha sign "
+                "is not this family's statistic: reported for the parity check, never this family's coherence.*"
+            ),
+            "",
+        ]
     par = reg.get("parity") or {}
     if reg.get("parity_ok") is False:
         md.append("- **The re-simulation does not reproduce the members: the cells are not used for coherence.**")
@@ -351,7 +361,8 @@ def family_markdown(result: dict) -> str:
                   f"p = {_f(c['p'], 4)}; net return {_f(c.get('ret_ann'), 3, pct=True)}/yr vs "
                   f"{_f(c.get('ref_ret_ann'), 3, pct=True)} (ratio {_f(c.get('ret_ratio'), 3)}); max DD "
                   f"{_f(c.get('dd'), 3, pct=True)} vs {_f(c.get('ref_dd'), 3, pct=True)}; the streams differ on "
-                  f"{c.get('days_differ')} days, correlation {_f(c.get('corr'), 3)}")  # fmt: skip
+                  f"{c.get('days_differ')} days, correlation {_f(c.get('corr'), 3)}; first day "
+                  f"{c.get('start')} (reference {c.get('ref_start')})")  # fmt: skip
     else:
         md.append(f"- Sharpe {_f(c['sharpe'], 2)} vs benchmark {_f(c['bench_sharpe'], 2)} on {c['n_days']} days "
                   f"(excess returns); difference {_f(c['delta_ann'], 2)} (interval {_f(c['ci_ann'][0], 2)} … "

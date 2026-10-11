@@ -680,10 +680,24 @@ def _ref_labels(fam: FamilySpec) -> dict[str, list[str]]:
     return out
 
 
+def _ref_shas(fam: FamilySpec) -> dict[str, set]:
+    """Core / reference family id → the registered shas the consuming spec pins for it (`sha` in its blocks)."""
+    blocks = [v.core for v in fam.variants] if fam.test["kind"] == "marginal" else \
+        ([fam.reference] if fam.test["kind"] == "paired" else [])  # fmt: skip
+    out: dict[str, set] = {}
+    for b in blocks:
+        out.setdefault(str(b["family"]), set()).add(b.get("sha"))
+    return out
+
+
 def ref_families(fam: FamilySpec, path, repo: Path, check_registration: bool) -> dict[str, FamilySpec]:
     """The core / reference families (families/<id>.yaml beside this spec), each validated, registration-checked when
-    this family's is, on this family's window and timeframe-independent; a variant label they do not have raises."""
+    this family's is, on this family's window and timeframe-independent; a variant label they do not have raises.
+    With the registration check, the consuming spec must pin each one's registered sha (`sha` in its core / reference
+    block) and the file must be registered at exactly that sha (U25 review: otherwise a core or reference could be
+    edited and re-registered after the family's result was seen, at no trial cost)."""
     out = {}
+    shas = _ref_shas(fam)
     for rid, labels in _ref_labels(fam).items():
         rpath = Path(path).resolve().parent / f"{rid}.yaml"
         if not rpath.exists():
@@ -691,6 +705,11 @@ def ref_families(fam: FamilySpec, path, repo: Path, check_registration: bool) ->
         rfam = load_family(rpath)
         if check_registration:
             rfam.registered = check_registered(rpath, repo)
+            pinned = shas.get(rid, {None})
+            if pinned != {str(rfam.registered["sha"])}:
+                raise ValueError(f"{fam.id}: core / reference {rid} is registered at {rfam.registered['sha']}, but the "
+                                 f"spec pins {sorted(map(str, pinned))}: a changed core / reference is a new family "
+                                 "version (an amendment)")  # fmt: skip
         if rfam.window != fam.window:
             raise ValueError(f"{fam.id}: core / reference {rid} runs over {rfam.window}, not the family's {fam.window}")
         missing = [lb for lb in labels if lb != "benchmark" and lb not in rfam.cells]

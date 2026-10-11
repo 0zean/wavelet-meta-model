@@ -210,12 +210,14 @@ def compare(
                     "ret_ann": ra, "ref_ret_ann": rc, "delta_ret_ann": ra - rc,
                     "ret_ratio": ra / rc if rc != 0 else np.nan, "corr": float(jc["a"].corr(jc["c"])),
                     "dd": drawdown(jc["a"]), "ref_dd": drawdown(jc["c"]),
-                    "days_differ": int((jc["a"] - jc["c"]).abs().gt(FLAT_TOL).sum())}  # fmt: skip
+                    "days_differ": int((jc["a"] - jc["c"]).abs().gt(FLAT_TOL).sum()),
+                    "start": str(a.index.min().date()), "ref_start": str(excess(ref, rf).index.min().date())}  # fmt: skip
         else:
             lw = sharpe_test(a, None if kind == "cash" else b, **kw)
             out |= {"delta_ann": lw["delta_ann"], "p": lw["p"], "ci_ann": list(lw["ci_ann"]), "lw": lw,
                     "statistic": "delta_sharpe"}  # fmt: skip
-    except ValueError as e:  # a flat stream (no trades) has no statistic: nothing to test
+    except (ValueError, ZeroDivisionError) as e:  # a flat stream (no trades), or a paired stream identical to its
+        # reference (a gate that never closed: Δ and its SE are 0, U25 review), has no statistic: nothing to test
         out |= {"delta_ann": np.nan, "p": 1.0, "ci_ann": [np.nan, np.nan], "error": str(e),
                 "statistic": {"overlay_alpha": "alpha_ann", "marginal": "delta_sharpe_marginal",
                               "paired": "delta_sharpe_paired"}.get(tkind, "delta_sharpe")}  # fmt: skip
@@ -263,7 +265,8 @@ def floors(r: pd.Series, bench: pd.Series, costs: dict, spec_floors: dict, rf: p
     paid per unit traded notional; max_dd: the daily stream's drawdown ≥ −x. A stream that never trades fails the
     edge floor. U25, with `ref` (the core or the reference stream, raw): max_dd_vs_core x: the max drawdown of
     core + k × stream ≥ x × the core's (both negative: |DD| no deeper than x times the core's) on their common days;
-    min_net_ret_vs_reference x: the stream's net excess return ≥ x × the reference's on their common days.
+    min_net_ret_vs_reference x: the stream's net excess return is not lower than the reference's by more than
+    (1 − x) × |the reference's| on their common days (x × it when the reference earns; U25 review).
     """
     st = stream_stats(excess(r, rf))
     out: dict = {}
@@ -299,7 +302,9 @@ def floors(r: pd.Series, bench: pd.Series, costs: dict, spec_floors: dict, rf: p
             out[key] = {"value": dp, "core": dc, "threshold": f[key] * dc, "ok": bool(dp >= f[key] * dc)}
         else:
             ra, rc = stream_stats(j["a"])["ret_ann"], stream_stats(j["c"])["ret_ann"]
-            out[key] = {"value": ra, "reference": rc, "threshold": f[key] * rc, "ok": bool(ra >= f[key] * rc)}
+            # "not lower by more than (1 − x)·|reference|": x·rc when the reference earns, (2 − x)·rc when it loses
+            thr = rc - (1.0 - f[key]) * abs(rc)
+            out[key] = {"value": ra, "reference": rc, "threshold": thr, "ok": bool(ra >= thr)}
     out["ok"] = bool(out) and all(v["ok"] for v in out.values())  # no floor set is not a pass
     return out
 
