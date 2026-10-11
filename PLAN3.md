@@ -220,8 +220,11 @@ data, budget. Instruments are the cached SIP 5Min ETFs; single stocks only in th
 - **Headline (one trial).** The region R₀, equal weight across every cell, per instrument, 50/50 SPY/QQQ:
   - estimators: (a) band distance d = (close − open) / band(slot), band = mean |move from the open to this
     slot| over the prior 14 sessions, gap-adjusted as in Zarattini et al.; (b) repeated-median velocity over N
-    bars, normalized by √N and the prior 5 sessions' 5Min σ (the RMV repo's normalization, refit per session);
-    (c) least-squares (Savitzky–Golay degree-1) velocity over N bars, same normalization;
+    bars in Meyers' normalization, RMedV · √N · xmult, xmult = mean over N of 1 / sd(RMedV_N · √N) (Meyers 2025,
+    Appendix III; the RMV repo), refit every session over the previous 21 sessions; (c) least-squares (Meyers'
+    degree-1 fixed-memory polynomial) velocity over N bars in its own normalization, velocity / its SD for that N
+    (Meyers 2026, Appendix III), refit likewise. θ is in SDs of each estimator (U23: set by the user 2026-10-10,
+    replacing "√N and the prior 5 sessions' 5Min σ");
   - lookbacks N ∈ {6, 9, 12, 18, 24} for (b) and (c); thresholds θ ∈ {0.75, 1.0, 1.5, 2.0} σ for (b) and
     (c); volatility multipliers VM ∈ {1.0, 1.25, 1.5} for (a);
   - decisions at the closes of the bars ending at HH:00 and HH:30, first decision 10:00; exit at the closing
@@ -483,7 +486,8 @@ backtest, and reproduce the harness's backtest on a sample — fast enough that 
   - `rmedv_all(close, N_list)`: Siegel's repeated-median slope for every N in one pass (the RMV repo's kernel,
     pairwise medians over the last N closes; oracle `scipy.stats.siegelslopes(method="hierarchical")`);
   - `sg_velocity_all(close, N_list, degree)`: Savitzky–Golay derivative filters (Meyers' nth-order
-    fixed-memory polynomial velocity is the degree-n endpoint derivative; one FIR per (N, degree));
+    fixed-memory polynomial velocity is the degree-n derivative of the next bar's forecast, T+1; one FIR per (N,
+    degree));
   - `band_state(open, close, slot, lookback)`: Zarattini band distance with the gap adjustment, per slot;
   - `session_vwap(close, volume)`; `tod_sigma` from `features/vol_profile.py` reused for normalization;
   - all computed on the full RTH series with session boundaries respected (a window never straddles a
@@ -498,17 +502,38 @@ backtest, and reproduce the harness's backtest on a sample — fast enough that 
 - `scripts/u23_kernels.py`: timings and the RMV-repo parity numbers (worked examples from Meyers 2005 p.2 and
   2025 p.2 = 1.0 exactly; 4,400 random (N, t) pairs vs scipy within float64).
 
-**Done when.**
-- [ ] Oracles: `rmedv_all` = scipy to 1e-9 on 4,400 pairs over all N; `sg_velocity_all` degree 1 = the
-      least-squares slope to 1e-12; the band state matches a pandas reference on 20 sessions; VWAP matches.
-- [ ] Causality (SPEC §8) for every kernel and for `region_trend` (bars after the decision bar perturbed; a
-      planted one-bar peek in any kernel fails), plus the U22 fill-timing test.
-- [ ] Session boundaries: a kernel window never contains bars from two sessions (test on a planted +5 %
-      overnight gap: the first N − 1 velocities of the session are NaN, the N-th is unaffected).
-- [ ] Parity: `position_backtest` vs `simulate_portfolio` on SPY 2024 for three cells and the region.
-- [ ] **Budgets** (i9, one core): all estimators for SPY 2016–2025 (190k bars), N ∈ {6, 9, 12, 18, 24}: ≤ 5 s;
-      43-cell region positions for one instrument: ≤ 10 s; specification curve (43 cells × 4 costs): ≤ 5 s;
-      the whole G1 headline on SPY + QQQ including the bootstrap: ≤ 2 min.
+**Done when.** (status note, 2026-10-10: every criterion with its command; SPEC §23 describes the as-built)
+- [x] Oracles (`scripts/u23_kernels.py parity`, `tests/test_u23.py`): `rmedv_all` equals scipy's siegelslopes
+      (hierarchical) on 4,400 random (N, t) pairs over N ∈ {6, 9, 12, 18, 24}, all 4,400 bit-equal (max |Δ| = 0);
+      Meyers 2005 p.2 and 2025 p.2 worked examples = 1.0 exactly; `sg_velocity_all` degree 1 = the least-squares
+      slope to 7.2e-16 (≤ 1e-12), degrees 2–3 exact on polynomials (Meyers' T+1 velocity); the normalizations by
+      hand and ≈ 1 SD at every N on real data (`scale`: 1.03–1.14); the band state, VWAP and `prior_sd` match pandas
+      references on the last 20 of 40 sessions with a missing bar, a 13:00 early close and a missing last bar.
+- [x] Causality: every kernel at four cuts (mid-session, a session's first and last bar) with a planted peek per
+      kernel caught (one bar; the trailing SD's plant reads the current session, since a one-bar shift of a per-session value is
+      known at the next open); `region_trend`'s cells at eight decisions with every bar after the decision bar
+      replaced, and a planted one-bar peek in the repeated median caught; the U22 fill-timing invariant on the region's
+      events (entries at the bar after the decision, exits at the next decision's fill or the 15:55 auction).
+- [x] Session boundaries: a planted +5 % overnight gap leaves the first N − 1 velocities of the session NaN and the
+      N-th on unchanged (rmedv, sgv degrees 1 and 2); windows allowed to straddle the open would read it (the test
+      bites); SAR state resets every session (by hand).
+- [x] Parity: `position_backtest` = `simulate_portfolio` through the rule pass, max |Δ daily return| = 0 (bit-exact)
+      on cached SPY 2024 for three cells (rmedv N 12 θ 1.0; sgv N 24 θ 0.75; band VM 1.25) and the region, under
+      profile `none` and a 2 % loss gate (quotes as-of costs, closing prints, T-bill yield); on a synthetic series
+      where the gate fires; and over SPY and QQQ 2016-01-04 → 2025-09-30 with the calendar clock and the gate
+      (`scripts/u23_kernels.py budgets`).
+- [x] **Budgets** (i9, one core, `scripts/u23_kernels.py budgets`, timings only — no look): all estimators for SPY
+      2016–2025 (190,402 bars, five lookbacks) 1.2 s warm (1.5 s first call; ≤ 5 s); 43-cell region positions at
+      29,304 decisions 1.3 s (≤ 10 s); specification curve 43 cells × 4 costs 0.13 s (≤ 5 s); the G1 headline on
+      SPY + QQQ including the 5,000-resample bootstrap 14 s (≤ 2 min).
+- [x] Tests and lint: `uv run pytest -q` — 819 passed on the final code (after the review fixes, 5 min); ruff clean.
+- [x] Adversarial review (one pass): no BREAKING or SEVERE finding; parity held bit-exact in every configuration the
+      reviewer built (early closes, missing 09:30 / 10:00 / 15:30 / 15:55 bars, a dropped session under both clocks,
+      cadence 5 / 15 / 60, `first` 09:35, `exit` 15:30, sign flips, targets of 5e-324, fractions 5e-13 apart, gates
+      firing at decision bars, partial yields and prints). Four MINOR findings, all fixed: the `exit` "HH:MM" variant
+      held an early-close (or missing-exit-bar) session into its auction (now flat from the last decision's fill);
+      NaN targets were read as flat by `position_backtest` (now raise); numpy integers were refused as lookbacks;
+      the √N decision was recorded in SPEC only (now §7 item 6).
 
 **Reviewer focus.** Normalization leaking (σ from the current session), stop-and-reverse state carried across
 sessions, decisions at HH:00/HH:30 using the bar that *ends* at that time (decision at the 09:55 bar's close
@@ -660,6 +685,12 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
 4. **`INIT_CASH` for the registered specs** ($30k proposed: above the PDT floor, so the paper account mirrors
    a tradable live account).
 5. **The eleven forward-window caches**: truncate on the next top-up (proposed) or keep with a logged record.
+6. **The velocity normalization (raised by U23; settled 2026-10-10).** The user: the normalizations come from the
+   Meyers papers and are estimator-specific. Built: RMedV · √N · xmult (Meyers 2025 App. III) and the polynomial
+   velocity (at T+1) / its SD per (degree, N) (Meyers 2026 App. III), refit every session over the previous 21
+   sessions (the RMV repo's window; Meyers calibrates once, which the RMV repo showed fails). The refit window, 21 sessions
+   (the RMV repo found 10–42 equivalent), was confirmed by the user on 2026-10-10. Note: §1.2's diagnostic
+   thresholded slope / σ₅ (a third scale), so its magnitudes describe R₀'s velocity cells only loosely.
 
 ## 8. Deferred / out of scope
 
@@ -677,4 +708,10 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
   `families/looks.jsonl` seeded with K₀ = 60. `families/program.yaml` scopes the caps to G1, G2, G3, G5, G6 (5 / 42).
   User decisions received 2026-10-10: Algo Trader Plus will be bought before U27; G5's data purchase still under
   consideration; G6 will run; `INIT_CASH` $30k agreed (account profile `margin_30k`).
-- U23–U31 — not started.
+- U23 — built on `unit/23-intraday-kernels` (2026-10-10); SPEC §23 written; every done-when criterion above
+  demonstrated (`scripts/u23_kernels.py parity | budgets`, `tests/test_u23.py`); budgets 1.2 s / 1.3 s / 0.13 s / 14 s
+  against 5 / 10 / 5 / 120 s; `position_backtest` bit-exact with the portfolio simulator over SPY and QQQ
+  2016–2025. No look taken (the scripts print timings and parity residuals only; `families/looks.jsonl` unchanged).
+  Normalization per the Meyers papers (user, 2026-10-10; §7 item 6): RMedV · √N · xmult and the T+1 polynomial
+  velocity / its SD, refit over 21 sessions (window confirmed by the user, 2026-10-10). PR #24 merged.
+- U24–U31 — not started.

@@ -1,75 +1,62 @@
-# Session Handoff — U22: engine corrections and protocol v3 (branch `unit/22-engine-protocol-v3`)
+# Session Handoff — U23: intraday kernels and the region primary (branch `unit/23-intraday-kernels`)
 
 ## Where it started
-PR #22 (PLAN3) was merged; `main` checked out. The user asked to begin U22 per PLAN3 §5 and gave decisions: Algo Trader
-Plus will be bought before U27 (details to come), G5's point-in-time universe purchase still under consideration, G6
-will run, `INIT_CASH` $30k agreed. U22 was built in full on `unit/22-engine-protocol-v3`; SPEC §20–§22 describe the
-as-built engine; PLAN3 §5 U22 lists every done-when with its evidence; PLAN3 §9 is the status line.
+PR #23 (U22) was merged to `main` (62aaad2). The user asked to begin U23 per PLAN3 §5. U23 was built in full on
+`unit/23-intraday-kernels`; SPEC §23 describes the as-built code; PLAN3 §5 U23 lists every done-when with its
+evidence; PLAN3 §9 is the status line.
 
-## What shipped (SPEC §20–§22 have the detail)
-- **Auction prints.** Native `1DayPrint` timeframe (Alpaca daily open / close = the official prints; H/L/volume
-  include extended hours and are unused), `data.bars.load_prints`, cached for the 30-symbol universe through
-  2026-09-30. `RunConfig.FILL_AUCTION` (`print` default, `last_bar` regression): the simulator prices every auction
-  fill at the print, counts fallbacks. Print vs 15:55 bar close: median 0.7–1.3 bp, no sign, up to 288 bp in March
-  2020. F3 / F5 re-run under print: Sharpe −0.017 / −0.042.
-- **Costs.** `SLIPPAGE_BP` per fill kind (or `measured`), `COST_TABLE=asof` (`data/costs/quotes_half_spread_asof.csv`,
-  trailing four completed sample weeks per quarter; fills before 2016-04-01 use the first table, counted),
-  `STRESS_MULT` on previous-VIX ≥ 30 sessions, `CASH_YIELD=tbill` (FRED DTB3 cached, ACT/360 on free cash), the
-  per-session cost ledger by fill class (`daily_costs.csv`) and `families.test.reprice` → the report's cost curve
-  (registered / 0.3 / 1.0 / 2.3 bp / measured). MOC orders are sized from the previous bar's close.
-- **Account profile** `risk/account.py`: PDT rule, Reg-T buying power, cash settlement / no shorts, locate estimate;
-  flags only, never changes a P&L. F5 on $10k: PDT violation from 2016-04-06 (98.7 % of its day trades blocked); on
-  $30k tradable.
-- **Protocol v3** (`families/`): `test.kind` overlay_alpha | marginal | sharpe_vs_benchmark, `sided`, `at_cost`;
-  excess returns everywhere; `power` block with the MDE line (`families/power.py`; the spec loader checks it);
-  `core` for marginal; `account`; benchmarks `constant_mix_ew/er` (PLAN2 names are aliases), drifting `buy_and_hold`;
-  `families/looks.jsonl` (K₀ = 60 seeded; `python -m families look`); DSR out of the verdict; `program.yaml` scoped
-  to G1, G2, G3, G5, G6 (5 families / 42 trials); ex-ante weights (first 252 sessions when the window starts with
-  the data); N_eff; cells coherence hook for U23.
-- **Engine-audit items.** Generic fill-timing test + the ENTRY / EXIT_HYST mutants fail it; per-event causality test
-  + the VOL mutant fails it; `data/fetch.py` defaults to HOLDOUT_START and logs forward fetches; eleven ETF caches
-  truncated with records in `data/cache/forward_access.jsonl`; exchange-calendar session clock (`session_clock`,
-  threaded through sampler / exits / rule pass / runner); `slip_through` barrier option; `ALLOW_CONTINUOUS` primaries
-  with the `next_event` time exit (the simulator's roll path trades only the change; verified by hand).
-- **Fix found on the way.** `position_returns` grouped the last leg of a chain with the first of the next (the `rolled`
-  flag marks the trade whose EXIT rolled); `families.test.chain_ids` fixes it, `risk.account` uses it (and ends a
-  position at a side flip); the test_u18 synthetic case was corrected to the simulator convention.
-- Statistics: overlay-alpha size 0.050 (iid) / 0.045 (GARCH-t) over 1,000 sims; power 0.905 at 3 bp/day, 0.795 at
-  the analytic MDE; MDE at Holm over 4 families 3.17 bp/day (Sharpe 1.0).
+## What shipped (SPEC §23 has the detail)
+- **Kernels** `features/kernels.py` (numba, float64, session-bounded windows: NaN for the first N − 1 bars of each
+  session): `rmedv_all` (Siegel repeated median; bit-equal to scipy siegelslopes), `sg_velocity_all` / `sg_weights`
+  (Meyers' polynomial velocity at the next bar T+1; degree 1 = LS slope), `prior_sd` (trailing SD over the k previous
+  sessions), `rmedv_normalized` (RMedV · √N · xmult, Meyers 2025 App. III) and `poly_normalized` (velocity / its SD
+  per (degree, N), Meyers 2026 App. III), both refit every session over 21 sessions; `band_state` (Zarattini band,
+  gap-adjusted distance in band units), `session_vwap`, `session_layout`.
+- **Region primary** `primaries/region.py` `region_trend` (ALLOW_CONTINUOUS): 43 cells (band × VM 3, rmedv and sgv ×
+  N 5 × θ 4), each velocity in its paper's normalization (θ in SDs), stop-and-reverse reset every session, VWAP stops, decisions = schedule entry times
+  10:00 … 15:30 (read at the 09:55 … 15:25 closes), `next_event` exit to the closing auction; target = the mean cell.
+  Variants supported: cadence 5/15/30/60, `first`, `exit "HH:MM"`, `vel_mode flat_inside`, `vel_stop vwap`,
+  `band_stop`, `sg_degree`. Not yet: the MODWT-slope estimator and the vol-targeted size (G1 variants; U24).
+  `needs_groups()` is empty (the plan said "session group"; a group would drop events on NaN columns).
+- **Position backtest** `wfo/position_backtest.py`: `decision_grid`, `position_backtest` — a share-for-share numba
+  replica of `simulate_portfolio` for one symbol on this schedule (rolls, per-bar costs or a scalar one-way cost,
+  closing print, daily-loss gate, T-bill yield), many target series per call (the spec / cost curve).
+- `scripts/u23_kernels.py parity | budgets`, `tests/test_u23.py` (15 tests), `primaries/__init__.py` registers the
+  region, `tests/test_primaries.py` knows the new registry entry.
 
 ## Verification — how to confirm things still work
 - `uvx ruff check . && uvx ruff format --check .` — clean.
-- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — 804 passed
-  (6 min) on the final code, after the adversarial review fixes.
-- Adversarial review (one pass) found two BREAKING, two SEVERE and six MINOR items, all fixed: the account module
-  grouped rolled chains with the old convention (and ignored side flips), the edge floor counted T-bill interest as
-  edge, F3 did not reproduce under the old switches (MOC sizing and the session clock now have switches
-  `MOC_SIZE_FROM` / `SESSION_CLOCK`), the legacy backtest path dropped prints and the yield (`portfolio_path` now
-  routes them), plus the minor items listed in PLAN3 §5 U22. F3 and F5 now reproduce bit for bit under the old
-  switches; the print-only effect is F3 Sharpe 0.725 → 0.707, F5 −0.122 → −0.164.
-- `uv run python scripts/u22_checks.py prints | f5-parity ROOT | print-rerun ROOT | power | tilt | account | mde`.
-- U12 parity: `scripts/u12_parity.py spec` → `python -m experiments --root R --ledger R/ledger.jsonl run` →
-  `scripts/u12_parity.py check` (OLD_SWITCHES now pin the five U22 switches).
+- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — full suite
+  819 passed on the final code (after the review fixes; 5 min).
+- `uv run python scripts/u23_kernels.py parity` — Meyers examples 1.0; 4,400/4,400 bit-equal to scipy; sgv 7.2e-16.
+- `uv run python scripts/u23_kernels.py budgets` — estimators 1.2 s, positions 1.3 s, spec curve 0.13 s, headline
+  14 s (budgets 5 / 10 / 5 / 120 s); position_backtest vs simulator over SPY/QQQ 2016–2025 with the gate: max |Δ| 0.
+  It prints timings and parity residuals only — **no look** was taken; `families/looks.jsonl` unchanged.
+- Adversarial review (one pass): no BREAKING / SEVERE; four MINOR fixed (exit variant on early closes / missing exit
+  bar; NaN targets raise; numpy-int lookbacks; the √N decision recorded in PLAN3 §7). Probe scripts:
+  session scratchpad `review/` (may not survive).
+
+## Open decisions (the user's)
+- **Settled (user, 2026-10-10): the velocity normalization follows the Meyers papers** (PLAN3 §7 item 6; RMedV ·
+  √N · xmult; polynomial velocity at T+1 / its SD per (degree, N)); refit every session over 21 sessions (the RMV
+  repo's window). The 21-session refit window was confirmed by the user (2026-10-10). `scripts/u23_kernels.py scale`:
+  normalized SD 1.03–1.14 at every N on SPY/QQQ 2016–2025.
+- Carried: Algo Trader Plus details before U27; the G5 data purchase; delete remote `origin/unit/*` branches.
 
 ## Key files for next session
-- `PLAN3.md` §5 U23 is the next unit (kernels + region primary); SPEC §21 states what U22 built for it
-  (`ALLOW_CONTINUOUS`, `next_event`, `cells_coherence`, the cost curve).
-- `families/test.py`, `families/run.py` (rewritten), `risk/portfolio.py` (prints, ledger, yield), `risk/account.py`,
-  `families/power.py`, `families/looks.py`, `scripts/u22_checks.py`, `tests/test_u22.py`.
-- Scratch outputs of this session (may not survive): `…\scratchpad\f5_parity`, `print_rerun`, `u12`, `review`.
+- `PLAN3.md` §5 U24 (G1 registration and the dev-window test — the first look; append to `families/looks.jsonl`
+  before reading results); SPEC §22 (protocol v3: `overlay_alpha`, power/MDE line, `cells_coherence`, cost curve),
+  SPEC §23.
+- `primaries/region.py` (add the MODWT-slope estimator and vol-targeted size for G1 variants 6–7),
+  `wfo/position_backtest.py` (the spec curve: `position_backtest(df, cells_frame, cfg, costs=X/2 bp, grid=...)`),
+  `families/run.py`, `families/report.py`.
 
 ## Running state
-- No experiment runs on the canonical ledger; the scratch runs wrote their own ledgers under the session scratchpad.
-- Branch `unit/22-engine-protocol-v3` (from `main` at 682effe); PR to open at the end of the session.
-
-## Deferred + open questions
-- Deferred: the region primary, kernels and `position_backtest` (U23); the measured cost profile files
-  (`data/costs/measured_slippage.csv`, `measured_cost.csv`) are written by U27; `tf_state` / gamma proxy (U26).
-- Open (user): Algo Trader Plus details before U27; the G5 data purchase; the eleven truncated caches are
-  re-fetchable (`python -m data.fetch --end 2026-10-10 …` logs a forward fetch) if ever needed.
-- Open: delete remote `origin/unit/*` branches (carried over).
+- No experiment runs; nothing written to the canonical ledger. Branch `unit/23-intraday-kernels`; PR opened at the
+  end of the session (see PLAN3 §9 / the PR link).
 
 ## Pick up here
-Merge the U22 PR (user's call), then start U23 per PLAN3 §5 on `unit/23-intraday-kernels`: `features/kernels.py`
-(rmedv_all, sg_velocity_all, band_state, session_vwap), `primaries/region.py` (`region_trend`, `ALLOW_CONTINUOUS`,
-`next_event`), `wfo/position_backtest.py` with the parity test, `scripts/u23_kernels.py` budgets.
+U23 PR #24 merged to main (2026-10-10). Start U24 on `unit/24-g1-dev-test`:
+write `families/G1.yaml` (headline R₀, 11 variants, splits, `overlay_alpha` one-sided, MDE line, floors at 1.0 bp,
+INIT_CASH 30k, a gate-only risk profile with daily_loss 0.02), commit it, smoke 2016-01 → 2016-06 (status only),
+register, run once, report with the cost and specification curves.
