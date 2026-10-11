@@ -28,6 +28,7 @@
 #   decision rule run unchanged; the dev-window test is underpowered and the forward test (U27) confirms.
 # - State splits per PLAN3 §3 G1; gamma_sign, SKEW and VVIX arrive with U26 (re-rendered then).
 id: G1
+registered: {sha: 'c1689612eef33fd87f87ec99bc793cd3038bbc7b', date: '2026-10-11'}
 mechanism: >-
   Within a session, a move that exceeds the typical move from the open for that time of day reveals a persistent
   order imbalance (institutional parent orders worked through the day, leveraged-ETF and option-hedging flows that buy
