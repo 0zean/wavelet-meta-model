@@ -1627,7 +1627,58 @@ hand; the two normalizations by hand, about one SD at every N on a random walk, 
 scale blind to its own session; the position backtest's parity with the simulator (synthetic with the gate firing
 and the yield; cached SPY 2024) and its many-series, scalar-cost and yield-only identities.
 
-## §24 Reserved (U26: time–frequency state)
+## §24 Time–frequency state, SKEW / VVIX and the U26 splits (U26; PLAN3 §5 U26, §3 G4)
+
+A state, never a forecast and never a trial: reported as splits of G1 and kept as inputs for a later overlay (U31).
+
+**`tf_state`** (`features/tf_state.py`; intraday group in `features/groups.py`, static, no context).
+- Per session d, known at its open, broadcast to every bar of d. Input: the inside-session close → close 5Min log
+  returns (the overnight gap and the first bar's open → close excluded, as `features.kernels.session_sigma`),
+  concatenated over sessions. The window is sessions d − 5 … d − 1 (`TF_SESSIONS`, M returns, demeaned), NaN for the
+  first 5 sessions or with M < 100 (`TF_MIN_RETURNS`).
+- Columns:
+  - `pow_hf`, `pow_lf`: mean periodogram over the Fourier bins k / M with period 2–6 bars (the bounce band) and
+    12–78 bars (one hour to a session), each over the mean over every bin k = 1 … ⌊(M − 1) / 2⌋ (DC and Nyquist out).
+    White noise: 1.
+  - `tilt` = log(pow_hf / pow_lf): > 0 reversal-dominated, < 0 continuation-dominated.
+  - `flatness`: geometric over arithmetic mean of the periodogram (Wiener entropy); white noise ≈ e^−γ ≈ 0.56.
+  - `modwt_e1` … `modwt_e5` = log(2^j · ν̂_j / σ̂²): the Haar MODWT wavelet variance at level j over the window (the
+    causal pyramid `features.groups.causal_modwt` on the concatenated returns, so every coefficient reads past returns
+    only), relative to white noise (ν_j = σ² / 2^j for any MODWT filter). Needs ≥ M / 2 defined coefficients.
+  - `ac1`: `features.kernels.prior_lag1_autocorr` over the same 5 sessions (the revealed-gamma proxy of G3's gate).
+  - `vov`: SD of log session σ over the 21 previous sessions (`VOV_SESSIONS`; at least 11 defined).
+- The periodogram is Goertzel's: I_k = |X_k|² / M = amp² · M / 4 from `fastgoertzel.goertzel`.
+  - Pinned at 0.1.9. fastgoertzel 1.x requires numpy ≥ 2.2; the repo stays on numpy 1.26 (its bit-exact pins).
+  - 0.1.9 evaluates bin int(f · M) and drops the fractional part. f = k / M therefore lands on bin k − 1 whenever
+    k / M · M rounds below k (18 of 192 bins of a 385-return window; the parity test caught it).
+    `goertzel_power(x, k)` calls it at the bin centre (k + 0.5) / M and refuses anything but an integer bin in
+    (0, M / 2).
+- SPY 2016-01 → 2025-09 (190,402 bars): 0.69 s against the 10 s budget; QQQ the same. Every column is defined from
+  2016-01-11 (`vov` 2016-01-20). The stationarity guard passes on both.
+
+**SKEW / VVIX** (`data/exo.py`). CBOE's `SKEW_History.csv` and `VVIX_History.csv` carry DATE and the close only
+(`CBOE_CLOSE_INDEXES`, `parse_cboe_close`); `available_at` is the cboe rule (the session date 16:20 ET). Cached
+2026-10-11 (SKEW from 1990, VVIX from 2006). `vol_state` gains `skew`, `vvix` (as-of levels) and `vvix_vix` (`ratio`
+on common observation dates); `VOL_STATE_EXO` lists the two new series, so a vol_state cell's context hash changes.
+
+**Splits** (`families/spec.py` `TERCILE_SPLITS`, `U26_SPLITS`; `families.run.load_state`; `families.test._groups`).
+- `gamma_sign`: the instruments' mean `ac1`, labelled ac1 ≥ 0 (short gamma) / ac1 < 0 (long gamma).
+- 14 tercile splits (`<state>_tercile`), one per tf_state column and for SKEW, VVIX and VVIX / VIX. Each reads the
+  state's causal trailing-252 rank (`families.run.trailing_rank`), cut at 1/3 and 2/3 (t1 low, t2, t3 high).
+  - tf_state: the instruments' mean of the column, then its own trailing rank (as `vol_quintile`).
+  - CBOE: the trailing rank of the close on its observation dates (from 400 days before the window), as of the next
+    open (`_as_of_open`, the `vix_prev` rule).
+- `families.run.add_splits(family, splits)` (CLI `python -m families splits <id> [split …]`, default `U26_SPLITS`)
+  adds splits to a stored result without re-running anything: no cell, no ledger row, no trial.
+  - The headline's excess stream is rebuilt from `streams.csv`: the stream at the verdict's cost and the T-bill
+    accrual that `describe` used.
+  - The stored `year` and `vol_quintile` tables must be reproduced from it to 1e-12, or nothing is written.
+  - Only `described.state_splits` gains entries; `splits_added` records the splits, the check, the git sha and code
+    hash. The report says the splits were added after the run.
+- **Null reproduced** (`scripts/u26_tf_state.py null`): PLAN3 §1.1's session-shift test, with
+  `goertzel_power` beside periodicity2.py's numpy power on the same shifts. Every window's p is identical (power within
+  4e-10). Shares of windows with p < 0.05: SPY 1/d 0.00, 2/d 0.05, 3/d 0.03, 1/w 0.08; QQQ 0.05, 0.00, 0.00, 0.12.
+  These are PLAN3 §1.1's figures: no daily cycle. The four configurations are K₀'s, so no new look.
 
 ## §25 G1 registration and the region family layer (U24; PLAN3 §5 U24)
 

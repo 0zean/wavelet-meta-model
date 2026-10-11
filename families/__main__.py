@@ -7,7 +7,7 @@ Family-test CLI (SPEC §17, PLAN2 U17).
     uv run python -m families look <label> <n> [--note ...]   # append n looks to families/looks.jsonl (SPEC §22)
     uv run python -m families power --n-days 2400 --vol-ann 0.08 --families 4   # the MDE line (families/power.py)
     uv run python -m families registry G1 [--freeze-date D]   # a passing claim → families/registry.yaml (U25)
-    uv run python -m families splits G1 gamma_sign tilt_tercile ...   # add reported splits, re-render (U26)
+    uv run python -m families splits G1 --look L [split ...]  # add reported splits after look L (U26)
 
 `run` refuses an unregistered or modified spec and a run past the family's TRIAL_BUDGET or the program caps
 (families/program.yaml). Its cells are stage F (rule cells); its ledger rows are one per variant (the counted trials).
@@ -53,6 +53,7 @@ def main() -> None:
     rg.add_argument("--freeze-date", default=None)
     sp = sub.add_parser("splits", help="add reported state splits to a stored family result and re-render (U26)")
     sp.add_argument("family")
+    sp.add_argument("--look", required=True, help="the label of the look recorded for these splits (looks.jsonl)")
     sp.add_argument("splits", nargs="*", help="state split names; default: the U26 splits (families.spec.U26_SPLITS)")
     pw = sub.add_parser("power", help="the minimum detectable alpha of an overlay test (families/power.py)")
     pw.add_argument("rest", nargs=argparse.REMAINDER)
@@ -87,7 +88,7 @@ def main() -> None:
         from families.run import add_splits
         from families.spec import U26_SPLITS
 
-        add_splits(a.family, a.splits or list(U26_SPLITS), a.out)  # status only: read the report after the look
+        add_splits(a.family, a.splits or list(U26_SPLITS), a.look, a.out)  # status only
     elif a.cmd == "power":
         from families.power import main as power_main
 

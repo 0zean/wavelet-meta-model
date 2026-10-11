@@ -16,6 +16,7 @@ import features.tf_state as TF
 from data.exo import parse_cboe_close
 from families import run as R
 from families import test as T
+from families.report import SPLITS_HEADER
 from families.spec import STATE_SPLITS, TERCILE_SPLITS, U26_SPLITS
 from features.groups import causal_modwt
 from features.kernels import prior_lag1_autocorr, session_layout
@@ -221,53 +222,101 @@ def test_load_state_ranks_are_known_at_the_open():
     st = R.load_state(TFSource(), start, end, ["SPY", "QQQ"], "5Min", list(U26_SPLITS))
     for c in [*(f"{c}_rank" for c in TF.COLUMNS), "skew_rank", "vvix_rank", "vvix_vix_rank", "ac1"]:
         assert c in st and st[c].notna().sum() > 100, c
-    # the exo rank is the previous observation's: shifting the series by one day shifts the rank by one day
+    # the exo rank, brute force: the mid-rank of the last close dated strictly before the day among the 252 closes
+    # ending with it (U26 review: not the reindex / ffill / shift expression the code uses)
     close = R._cboe_close(TFSource(), "skew", start, end)
-    days = st.index
-    expect = R.trailing_rank(close).reindex(days.union(close.index)).ffill().shift(1).reindex(days)
-    pd.testing.assert_series_equal(st["skew_rank"], expect, check_names=False)
+    for day in st.index[::37]:
+        prior = close[close.index < day]
+        w = prior.iloc[-252:].to_numpy()
+        v = w[-1]
+        assert np.isclose(st.loc[day, "skew_rank"], ((w < v).sum() + 0.5 * (w == v).sum()) / len(w)), day
     # tf_state: the instruments' mean, then its own trailing rank
     per = [TF.tf_state_days(TFSource().bars(s, "5Min", start, end, allow_holdout=False)) for s in ("SPY", "QQQ")]
     mean = (per[0]["tilt"] + per[1]["tilt"]) / 2
-    pd.testing.assert_series_equal(st["tilt_rank"], R.trailing_rank(mean).reindex(days), check_names=False)
+    pd.testing.assert_series_equal(st["tilt_rank"], R.trailing_rank(mean).reindex(st.index), check_names=False)
 
 
-def _stored(tmp_path, h: pd.Series, groups_year: list[dict]) -> None:
+REPORT = ["# Family GX", "", "## Verdict", "", "| a | b |", "|---|---|", "| 2 | 1 |", "", SPLITS_HEADER, "",
+          "**year**", "", "old", "", "## Sample splits (headline; reported)", "", "kept", ""]  # fmt: skip
+RUN_AT = "2026-10-11T04:00:00+00:00"
+
+
+def _stored(tmp_path, h: pd.Series, groups_year: list[dict] | None, look_at: str | None = "2026-10-11T05:00:00+00:00"):
     d = tmp_path / "GX"
     d.mkdir()
-    result = {"id": "GX", "window": ["2023-01-02", "2024-06-01"], "instruments": ["SPY", "QQQ"],
-              "spec": {"timeframe": "5Min"}, "evaluation": {"verdict": {"p": 0.5}},
-              "described": {"state_splits": {"year": {"groups": groups_year}, "gamma_sign": {"unavailable": True}}}}  # fmt: skip
-    (d / "result.json").write_text(json.dumps(result), encoding="utf-8")
+    ss = {"gamma_sign": {"unavailable": True}} | ({"year": {"groups": groups_year}} if groups_year else {})
+    result = {"id": "GX", "window": ["2023-01-02", "2024-06-01"], "instruments": ["SPY", "QQQ"], "run_at": RUN_AT,
+              "spec": {"timeframe": "5Min", "state_splits": ["year", "gamma_sign"]},
+              "evaluation": {"verdict": {"p": 0.5}}, "described": {"state_splits": ss}}  # fmt: skip
+    (d / "result.json").write_text(json.dumps(result, sort_keys=True), encoding="utf-8")
+    (d / "report.md").write_text("\n".join(REPORT), encoding="utf-8")
     pd.DataFrame({"headline": h, "benchmark": h * 0.5, "rf": 1e-5}).to_csv(d / "streams.csv")
+    looks = tmp_path / "looks.jsonl"
+    if look_at:
+        looks.write_text(json.dumps({"at": look_at, "label": "GX splits", "n": 15}) + "\n", encoding="utf-8")
+    return looks
 
 
-def test_add_splits_adds_rerenders_and_checks_the_stored_stream(tmp_path, monkeypatch):
-    import families.report as REP
-
-    monkeypatch.setattr(REP, "write_family_report", lambda result, out: {"md": out / "report.md"})
+def _stream(seed: int):
     days = pd.bdate_range("2023-01-02", "2024-06-01", inclusive="left")
-    h = pd.Series(np.random.default_rng(10).normal(0, 1e-3, len(days)), index=days)
-    year = T.split_table(T.excess(h, pd.Series(1e-5, index=days)), T._groups("year", days, None, None))
-    _stored(tmp_path, h, year)
-    res = R.add_splits("GX", list(U26_SPLITS), tmp_path, source=TFSource(), check=("year",))
+    h = pd.Series(np.random.default_rng(seed).normal(0, 1e-3, len(days)), index=days)
+    return h, T.split_table(T.excess(h, pd.Series(1e-5, index=days)), T._groups("year", days, None, None))
+
+
+def test_add_splits_adds_and_rewrites_only_the_splits_section(tmp_path):
+    h, year = _stream(10)
+    looks = _stored(tmp_path, h, year)
+    res = R.add_splits("GX", list(U26_SPLITS), "GX splits", tmp_path, source=TFSource(), check=("year",),
+                       looks_path=looks)  # fmt: skip
     saved = json.loads((tmp_path / "GX" / "result.json").read_text(encoding="utf-8"))
     ss = saved["described"]["state_splits"]
     assert set(ss) == {"year", *U26_SPLITS} and ss["year"]["groups"] == json.loads(json.dumps(year))
-    assert all("groups" in ss[k] for k in U26_SPLITS)
+    assert all("groups" in ss[k] for k in U26_SPLITS)  # gamma_sign: unavailable before, added now
     assert saved["evaluation"] == {"verdict": {"p": 0.5}} and saved["splits_added"][0]["checked"] == ["year"]
-    assert res["splits_added"][0]["splits"] == list(U26_SPLITS)
+    assert res["splits_added"][0]["look"] == "GX splits"
+    md = (tmp_path / "GX" / "report.md").read_text(encoding="utf-8").split("\n")
+    a, b = md.index(SPLITS_HEADER), md.index("## Sample splits (headline; reported)")
+    assert md[:a] == REPORT[: REPORT.index(SPLITS_HEADER)] and md[b:] == REPORT[14:]  # untouched around it
+    body = "\n".join(md[a:b])
+    order = [body.index(f"**{k}**") for k in ["year", *U26_SPLITS]]  # the spec's order, then the added order
+    assert order == sorted(order) and "Added " in body and "old" not in body
+    assert (tmp_path / "GX" / "report.html").exists()
+    with pytest.raises(ValueError, match="no look"):  # the same look does not cover a second addition
+        R.add_splits("GX", ["ac1_tercile"], "GX splits", tmp_path, source=TFSource(), looks_path=looks)
 
 
-def test_add_splits_refuses_a_stream_that_does_not_reproduce_the_stored_split(tmp_path):
-    days = pd.bdate_range("2023-01-02", "2024-06-01", inclusive="left")
-    h = pd.Series(np.random.default_rng(11).normal(0, 1e-3, len(days)), index=days)
-    year = T.split_table(T.excess(h, pd.Series(1e-5, index=days)), T._groups("year", days, None, None))
-    year[0]["mean_bp"] += 0.01
-    _stored(tmp_path, h, year)
+def test_add_splits_refusals_write_nothing(tmp_path):
+    h, year = _stream(11)
+    bad = [dict(g) for g in year]
+    bad[0]["mean_bp"] += 0.01
+    looks = _stored(tmp_path, h, bad)
     before = (tmp_path / "GX" / "result.json").read_text(encoding="utf-8")
+    kw = {"source": TFSource(), "check": ("year",), "looks_path": looks}
     with pytest.raises(ValueError, match="not reproduced"):
-        R.add_splits("GX", ["gamma_sign"], tmp_path, source=TFSource(), check=("year",))
-    assert (tmp_path / "GX" / "result.json").read_text(encoding="utf-8") == before
+        R.add_splits("GX", ["gamma_sign"], "GX splits", tmp_path, **kw)
     with pytest.raises(ValueError, match="unknown"):
-        R.add_splits("GX", ["nope"], tmp_path, source=TFSource())
+        R.add_splits("GX", ["nope"], "GX splits", tmp_path, **kw)
+    with pytest.raises(ValueError, match="already stored"):
+        R.add_splits("GX", ["year"], "GX splits", tmp_path, **kw)
+    with pytest.raises(ValueError, match="no look"):
+        R.add_splits("GX", ["gamma_sign"], "other label", tmp_path, **kw)
+    assert (tmp_path / "GX" / "result.json").read_text(encoding="utf-8") == before
+
+
+def test_add_splits_refuses_a_vacuous_check_an_early_look_and_a_missing_input(tmp_path):
+    h, year = _stream(12)
+    looks = _stored(tmp_path, h, None)  # no stored split to check against
+    with pytest.raises(ValueError, match="no stored split"):
+        R.add_splits("GX", ["gamma_sign"], "GX splits", tmp_path, source=TFSource(), looks_path=looks)
+    for name, look_at, err in (("early", "2026-10-11T03:00:00+00:00", "no look"), ("noexo", None, "did not load")):
+        d = tmp_path / name
+        d.mkdir()
+        looks = _stored(d, h, year, look_at or "2026-10-11T05:00:00+00:00")
+
+        class NoExo(TFSource):
+            def exo(self, *a, **k):
+                raise FileNotFoundError("no cache")
+
+        with pytest.raises(ValueError, match=err):
+            R.add_splits("GX", ["gamma_sign", "skew_tercile"], "GX splits", d, source=NoExo(), check=("year",),
+                         looks_path=looks)  # fmt: skip

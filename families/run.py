@@ -712,17 +712,24 @@ def run_family(
 SPLIT_PARITY_TOL = 1e-12
 
 
-def add_splits(family: str, splits, out_dir=DEFAULT_OUT, source=None, check=("year", "vol_quintile")) -> dict:
+def add_splits(family: str, splits, look: str, out_dir=DEFAULT_OUT, source=None, check=("year", "vol_quintile"),
+               looks_path=None) -> dict:  # fmt: skip
     """
-    U26 (SPEC §24): add reported state splits to a family's stored result and re-render its report, without re-running
-    it (no cell, no ledger row, no trial). The headline's excess stream is rebuilt from the saved streams.csv (the
-    stream at the verdict's cost and the T-bill accrual describe() used); the stored splits named in `check` must be
-    reproduced from it to SPLIT_PARITY_TOL, or nothing is written. The verdict, the floors and every other stored
-    number are left as they are; `result["splits_added"]` records what was added, when and at which commit. A look
-    (families/looks.jsonl) is recorded before the call: the splits are read on the development window.
+    U26 (SPEC §24): add reported state splits to a family's stored result and rewrite the report's state-splits
+    section, without re-running it (no cell, no ledger row, no trial). Refused unless:
+    - `look` labels a families/looks.jsonl row recorded after the run and after any earlier addition (the splits are
+      read on the development window, so the look comes first);
+    - none of `splits` is already stored with groups (no overwrite);
+    - at least one stored split of `check` exists and is reproduced to SPLIT_PARITY_TOL from the headline's excess
+      stream rebuilt from the saved streams.csv (the stream at the verdict's cost and the T-bill accrual describe()
+      used);
+    - every split's input loads (none would be written "unavailable").
+    Nothing is written on a refusal. The verdict, the floors and every other stored number are left as they are;
+    `result["splits_added"]` records what was added, the look, the check, when and at which commit.
     """
     from experiments.runner import CachedBars, code_hash, git_sha
-    from families.report import load_result, stream_frame, write_family_report
+    from families.looks import LOOKS_PATH, looks
+    from families.report import load_result, replace_splits, stream_frame
     from families.spec import STATE_SPLITS
 
     out = Path(out_dir) / family
@@ -730,13 +737,22 @@ def add_splits(family: str, splits, out_dir=DEFAULT_OUT, source=None, check=("ye
     bad = [s for s in splits if s not in STATE_SPLITS]
     if bad or not splits:
         raise ValueError(f"unknown or no state split(s) {bad or splits}; expected {STATE_SPLITS}")
+    after = max([str(result.get("run_at", ""))] + [str(a["at"]) for a in result.get("splits_added", [])])
+    if not any(r["label"] == look and str(r["at"]) > after for r in looks(looks_path or LOOKS_PATH)):
+        raise ValueError(f"{family}: no look labelled {look!r} recorded after {after or 'the run'}: record it first "
+                         "(python -m families look <label> <n>)")  # fmt: skip
     stored = result["described"]["state_splits"]
+    again = [k for k in splits if "groups" in stored.get(k, {})]
+    if again:
+        raise ValueError(f"{family}: split(s) {again} are already stored; an addition never overwrites")
     frame = stream_frame(out)
     h = T.excess(frame[HEADLINE].dropna(), frame.get("rf", None))
     bench = frame["benchmark"].dropna()
     start, end = result["window"]
     timeframe = result["spec"].get("timeframe")
     check = [k for k in check if k in stored and not stored[k].get("unavailable")]
+    if not check:
+        raise ValueError(f"{family}: no stored split to reproduce the stream with; nothing written")
     state = load_state(source or CachedBars(), start, end, result["instruments"], timeframe, [*splits, *check])
     for k in check:
         g = T._groups(k, h.index, state, bench)
@@ -746,19 +762,21 @@ def add_splits(family: str, splits, out_dir=DEFAULT_OUT, source=None, check=("ye
             for a, b in zip(again, before, strict=True))  # fmt: skip
         if not same:
             raise ValueError(f"{family}: the stored split {k!r} is not reproduced from streams.csv; nothing written")
-    added = {}
-    for k in splits:
-        g = T._groups(k, h.index, state, bench)
-        added[k] = {"unavailable": True} if g is None else {"groups": T.split_table(h, g)}
+    groups = {k: T._groups(k, h.index, state, bench) for k in splits}
+    missing = [k for k, g in groups.items() if g is None]
+    if missing:
+        raise ValueError(
+            f"{family}: the input of split(s) {missing} did not load (see the [FAM] lines); nothing written"
+        )
+    added = {k: {"groups": T.split_table(h, g)} for k, g in groups.items()}
     result["described"]["state_splits"] = {**stored, **added}
     result.setdefault("splits_added", []).append({
-        "at": datetime.now(UTC).isoformat(), "splits": list(splits), "checked": check, "git_sha": git_sha(),
-        "code_hash": code_hash()})  # fmt: skip
+        "at": datetime.now(UTC).isoformat(), "splits": list(splits), "look": look, "checked": check,
+        "git_sha": git_sha(), "code_hash": code_hash()})  # fmt: skip
     (out / "result.json").write_text(json.dumps(L.clean(result), indent=2, sort_keys=True, default=str),
                                      encoding="utf-8")  # fmt: skip
-    result["paths"] = write_family_report(result, out)
-    print(f"[FAM]  {family}: {len(added)} split(s) added ({sum('groups' in v for v in added.values())} available); "
-          f"checked {check} → {out}")  # fmt: skip
+    result["paths"] = replace_splits(result, out)
+    print(f"[FAM]  {family}: {len(added)} split(s) added; checked {check}; look {look!r} → {out}")
     return result
 
 
