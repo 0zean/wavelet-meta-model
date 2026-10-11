@@ -36,6 +36,13 @@ calendar_events (static; needs exo; deterministic encodings, so no level check):
     Sessions are counted as weekdays minus the exchange closures known at the bar (the weekday after each visible
     PRE_HOLIDAY session; no closure in 2016–2027 spans two weekdays).
 
+vix_term (static; needs exo; U28, PLAN3 G6): the VIX state without vol_state's per-fold GARCH (whose 500-return fit
+would start a rule 500 sessions late), for rules that read only the CBOE closes
+    vix             VIX close, as of the bar
+    vx1_vix         front VIX future settlement / VIX close (> 1: contango)
+    vx2_vx1         second / front future settlement
+    All three are 16:20 ET closes / settlements: an intraday bar stamped 09:30 or later on day d sees day d − 1's.
+
 rates_credit (static; needs exo):
     d_dgs10     change of the 10-year Treasury yield over its last observation (percentage points)
     t10y2y      10-year minus 2-year Treasury spread (percentage points)
@@ -61,6 +68,7 @@ VOL_STATE_EXO = ("cboe/VIX", "cboe/VIX9D", "cboe/VIX3M", "cboe/VX1_VIX", "cboe/V
 CALENDAR_EXO = ("calendar/FOMC", "calendar/CPI", "calendar/NFP", "calendar/OPEX", "calendar/TOM",
                 "calendar/PRE_HOLIDAY", "calendar/FOMC_SCHEDULE", "calendar/CPI_SCHEDULE",
                 "calendar/NFP_SCHEDULE")  # fmt: skip
+VIX_TERM_EXO = ("cboe/VIX", "cboe/VX1_VIX", "cboe/VX2_VX1")  # U28
 RATES_EXO = ("fred/DGS10", "fred/T10Y2Y", "fred/BAA10Y", "fred/DTWEXBGS")
 RELEASE_KINDS = ("calendar/FOMC", "calendar/CPI", "calendar/NFP")
 
@@ -172,6 +180,13 @@ def vol_state_frame(df: pd.DataFrame, state: tuple, cfg, exo) -> dict[str, np.nd
         "garch_sigma": np.sqrt(h[1:]) * scale,
         "ret_std_garch": z / np.sqrt(h[:-1]),
     }
+
+
+def vix_term_frame(df: pd.DataFrame, exo) -> dict[str, np.ndarray]:
+    """U28: VIX and the futures term-structure ratios as of each bar (the point-in-time rule of features.exo_align)."""
+    idx = df.index
+    return {"vix": exo.asof("cboe/VIX", idx), "vx1_vix": exo.asof("cboe/VX1_VIX", idx),
+            "vx2_vx1": exo.asof("cboe/VX2_VX1", idx)}  # fmt: skip
 
 
 # ── Calendar events ──────────────────────────────────────────────────────────

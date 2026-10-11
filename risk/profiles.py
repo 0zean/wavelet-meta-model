@@ -26,6 +26,9 @@ class RiskProfile:
     dd_tiers: tuple[tuple[float, float], ...] = ()
     # Daily loss gate: session P&L ≤ −daily_loss · session-start equity → flatten at the next open, block entries
     daily_loss: float | None = None
+    # Drawdown kill (U28, PLAN3 G6): close-marked equity ≥ kill_dd below its high-water mark → every position is
+    # flattened at its next open and no entry is taken for the rest of the run (a latch, never re-armed)
+    kill_dd: float | None = None
     # Corwin–Schultz half-spread parameters of COST_MODEL="cs" (floor, trailing window in sessions)
     spread_floor: float = 0.5e-4
     spread_window_days: int = 21
@@ -46,6 +49,8 @@ class RiskProfile:
             raise ValueError(f"dd_tiers must be ascending (dd in (0, 1), multiplier in [0, 1]); got {self.dd_tiers}")
         if self.daily_loss is not None and not 0 < self.daily_loss < 1:
             raise ValueError(f"daily_loss must be in (0, 1) or None, got {self.daily_loss}")
+        if self.kill_dd is not None and not 0 < self.kill_dd < 1:
+            raise ValueError(f"kill_dd must be in (0, 1) or None, got {self.kill_dd}")
         if self.spread_floor < 0 or self.spread_window_days < 1 or self.borrow_bps < 0:
             raise ValueError("spread_floor and borrow_bps must be >= 0, spread_window_days >= 1")
 
@@ -89,6 +94,10 @@ PROFILES: dict[str, RiskProfile] = {
     # U24 (PLAN3 §3 G1): the daily loss gate (2 % of the session's starting equity) and nothing else: a self-sized
     # region keeps its own sizing (no vol target, caps or drawdown tiers); wfo.position_backtest models exactly this.
     "loss_gate": RiskProfile("loss_gate", daily_loss=0.02),
+    # U28 (PLAN3 G6, PLAN2 U21's hard rules): SVXY's 3 % daily loss gate and the 15 % drawdown kill (a latch: once
+    # fired, flat for the rest of the run, as the forward test would stop); `vrp_nokill` is G6's no-kill variant.
+    "vrp": RiskProfile("vrp", daily_loss=0.03, kill_dd=0.15),
+    "vrp_nokill": RiskProfile("vrp_nokill", daily_loss=0.03),
 }
 
 

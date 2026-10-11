@@ -99,9 +99,11 @@ def cells_curve(result: dict, path: Path) -> Path | None:
     import matplotlib.pyplot as plt
 
     ck = _verdict_cost(result)
-    pts = [(k, v[ck]["alpha_bp"], v[ck]["ci_bp"]) for k, v in reg["cells"].items() if ck in v]
-    pts += [(f"{k}:REGION", v[ck]["alpha_bp"], v[ck]["ci_bp"]) for k, v in reg.get("region", {}).items()
-            if k != "pooled" and ck in v]  # fmt: skip
+    st = reg.get("statistic", "alpha_bp")  # U28: an engine region under a marginal test plots its Δ Sharpe
+    ci = (lambda v: v.get("ci_bp")) if st == "alpha_bp" else (lambda v: None)
+    pts = [(k, v[ck][st], ci(v[ck])) for k, v in reg["cells"].items() if ck in v]
+    pts += [(f"{k}:REGION", v[ck][st], ci(v[ck])) for k, v in reg.get("region", {}).items()
+            if (k != "pooled" or reg.get("method") == "engine") and ck in v]  # fmt: skip
     pts = [p for p in pts if p[1] is not None and np.isfinite(p[1])]
     if not pts:
         return None
@@ -117,18 +119,110 @@ def cells_curve(result: dict, path: Path) -> Path | None:
     ax.set_xticks([])
     ax.set_xlabel(f"{len(pts)} (instrument, cell) points, sorted; colours: "
                   + ", ".join(f"{k} {v}" for k, v in ESTIMATOR_COLORS.items()) + "; region orange", fontsize=7)  # fmt: skip
-    ax.set_ylabel(f"alpha, bp/day (excess; cost {ck})")
-    ax.set_title(f"{result['id']}: region cells, 95 % Newey–West intervals (reported; no cell is selected)", fontsize=9)
+    ax.set_ylabel(f"alpha, bp/day (excess; cost {ck})" if st == "alpha_bp" else
+                  f"Δ Sharpe, core + k × cell vs core (cost {ck})")  # fmt: skip
+    ax.set_title(f"{result['id']}: region cells" + (", 95 % Newey–West intervals" if st == "alpha_bp" else "")
+                 + " (reported; no cell is selected)", fontsize=9)  # fmt: skip
     fig.tight_layout()
     fig.savefig(path, dpi=120)
     plt.close(fig)
     return path
 
 
+def _engine_region_md(result: dict) -> list[str]:
+    """U28: an engine region's cells (each run by the engine as its own rule cell; families.run.engine_region)."""
+    reg = result["region"]
+    ck = _verdict_cost(result)
+    st = reg.get("statistic", "alpha_bp")
+    md = ["## Region cells (the specification curve over every cell; reported, the region is the headline)", "",
+          f"*{reg.get('note', '')}*", ""]  # fmt: skip
+    bad = {k: v for k, v in (reg.get("status") or {}).items() if v != "ok"}
+    if bad:
+        md.append("- **Cells that did not complete** (they count against coherence): "
+                  + ", ".join(f"{k} {v}" for k, v in bad.items()))  # fmt: skip
+    coh = ((result.get("evaluation") or {}).get("variants", {}).get(HEADLINE, {}) or {}).get("cells") or {}
+    vals = [v[ck][st] for v in reg.get("cells", {}).values() if ck in v]
+    what = "Δ Sharpe (core + k × cell vs core)" if st == "delta_sharpe" else "alpha bp/day"
+    md += [(f"- {len(reg.get('cells', {}))} cells at cost {ck}, statistic {what}: share with the headline's sign "
+            f"{_f(coh.get('share'), 3)}, median cell {_f(coh.get('median_alpha'), 3)}; positive "
+            f"{int(np.sum(np.array(vals) > 0))} / {len(vals)}"), "", "![region cells](cells_curve.png)", ""]  # fmt: skip
+    rows = []
+    for name in reg.get("names", []):
+        e = (reg.get("pooled_cells") or {}).get(name, {}).get(ck)
+        row = {"cell": name}
+        if e is None:
+            rows.append({**row, "alpha_bp": "—"})
+            continue
+        row |= {"alpha_bp": _f(e["alpha_bp"], 2), "CI (NW 95 %)": f"{_f(e['ci_bp'][0], 2)} … {_f(e['ci_bp'][1], 2)}",
+                "sharpe": _f(e["sharpe"], 2), "days": e.get("n_days")}  # fmt: skip
+        if "delta_sharpe" in e:
+            row["Δ Sharpe vs core"] = _f(e["delta_sharpe"], 3)
+        row["_k"] = e[st]
+        rows.append(row)
+    rows.sort(key=lambda r: -r.get("_k", -np.inf))
+    cols = [
+        "cell",
+        "days",
+        "alpha_bp",
+        "CI (NW 95 %)",
+        "sharpe",
+        *(["Δ Sharpe vs core"] if st == "delta_sharpe" else []),
+    ]
+    md += [f"Every cell at cost {ck} (excess of the T-bill), sorted by {what}:", "", _table(rows, cols), ""]
+    rg = (reg.get("region") or {}).get("pooled") or {}
+    if rg:
+        row = {"": "region (headline)"}
+        for c in reg.get("costs", []):
+            e = rg.get(c)
+            row[c] = "—" if e is None else (f"{_f(e['alpha_bp'], 2)} bp ({_f(e['sharpe'], 2)})"
+                                            + (f", Δ {_f(e['delta_sharpe'], 3)}" if "delta_sharpe" in e else ""))  # fmt: skip
+        md += ["The region at each cost: alpha bp/day (excess Sharpe)" + (", Δ Sharpe vs core" if st == "delta_sharpe"
+                                                                         else "") + ":", "",
+               _table([row], ["", *reg.get("costs", [])]), ""]  # fmt: skip
+    return md
+
+
+def _episodes_md(result: dict) -> list[str]:
+    """U28: the spec's episodes day by day (families.run.episode_paths; reported)."""
+    eps = result.get("episodes") or {}
+    if not eps:
+        return []
+    md = [f"## Episodes (headline at cost {_verdict_cost(result)}, day by day; reported)", ""]
+    for label, ep in eps.items():
+        s = ep["summary"]
+        line = (f"### {label}: {ep['start']} → {ep['end']}\n\n- {s['days']} sessions, held at the close on "
+                f"{s['days_held']}; overlay {_f(s['total'], 3, pct=True)}, worst day {_f(s['worst_day'], 3, pct=True)}, "
+                f"max drawdown in the episode {_f(s['max_dd'], 3, pct=True)}")  # fmt: skip
+        if "core_total" in s:
+            line += (f"; core {_f(s['core_total'], 3, pct=True)}, core + k × overlay "
+                     f"{_f(s['portfolio_total'], 3, pct=True)}")  # fmt: skip
+        md += [line, ""]
+        has_core = any("core" in r for r in ep["rows"])
+        rows = [{"date": r["date"], "position": _f(r["position"], 3), "VIX": _f(r.get("vix"), 2),
+                 "VX1/VIX": _f(r.get("vx1_vix"), 3), "overlay": _f(r["ret"], 4, pct=True),
+                 "overlay cum": _f(r["cum"], 3, pct=True),
+                 **({"core": _f(r.get("core"), 4, pct=True), "portfolio cum": _f(r.get("portfolio_cum"), 3, pct=True)}
+                    if has_core else {})} for r in ep["rows"]]  # fmt: skip
+        cols = ["date", "position", "VIX", "VX1/VIX", "overlay", "overlay cum",
+                *(["core", "portfolio cum"] if has_core else [])]  # fmt: skip
+        md += [_table(rows, cols), ""]
+    md += [
+        (
+            "Position: the pooled fraction of equity held at the close (side × the fraction committed at entry). VIX "
+            "and VX1/VIX: the day's close and settlement, read by the NEXT session's decision. Overlay: the headline's "
+            "net daily return; portfolio: core + k × the overlay's excess return, as the marginal test adds it."
+        ),
+        "",
+    ]
+    return md
+
+
 def _region_md(result: dict) -> list[str]:
     reg = result.get("region")
     if not reg:
         return []
+    if reg.get("method") == "engine":
+        return _engine_region_md(result)
     ck = _verdict_cost(result)
     md = ["## Region cells (the specification curve over every cell; reported, the region is the headline)", ""]
     if (result.get("spec", {}).get("headline", {}).get("primary", {}).get("params") or {}).get("gate") or \
@@ -368,6 +462,17 @@ def family_markdown(result: dict) -> str:
                   f"(excess returns); difference {_f(c['delta_ann'], 2)} (interval {_f(c['ci_ann'][0], 2)} … "
                   f"{_f(c['ci_ann'][1], 2)}), Ledoit–Wolf {c.get('sided', 'two')}-sided p = {_f(c['p'], 4)} "
                   f"(block {block} sessions)")  # fmt: skip
+    oa = result.get("overlay_alone")
+    if oa and "alpha_bp_per_day" in oa:  # U28: a marginal family's overlay against zero (reported, never tested)
+        md.append(f"- The overlay alone (reported, not tested): alpha vs zero {_f(oa['delta_ann'], 3, pct=True)}/yr "
+                  f"({_f(oa['alpha_bp_per_day'], 2)} bp/day), {oa.get('sided')}-sided p {_f(oa['p'], 4)}, Newey–West t "
+                  f"{_f(oa.get('t_nw'), 2)}, Sharpe {_f(oa['sharpe'], 2)}")  # fmt: skip
+    kills = {k: [x for x in v.values() if x] for k, v in (result.get("kill") or {}).items()}
+    if any(kills.values()):
+        md.append("- Drawdown kill fired (bar of the close; flat from the next open to the end): "
+                  + "; ".join(f"{k} {', '.join(x)}" for k, x in kills.items() if x))  # fmt: skip
+    elif result.get("kill") is not None:
+        md.append("- Drawdown kill: never fired in any variant (or no variant has one)")
     lk = result.get("looks") or {}
     md.append(f"- Looks: K = {lk.get('K', '—')} configurations examined on the development window "
               f"(families/looks.jsonl); Bonferroni bound p × K = {_f(lk.get('bonferroni_p'), 4)}")  # fmt: skip
@@ -462,6 +567,7 @@ def family_markdown(result: dict) -> str:
         md.append("")
     md += _refs_md(result)
     md += _region_md(result)
+    md += _episodes_md(result)
     md += _trade_md(result)
     md += ["## Specification curve (reported; no variant is selected)", "", "![spec curve](spec_curve.png)", ""]
     rows = []

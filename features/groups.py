@@ -19,10 +19,12 @@ from features.registry import feature_group
 from features.state import (
     CALENDAR_EXO,
     RATES_EXO,
+    VIX_TERM_EXO,
     VOL_STATE_EXO,
     calendar_events_frame,
     fit_vol_state,
     rates_credit_frame,
+    vix_term_frame,
     vol_state_frame,
 )
 from features.vol_profile import bar_volatility
@@ -382,6 +384,13 @@ def calendar_events(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
     """Sessions to / since FOMC, CPI and NFP, event-day / OPEX-week / turn-of-month / pre-holiday flags and (intraday)
     minutes since the day's release; known in advance, read point in time (features/state.py)."""
     return _prefixed("calendar_events", calendar_events_frame(df, cfg, context["exo"]), df.index)
+
+
+@feature_group("vix_term", needs=("exo",), exo=VIX_TERM_EXO)
+def vix_term(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
+    """VIX close and the futures term-structure ratios VX1 / VIX and VX2 / VX1 as of each bar, with no per-fold state
+    (U28: the G6 rule reads these alone; features/state.py)."""
+    return _prefixed("vix_term", vix_term_frame(df, context["exo"]), df.index)
 
 
 @feature_group("rates_credit", needs=("exo",), exo=RATES_EXO)

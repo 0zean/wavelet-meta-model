@@ -1,0 +1,90 @@
+# G6 — volatility risk premium via SVXY (PLAN3 §3 G6, U28; PLAN2 F9 / U21): long SVXY while the VIX futures curve is in
+# contango and the VIX is below a cap, as a REGION of (threshold, cap) cells, tested as an overlay on G2's core.
+# Choices made at registration (U28; the user, 2026-10-11, before any G6 configuration was run on the dev window):
+# - Headline = a region (protocol v3 §4.1), not PLAN2's point: VX1 / VIX > θ, θ ∈ {1.00, 1.025, 1.05, 1.075, 1.10} ×
+#   VIX < cap, cap ∈ {20, 25, 30} = 15 cells centred on PLAN2 F9's 1.05 / 25, equal weight; the target is the share of
+#   cells long, a position in [0, 1] of equity in SVXY. Hard rule (PLAN2 U21): flat while VX1 / VIX < 1.0 (every cell).
+# - SVXY tracked −1× the VIX short-term futures index until 2018-02-27 and −0.5× from 2018-02-28: the target is × 0.5
+#   on sessions before 2018-02-28, so the futures exposure is the −0.5× that would be traded forward throughout.
+# - Risk profile `vrp` (PLAN2 U21's hard rules): the 3 % daily loss gate and the 15 % drawdown kill, a latch — once the
+#   overlay's equity is 15 % below its high-water mark it is flat for the rest of the window, as the forward test would
+#   stop. Variant `no_kill` shows the rule without it (the user's choice: a permanent kill in the headline).
+# - Timing: one decision per session at the 10:00 mark on 5Min bars (read at the 09:55 bar's close, filled at the 10:00
+#   bar's open, held to the next session's 10:00 where the next target replaces it; the roll trades only the change).
+#   The daily engine decides at the previous close, before the 16:20 CBOE / CFE settlements, so on 1Day bars the open
+#   of day d would read day d − 2's VIX; at 10:00 the decision reads day d − 1's, as a pre-open forward loop would, and
+#   10:00 is a mark of U27's half-hour loop. SVXY has its 09:55 and 10:00 bars on every session but halts
+#   (2018-02-06, 2020-03-09, 2020-03-16: no decision, flat that session).
+# - State: the vix_term group (VIX close, VX1 / VIX, VX2 / VX1; no per-fold GARCH, so no 500-session warm-up).
+# - Test `marginal` (the user's choice): long SVXY carries equity beta, so its mean excess return against zero would
+#   largely restate the equity premium; the claim tested is that it improves G2's core. Paired Ledoit–Wolf Sharpe
+#   difference of core + k × overlay vs the core (G2_core: F1 on SPY / QQQ 50/50 under U22's engine, registered at
+#   4208d7b), one-sided, excess returns, k = 0.5 (SVXY's volatility is about 2–3 × the core's). The overlay alone
+#   (alpha vs zero) and its Newey–West alpha / beta vs SVXY held (the benchmark) are reported, never tested.
+# - Cost: the verdict reads the booked costs (`registered`: the as-of quotes half-spread + 1 bp slippage per side), not
+#   G1's 1.0 bp round trip — SVXY's spreads are wider than SPY's; the cost curve shows 0.3 / 1.0 / 2.3 bp beside it.
+# - Coherence over the region's cells (protocol v3 §4.1): the share of the 15 cells whose Δ Sharpe (core + 0.5 × cell
+#   vs core, each cell an engine run at the same cost) has the headline's sign ≥ 2/3; the variants' coherence is
+#   reported beside it.
+# - Floors: the overlay's net excess return ≥ 3 %/yr (PLAN3 §4.4); max DD(core + k × overlay) no deeper than the
+#   core's (`max_dd_vs_core: 1.0`, as G2); gross edge ≥ 2 × the cost per round trip.
+# - Variants (7; budget 8): no_kill; k 1 and 0.25; core = the plain SPY / QQQ buy-and-hold mix; contango read from
+#   VX2 / VX1 instead of VX1 / VIX (same θ, caps and hard rule); no VIX cap (5 cells); no pre-2018 scale (SVXY as
+#   traded, −1× before 2018-02-28).
+# - Episodes (reported day by day, PLAN3 G6): February 2018, March 2020, August 2024.
+# - Power (families.power.mde_delta_sharpe; `scripts/u28_g6.py power`, from the bars and the VIX state alone, as G3's ρ:
+#   no mean of anything was computed): 2,446 sessions; the region's target from the previous session's VIX / VX1 / VIX
+#   (mean 0.367, a position on 75 % of sessions); the gross overlay's uncentred second moments σ_o 14.1 %/yr and
+#   ρ(overlay, SPY / QQQ mix) 0.370; G2's registered core assumptions σ_core 13.5 %, Sharpe 0.7; k 0.5 → ρ(core + k ×
+#   overlay, core) 0.926; Holm over 4 families: MDE Δ Sharpe 0.38. Expected +0.17 at PLAN2 F9's overlay Sharpe 0.8
+#   (0.6–1.0). Below the MDE: registered as a DIAGNOSTIC, as G1–G3 (the test, floors and coherence run unchanged).
+id: G6
+mechanism: >-
+  Implied volatility exceeds realized volatility on average and the VIX futures curve is in contango most of the time,
+  so a short position in VIX short-term futures (long SVXY) earns the variance risk premium and the roll; it carries
+  crash risk, which a term-structure filter (flat in backwardation), a VIX cap and hard loss rules bound. Added to a
+  volatility-managed index core it raises the Sharpe ratio if the premium is not just the core's equity beta.
+instruments: [SVXY]
+timeframe: 5Min
+weighting: equal
+headline:
+  primary:
+    name: vix_carry
+    params:
+      signal: vx1_vix
+      theta_list: [1.0, 1.025, 1.05, 1.075, 1.10]
+      vix_list: [20, 25, 30]
+      backwardation: 1.0
+      decision: "10:00"
+      scale_before: {date: "2018-02-28", scale: 0.5}
+  cost_model: quotes
+  risk_profile: vrp
+  overrides: {INIT_CASH: 30000, FILL_AUCTION: print, COST_TABLE: asof, CASH_YIELD: tbill, SESSION_CLOCK: calendar,
+              STRESS_MULT: 1.0}
+core: {family: G2_core, variant: headline, k: 0.5, sha: '4208d7bf2bc47097b5f91f320fe96cad69cfffe8'}
+variants:
+  - {label: no_kill, risk_profile: vrp_nokill}
+  - {label: k1, core.k: 1.0}
+  - {label: k0.25, core.k: 0.25}
+  - {label: core_bh, core.variant: benchmark}
+  - {label: vx2_vx1, primary.params.signal: vx2_vx1}
+  - {label: no_vix_cap, primary.params.vix_list: [null]}
+  - {label: unscaled, primary.params.scale_before: null}
+state_splits: [vix_tercile, year, macro_day]
+response: [sharpe, ret_ann, vol_ann, max_dd, skew, worst_day, exposure, crisis_return]
+sample_splits:
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+  - {label: post_break, start: 2018-02-28, end: 2025-10-01}
+episodes:
+  - {label: feb2018, start: 2018-01-22, end: 2018-03-10}
+  - {label: mar2020, start: 2020-02-18, end: 2020-04-11}
+  - {label: aug2024, start: 2024-07-22, end: 2024-08-24}
+benchmark: constant_mix_ew
+floors: {min_net_ret: 0.03, min_edge_to_cost: 2.0, max_dd_vs_core: 1.0}
+test: {kind: marginal, sided: one, at_cost: registered, alpha: 0.05, block_days: 21, n_boot: 5000,
+       coherence_share: 0.667, coherence: cells, seed: 0}
+power: {n_days: 2446, rho: 0.926, sharpe_ref: 0.7, families: 4, mde_delta_sharpe: 0.38, expected_delta_sharpe: 0.17,
+        diagnostic: true}
+account: {kind: margin, equity: 30000}
+TRIAL_BUDGET: 8
