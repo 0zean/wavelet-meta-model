@@ -8,11 +8,12 @@ evidence; PLAN3 §9 is the status line.
 ## What shipped (SPEC §23 has the detail)
 - **Kernels** `features/kernels.py` (numba, float64, session-bounded windows: NaN for the first N − 1 bars of each
   session): `rmedv_all` (Siegel repeated median; bit-equal to scipy siegelslopes), `sg_velocity_all` / `sg_weights`
-  (Savitzky–Golay endpoint derivative; degree 1 = LS slope), `prior_sigma` (σ of within-session 5Min returns of the
-  k previous sessions), `band_state` (Zarattini band, gap-adjusted distance in band units), `session_vwap`,
-  `session_layout`.
+  (Meyers' polynomial velocity at the next bar T+1; degree 1 = LS slope), `prior_sd` (trailing SD over the k previous
+  sessions), `rmedv_normalized` (RMedV · √N · xmult, Meyers 2025 App. III) and `poly_normalized` (velocity / its SD
+  per (degree, N), Meyers 2026 App. III), both refit every session over 21 sessions; `band_state` (Zarattini band,
+  gap-adjusted distance in band units), `session_vwap`, `session_layout`.
 - **Region primary** `primaries/region.py` `region_trend` (ALLOW_CONTINUOUS): 43 cells (band × VM 3, rmedv and sgv ×
-  N 5 × θ 4), v = slope · √N / σ₅, stop-and-reverse reset every session, VWAP stops, decisions = schedule entry times
+  N 5 × θ 4), each velocity in its paper's normalization (θ in SDs), stop-and-reverse reset every session, VWAP stops, decisions = schedule entry times
   10:00 … 15:30 (read at the 09:55 … 15:25 closes), `next_event` exit to the closing auction; target = the mean cell.
   Variants supported: cadence 5/15/30/60, `first`, `exit "HH:MM"`, `vel_mode flat_inside`, `vel_stop vwap`,
   `band_stop`, `sg_degree`. Not yet: the MODWT-slope estimator and the vol-targeted size (G1 variants; U24).
@@ -36,9 +37,10 @@ evidence; PLAN3 §9 is the status line.
   session scratchpad `review/` (may not survive).
 
 ## Open decisions (the user's)
-- **PLAN3 §7 item 6 — the velocity normalization R₀ registers.** PLAN3 §3 G1 says slope · √N / σ₅ (built); the
-  §1.2 diagnostic used slope / σ₅ (no √N). The diagnostic's N=6, 0.75σ cell = θ 1.84 under √N; R₀'s θ 0.75 at N=6 =
-  0.31 in diagnostic units. Must be settled before U24 commits `families/G1.yaml`.
+- **Settled (user, 2026-10-10): the velocity normalization follows the Meyers papers** (PLAN3 §7 item 6; RMedV ·
+  √N · xmult; polynomial velocity at T+1 / its SD per (degree, N)); refit every session over 21 sessions (the RMV
+  repo's window). Still the user's at U24 registration: the refit window (21 built). `scripts/u23_kernels.py scale`:
+  normalized SD 1.03–1.14 at every N on SPY/QQQ 2016–2025.
 - Carried: Algo Trader Plus details before U27; the G5 data purchase; delete remote `origin/unit/*` branches.
 
 ## Key files for next session
@@ -54,7 +56,7 @@ evidence; PLAN3 §9 is the status line.
   end of the session (see PLAN3 §9 / the PR link).
 
 ## Pick up here
-Merge the U23 PR (user's call); get the user's answer on PLAN3 §7 item 6; then start U24 on `unit/24-g1-dev-test`:
+Merge the U23 PR (user's call); confirm the 21-session refit window with the user; then start U24 on `unit/24-g1-dev-test`:
 write `families/G1.yaml` (headline R₀, 11 variants, splits, `overlay_alpha` one-sided, MDE line, floors at 1.0 bp,
 INIT_CASH 30k, a gate-only risk profile with daily_loss 0.02), commit it, smoke 2016-01 → 2016-06 (status only),
 register, run once, report with the cost and specification curves.

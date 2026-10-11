@@ -85,7 +85,7 @@ def test_rmedv_equals_scipy_siegelslopes_on_4400_pairs_and_the_meyers_worked_exa
     assert K.rmedv_all(y, np.zeros(4, np.int64), [4])[0, -1] == siegelslopes(y).slope == 2.25
 
 
-def test_sg_velocity_degree_one_is_the_least_squares_slope_and_higher_degrees_the_endpoint_derivative():
+def test_sg_velocity_degree_one_is_the_least_squares_slope_and_higher_degrees_the_next_bar_derivative():
     x, start = _walk(40, seed=3)
     out = K.sg_velocity_all(x, start, NS, 1)
     worst = 0.0
@@ -96,9 +96,14 @@ def test_sg_velocity_degree_one_is_the_least_squares_slope_and_higher_degrees_th
     assert worst <= 1e-12
     u = np.arange(30, dtype=float)
     z = np.zeros(30, np.int64)
-    for deg, y, dydt in ((2, 0.5 * u**2 - u, u - 1), (3, u**3 / 100 + u, 3 * u**2 / 100 + 1)):  # exact on polynomials
-        v = K.sg_velocity_all(y, z, [9, 12], deg)
-        assert np.allclose(v[:, 11:], dydt[11:], rtol=1e-9, atol=1e-9)
+    # exact on polynomials: Meyers' Velocity(T+1) is the fit's derivative one bar past the window (offset 1); offset 0
+    # is the derivative at the last point
+    for deg, f, df_ in ((2, lambda t: 0.5 * t**2 - t, lambda t: t - 1), (3, lambda t: t**3 / 100 + t,
+                                                                          lambda t: 3 * t**2 / 100 + 1)):  # fmt: skip
+        for off in (1, 0):
+            v = K.sg_velocity_all(f(u), z, [9, 12], deg, off)
+            assert np.allclose(v[:, 11:], df_(u + off)[11:], rtol=1e-9, atol=1e-9)
+    np.testing.assert_allclose(K.sg_weights(12, 1, 1), K.sg_weights(12, 1, 0), rtol=1e-12)  # degree 1: any offset
     assert abs(K.sg_weights(12, 2).sum()) < 1e-14
     with pytest.raises(ValueError, match="degree"):
         K.sg_weights(4, 4)
@@ -136,7 +141,7 @@ def _band_reference(df: pd.DataFrame, lookback=14, min_count=7) -> tuple[pd.Seri
     return pd.Series(dist, index=df.index), band
 
 
-def test_band_state_vwap_and_prior_sigma_match_pandas_references():
+def test_band_state_vwap_and_prior_sd_match_pandas_references():
     df = _with_holes()
     sess, _, _, slot = _layout(df)
     dist, band = K.band_state(df["open"], df["close"], sess, slot, 14)
@@ -150,13 +155,14 @@ def test_band_state_vwap_and_prior_sigma_match_pandas_references():
     pv = (df["close"] * df["volume"]).groupby(day).cumsum() / df["volume"].groupby(day).cumsum()
     np.testing.assert_allclose(K.session_vwap(df["close"], df["volume"], sess), pv.to_numpy(), rtol=1e-13)
     x = np.log(df["close"].to_numpy())
-    sig = K.prior_sigma(x, sess, 5)
-    r = pd.Series(x).diff().where(pd.Series(sess).diff() == 0)
+    v = K.sg_velocity_all(x, _layout(df)[1], [6, 12], 1)
+    sd = K.prior_sd(v, sess, 5)
     for d in (5, 13, 31, 39):
-        want = np.std(r[(sess >= d - 5) & (sess < d)].dropna().to_numpy())
-        assert np.allclose(sig[sess == d], want, rtol=1e-12)
-    assert np.all(np.isnan(sig[sess < 5]))
-    np.testing.assert_array_equal(K.prior_sigma(x, sess, np.int64(5)), sig)  # numpy integers are integers
+        for a in range(2):
+            want = np.std(v[a, (sess >= d - 5) & (sess < d)][np.isfinite(v[a, (sess >= d - 5) & (sess < d)])], ddof=1)
+            assert np.allclose(sd[a, sess == d], want, rtol=1e-12)
+    assert np.all(np.isnan(sd[:, sess < 5]))
+    np.testing.assert_array_equal(K.prior_sd(v, sess, np.int64(5)), sd)  # numpy integers are integers
     np.testing.assert_array_equal(K.band_state(df["open"], df["close"], sess, slot, np.int64(14))[0], dist)
 
 
@@ -196,7 +202,9 @@ def _kernels(df: pd.DataFrame) -> dict[str, np.ndarray]:
         "sgv2": K.sg_velocity_all(x, start, NS, 2),
         "band": np.vstack([dist, band]),
         "vwap": K.session_vwap(df["close"], df["volume"], sess)[None, :],
-        "sigma": K.prior_sigma(x, sess, 5)[None, :],
+        "sd": K.prior_sd(K.rmedv_all(x, start, [6]), sess, 5),
+        "rmedv_norm": K.rmedv_normalized(K.rmedv_all(x, start, NS), NS, sess, 5),
+        "poly_norm": K.poly_normalized(K.sg_velocity_all(x, start, NS, 2), sess, 5),
     }
 
 
@@ -218,9 +226,9 @@ def test_every_kernel_is_causal_and_a_planted_one_bar_peek_in_any_kernel_is_caug
 
         def peek(d, name=name):
             out = _kernels(d)
-            # bar t reads bar t + 1's value; σ₅ is constant within a session (a one-bar shift reads a value known at
-            # the next open, which is no leak), so its plant reads the next session's: the current session included
-            out[name] = np.roll(out[name], -78 if name == "sigma" else -1, axis=1)
+            # bar t reads bar t + 1's value; a trailing SD is constant within a session (a one-bar shift reads a value
+            # known at the next open, which is no leak), so its plant reads the next session's: the current one included
+            out[name] = np.roll(out[name], -78 if name == "sd" else -1, axis=1)
             return out
 
         with pytest.raises(AssertionError, match=name):
@@ -228,7 +236,10 @@ def test_every_kernel_is_causal_and_a_planted_one_bar_peek_in_any_kernel_is_caug
 
 
 def _cfg(params=None, **kw):
-    return primary_config("region_trend", "5Min", params or {}, META_MODEL="none", VOL_SPAN=20, **kw)
+    """The region on short synthetic series: a 5-session normalization window (the default 21 would leave most of a
+    30-session sample in warm-up)."""
+    params = {"norm_sessions": 5, **(params or {})}
+    return primary_config("region_trend", "5Min", params, META_MODEL="none", VOL_SPAN=20, **kw)
 
 
 def test_region_trend_is_causal_at_each_decision_and_a_peeking_cell_is_caught(monkeypatch):
@@ -312,19 +323,30 @@ def test_stop_and_reverse_state_never_crosses_a_session_and_flat_inside_and_vwap
     assert out[:, 0].tolist() == [1, 1, 0, 0, 0, -1, -1]  # a forced-flat decision resets the state
 
 
-def test_velocity_is_normalized_by_the_previous_sessions_sigma_only():
-    df = intraday(12, seed=10)
-    # scaling session 9's moves by 3 leaves its own σ₅ (sessions 4–8) unchanged and changes the later sessions'
+def test_each_velocity_keeps_meyers_normalization_unit_sd_at_every_n_from_the_previous_sessions_only():
+    df = intraday(60, seed=10)
+    sess, start, _, _ = _layout(df)
+    x = np.log(df["close"].to_numpy())
+    raw_r, raw_p = K.rmedv_all(x, start, NS), K.sg_velocity_all(x, start, NS, 2)
+    # by hand: RMedV · √N · mean_N 1 / sd(RMedV · √N); the polynomial velocity / its own SD (no √N)
+    sc = raw_r * np.sqrt(NS)[:, None]
+    want_r = sc * np.mean(1 / K.prior_sd(sc, sess, 21), axis=0)
+    np.testing.assert_allclose(K.rmedv_normalized(raw_r, NS, sess, 21), want_r, rtol=1e-14)
+    np.testing.assert_allclose(K.poly_normalized(raw_p, sess, 21), raw_p / K.prior_sd(raw_p, sess, 21), rtol=1e-14)
+    # on a random walk the published scalings bring every N (and degree) to about one SD: per N exactly in the
+    # calibration window (the polynomial), within the √N law's spread for the one-scalar RMedV multiplier
+    later = sess >= 21
+    for v, tol in ((K.rmedv_normalized(raw_r, NS, sess, 21), 0.2), (K.poly_normalized(raw_p, sess, 21), 0.15)):
+        sds = [np.nanstd(row[later]) for row in v]
+        assert max(abs(s_ - 1) for s_ in sds) < tol, sds
+    # the scale of session d reads sessions d − k … d − 1 only: scaling session 30's moves leaves its own SD alone
     big = df.copy()
-    day = df.index.tz_convert(NY).normalize()
-    s9 = day == day.unique()[9]
-    lc = np.log(df["close"].to_numpy())
-    o9 = lc[s9][0]
-    big.loc[s9, "close"] = np.exp(o9 + 3 * (lc[s9] - o9))
-    sess = _layout(df)[0]
-    a = K.prior_sigma(lc, sess, 5)
-    b = K.prior_sigma(np.log(big["close"].to_numpy()), sess, 5)
-    assert np.array_equal(a[sess <= 9], b[sess <= 9], equal_nan=True) and not np.allclose(a[sess == 10], b[sess == 10])
+    s30 = sess == 30
+    big.loc[s30, "close"] = np.exp(x[s30][0] + 3 * (x[s30] - x[s30][0]))
+    b = K.prior_sd(K.rmedv_all(np.log(big["close"].to_numpy()), start, NS), sess, 21)
+    a = K.prior_sd(raw_r, sess, 21)
+    assert np.array_equal(a[:, sess <= 30], b[:, sess <= 30], equal_nan=True)
+    assert not np.allclose(a[:, sess == 31], b[:, sess == 31])
 
 
 # ── Position backtest: parity with the portfolio simulator ───────────────────

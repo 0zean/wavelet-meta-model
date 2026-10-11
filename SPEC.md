@@ -1520,13 +1520,28 @@ first close is in the window, the previous session's close is not; the RMV repo'
   pass: for each point the median of its N − 1 pairwise slopes, then the median of the N medians (numpy's mean of the
   two middle values for even counts); scipy.stats.siegelslopes(method="hierarchical") is the oracle. A NaN or inf
   input raises (numba's median would hide it inside a finite slope).
-- `sg_velocity_all(x, start, ns, degree)`: the Savitzky–Golay endpoint derivative of the degree-d least-squares
-  polynomial over the last N bars, one FIR per (N, d) (`sg_weights`: fit on centred, scaled abscissae; Σ w = 0 to
-  rounding, so the window is differenced against its last value before the dot product). Degree 1 is the
-  least-squares slope; Meyers' nth-order fixed-memory polynomial velocity is the degree-n endpoint derivative.
-- `prior_sigma(x, sess, k)`: per bar, the σ (ddof 0, PLAN3 §1.2's diagnostic) of the within-session 1-bar log returns
-  of the k sessions before the bar's session (overnight returns excluded); NaN for the first k sessions. Known at the
-  open, refit every session, never reading the current one.
+- `sg_velocity_all(x, start, ns, degree, offset=1)`: Meyers' nth-order fixed-memory polynomial velocity, the derivative
+  of the degree-d least-squares polynomial over the last N bars evaluated one bar past the window, Velocity(T+1), the
+  velocity of the next bar's forecast (Meyers 2026, Appendix I; Morrison 1969 ch. 7). One FIR per (N, d) (`sg_weights`:
+  a Savitzky–Golay derivative filter, fit on centred, scaled abscissae; Σ w = 0 to rounding, so the window is
+  differenced against its last value before the dot product); `offset` 0 is the derivative at the last point. Degree
+  1 is the least-squares slope at any offset.
+- `prior_sd(values, sess, k, ddof=1)`: per row and bar, the SD of the row's defined values over the k sessions before
+  the bar's session (NaN for the first k sessions). Known at the open, refit every session, never reading the current
+  one.
+- Each velocity keeps the normalization its paper publishes, so θ is in standard deviations of that estimator:
+  - `rmedv_normalized(raw, ns, sess, k)` = RMedV_N · √N · xmult with xmult = mean over the N of 1 / sd(RMedV_N · √N)
+    (Meyers 2025, Appendix III "Repeated Median Velocity Normalization Multiplier": sd(RMedV_N) falls about as 1 / √N,
+    so √N equalizes the lookbacks and one scalar brings every N to one SD; the RMV repo's §1.2 implements the same);
+  - `poly_normalized(raw, sess, k)` = the velocity × Mult with Mult = 1 / SD of that velocity for its own (degree, N)
+    (Meyers 2026, Appendix III "The Normalization Multiplier": his SD table by degree and N, the Mult a surface fitted
+    to it; no √N).
+  Meyers calibrates once on a long sample; a frozen scale fails across volatility regimes (the RMV repo's §1.2.1: a
+  6.45× swing of the normalized SD across years, fixed by refitting per 21-session window), so both multipliers are
+  refit at every session over the `norm_sessions` previous sessions (default 21, the RMV repo's window; its estimation
+  error is flat from 10 to 42 sessions). On SPY and QQQ 2016–2025 the normalized velocities' SD is 1.03–1.14 at every N
+  over the window and 0.93–1.29 per year and N (`scripts/u23_kernels.py scale`; a property of the indicator, no
+  return read).
 - `band_state(open, close, sess, slot, lookback, min_count)`: Zarattini, Aziz & Barbon's noise band. band(d, b) = the
   mean over the `lookback` sessions before d of |close at slot b / that session's open − 1| (simple returns, as the
   paper; sessions without a bar at slot b skipped, NaN with fewer than `min_count` = lookback // 2 values, NaN for the
@@ -1537,22 +1552,22 @@ first close is in the window, the previous session's close is not; the RMV repo'
   volume).
 Storage is float64, not PLAN3 §6's float32: at 190k bars × 5 lookbacks the saving is 4 MB, and float64 keeps a
 threshold comparison off the rounding boundary the RMV repo documents for float32 storage. PLAN3 §5's `tod_sigma` is
-not used: G1's registered normalization is the previous sessions' σ above.
+not used: the velocities carry their papers' own normalizations above.
 
 **Region primary** (`primaries/region.py`, `region_trend`, a MechanismPrimary with `ALLOW_CONTINUOUS`; PLAN3 §3 G1).
 Parameters (defaults = R₀): `estimators` [band, rmedv, sgv], `n_list` [6, 9, 12, 18, 24], `theta_list` [0.75, 1.0, 1.5,
-2.0], `vm_list` [1.0, 1.25, 1.5], `band_lookback` 14, `sigma_sessions` 5, `sg_degree` 1, `cadence` 30 (5 / 15 / 30 / 60),
+2.0], `vm_list` [1.0, 1.25, 1.5], `band_lookback` 14, `norm_sessions` 21, `sg_degree` 1, `cadence` 30 (5 / 15 / 30 / 60),
 `first` "10:00", `exit` "close" | "HH:MM", `band_stop` "vwap" | null, `vel_stop` null | "vwap", `vel_mode` "sar" |
 "flat_inside". Cells (43 at the defaults, named `band_vm1.25`, `rmedv_n12_t1`, `sgv_n24_t0.75`, …):
 - band × VM: +1 while the distance > VM, −1 while < −VM, else 0; with `band_stop` "vwap" a long also needs close >
   VWAP and a short close < VWAP (the paper's trailing stop at max(band, VWAP); no VWAP yet: flat). Stateless.
-- rmedv / sgv × N × θ: v = slope · √N / σ₅ (slope of log close per bar, σ₅ = `prior_sigma` over `sigma_sessions`).
-  "sar" (stop-and-reverse, Meyers' RMedV form): +1 after v > θ, −1 after v < −θ, held through decisions without a
+- rmedv × N × θ: v = `rmedv_normalized` (RMedV of log close · √N · xmult); sgv × N × θ: v = `poly_normalized`
+  (Meyers' next-bar velocity of degree `sg_degree` / its SD); both refit over `norm_sessions`. "sar" (stop-and-reverse, Meyers' RMedV form): +1 after v > θ, −1 after v < −θ, held through decisions without a
   signal or with v undefined; "flat_inside": sign(v) while |v| > θ, else 0. `vel_stop` "vwap" flattens a long whose
   close is not above the VWAP (a short not below) and the state stays flat until the next signal.
 - Every cell starts each session flat (no state crosses a session) and is flat while its estimator is undefined: the
   first N − 1 bars of a session (N = 24 is first defined at the 11:25 bar, so its first decision is 11:30), the first
-  `band_lookback` / `sigma_sessions` sessions.
+  `band_lookback` / `norm_sessions` sessions.
 Decisions are the schedule sampler's entry times (`marks()`): `first`, then the `cadence` grid anchored at 09:30 below
 16:00 (R₀: 10:00, 10:30, …, 15:30, twelve per session); the decision is read at the close of the bar before the mark
 (the 09:55 bar for 10:00) and fills at the mark's bar open; the `next_event` exit holds each target to the next
@@ -1570,10 +1585,12 @@ group only"; the cells read bars only, and a feature group would drop events who
 config sets SIZE_STEP 0 and the `rule_size` sizer (SPEC §21). Deferred to U24's variants: the MODWT-slope estimator and
 the vol-targeted size (G1 variants 6 and 7).
 
-The normalization follows PLAN3 §3 G1's text (√N and σ₅, the RMV repo's `RMedV · xmult · √N` with xmult replaced by
-1 / σ₅). PLAN3 §1.2's diagnostic SAR rule thresholded slope / σ₅ without √N: its "N = 6, 0.75 σ" cell is θ = 0.75 · √6
-= 1.84 here, and R₀'s θ = 0.75 at N = 6 is 0.31 in the diagnostic's units. U24 registers R₀ and decides which reading
-it states (an open decision of the user's, PLAN3 §7 item 6).
+The first U23 build followed PLAN3 §3 G1's original text, v = slope · √N / σ₅ (σ₅ = the σ of the previous 5
+sessions' 5Min returns) for both velocities. The user pointed to the Meyers papers as the source (2026-10-10): the
+normalization is per estimator (√N and one xmult for RMedV; 1 / SD per (degree, N) for the polynomial velocity, which
+is also evaluated at T+1), and the scale is the estimator's own SD, not the return σ. PLAN3 §3 G1 and §7 item 6 now
+state this. PLAN3 §1.2's diagnostic SAR rule thresholded slope / σ₅ (no √N), a third scale, so its cells are not R₀'s
+cells at the same θ.
 
 **Position backtest** (`wfo/position_backtest.py`). `decision_grid(df, cfg, sessions)` = the schedule's decision
 bars, each session's first / last bar and whether that last bar is the closing-auction bar. `position_backtest(df,
@@ -1599,14 +1616,15 @@ the gate, prints, as-of costs and the yield, and the 5,000-resample overlay-alph
 
 Tests (tests/test_u23.py): rmedv = scipy on 4,400 random (N, t) pairs (bit-equal) and the Meyers 2005 / 2025 worked
 examples (exactly 1.0), ramps, even-count medians; sgv degree 1 = the least-squares slope to 1e-12 and degrees 2–3
-exact on polynomials; the band, VWAP and σ₅ against pandas references on sessions with a missing bar, an early close
+exact on polynomials at T+1 and at the last point; the band, VWAP and `prior_sd` against pandas references on sessions with a missing bar, an early close
 and a missing last bar; a planted +5 % overnight gap (the first N − 1 velocities of the session NaN, the N-th equal,
 and windows allowed to straddle the open would read the gap); causality of every kernel at four cuts with a planted
-peek per kernel caught (one bar; σ₅'s reads the current session); the region primary's causality at eight decisions
+peek per kernel caught (one bar; the trailing SD's reads the current session); the region primary's causality at eight decisions
 with a planted one-bar peek in the repeated median caught; the schedule (09:55 … 15:25 decisions, fills at the next
 bar's open, exits at the next decision's fill or the 15:55 auction, the U22 fill-timing invariant), the mean-cell rule,
 the exit and cadence variants; SAR state reset per session, flat_inside, the VWAP stop and forced-flat decisions by
-hand; σ₅ blind to its own session; the position backtest's parity with the simulator (synthetic with the gate firing
+hand; the two normalizations by hand, about one SD at every N on a random walk, and the
+scale blind to its own session; the position backtest's parity with the simulator (synthetic with the gate firing
 and the yield; cached SPY 2024) and its many-series, scalar-cost and yield-only identities.
 
 ## §24 Reserved (U26: time–frequency state)

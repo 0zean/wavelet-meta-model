@@ -220,8 +220,11 @@ data, budget. Instruments are the cached SIP 5Min ETFs; single stocks only in th
 - **Headline (one trial).** The region R₀, equal weight across every cell, per instrument, 50/50 SPY/QQQ:
   - estimators: (a) band distance d = (close − open) / band(slot), band = mean |move from the open to this
     slot| over the prior 14 sessions, gap-adjusted as in Zarattini et al.; (b) repeated-median velocity over N
-    bars, normalized by √N and the prior 5 sessions' 5Min σ (the RMV repo's normalization, refit per session);
-    (c) least-squares (Savitzky–Golay degree-1) velocity over N bars, same normalization;
+    bars in Meyers' normalization, RMedV · √N · xmult, xmult = mean over N of 1 / sd(RMedV_N · √N) (Meyers 2025,
+    Appendix III; the RMV repo), refit every session over the previous 21 sessions; (c) least-squares (Meyers'
+    degree-1 fixed-memory polynomial) velocity over N bars in its own normalization, velocity / its SD for that N
+    (Meyers 2026, Appendix III), refit likewise. θ is in SDs of each estimator (U23: set by the user 2026-10-10,
+    replacing "√N and the prior 5 sessions' 5Min σ");
   - lookbacks N ∈ {6, 9, 12, 18, 24} for (b) and (c); thresholds θ ∈ {0.75, 1.0, 1.5, 2.0} σ for (b) and
     (c); volatility multipliers VM ∈ {1.0, 1.25, 1.5} for (a);
   - decisions at the closes of the bars ending at HH:00 and HH:30, first decision 10:00; exit at the closing
@@ -483,7 +486,8 @@ backtest, and reproduce the harness's backtest on a sample — fast enough that 
   - `rmedv_all(close, N_list)`: Siegel's repeated-median slope for every N in one pass (the RMV repo's kernel,
     pairwise medians over the last N closes; oracle `scipy.stats.siegelslopes(method="hierarchical")`);
   - `sg_velocity_all(close, N_list, degree)`: Savitzky–Golay derivative filters (Meyers' nth-order
-    fixed-memory polynomial velocity is the degree-n endpoint derivative; one FIR per (N, degree));
+    fixed-memory polynomial velocity is the degree-n derivative of the next bar's forecast, T+1; one FIR per (N,
+    degree));
   - `band_state(open, close, slot, lookback)`: Zarattini band distance with the gap adjustment, per slot;
   - `session_vwap(close, volume)`; `tod_sigma` from `features/vol_profile.py` reused for normalization;
   - all computed on the full RTH series with session boundaries respected (a window never straddles a
@@ -502,10 +506,11 @@ backtest, and reproduce the harness's backtest on a sample — fast enough that 
 - [x] Oracles (`scripts/u23_kernels.py parity`, `tests/test_u23.py`): `rmedv_all` equals scipy's siegelslopes
       (hierarchical) on 4,400 random (N, t) pairs over N ∈ {6, 9, 12, 18, 24}, all 4,400 bit-equal (max |Δ| = 0);
       Meyers 2005 p.2 and 2025 p.2 worked examples = 1.0 exactly; `sg_velocity_all` degree 1 = the least-squares
-      slope to 7.2e-16 (≤ 1e-12), degrees 2–3 exact on polynomials; the band state, VWAP and σ₅ match pandas
+      slope to 7.2e-16 (≤ 1e-12), degrees 2–3 exact on polynomials (Meyers' T+1 velocity); the normalizations by
+      hand and ≈ 1 SD at every N on real data (`scale`: 1.03–1.14); the band state, VWAP and `prior_sd` match pandas
       references on the last 20 of 40 sessions with a missing bar, a 13:00 early close and a missing last bar.
 - [x] Causality: every kernel at four cuts (mid-session, a session's first and last bar) with a planted peek per
-      kernel caught (one bar; σ₅'s plant reads the current session, since a one-bar shift of a per-session value is
+      kernel caught (one bar; the trailing SD's plant reads the current session, since a one-bar shift of a per-session value is
       known at the next open); `region_trend`'s cells at eight decisions with every bar after the decision bar
       replaced, and a planted one-bar peek in the repeated median caught; the U22 fill-timing invariant on the region's
       events (entries at the bar after the decision, exits at the next decision's fill or the 15:55 auction).
@@ -680,13 +685,12 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
 4. **`INIT_CASH` for the registered specs** ($30k proposed: above the PDT floor, so the paper account mirrors
    a tradable live account).
 5. **The eleven forward-window caches**: truncate on the next top-up (proposed) or keep with a logged record.
-6. **The velocity normalization R₀ registers (U24; raised by U23).** §3 G1 states v = slope · √N / σ₅ (the RMV
-   repo's form, as built); §1.2's diagnostic SAR rule used slope / σ₅ without √N
-   (`scripts/plan3_diagnostics/positions.py`). The diagnostic's "N = 6, 0.75 σ" cell is θ = 0.75 · √6 = 1.84 under
-   √N, and R₀'s θ = 0.75 at N = 6 is 0.31 in the diagnostic's units, so §1.2's magnitudes do not describe R₀'s
-   velocity cells as written. Options: register √N as stated (the θ grid then means "the window's move in σ₅ units
-   of a √N-bar random walk"), or drop √N so the grid matches the diagnostic. Either is one parameter in
-   `region_trend`'s normalization; it must be settled before the G1 spec is committed.
+6. **The velocity normalization (raised by U23; settled 2026-10-10).** The user: the normalizations come from the
+   Meyers papers and are estimator-specific. Built: RMedV · √N · xmult (Meyers 2025 App. III) and the polynomial
+   velocity (at T+1) / its SD per (degree, N) (Meyers 2026 App. III), refit every session over the previous 21
+   sessions (the RMV repo's window; Meyers calibrates once, which the RMV repo showed fails). Still open for U24's
+   registration: the refit window (21 sessions built; the RMV repo found 10–42 equivalent). Note: §1.2's diagnostic
+   thresholded slope / σ₅ (a third scale), so its magnitudes describe R₀'s velocity cells only loosely.
 
 ## 8. Deferred / out of scope
 
@@ -708,5 +712,6 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
   demonstrated (`scripts/u23_kernels.py parity | budgets`, `tests/test_u23.py`); budgets 1.2 s / 1.3 s / 0.13 s / 14 s
   against 5 / 10 / 5 / 120 s; `position_backtest` bit-exact with the portfolio simulator over SPY and QQQ
   2016–2025. No look taken (the scripts print timings and parity residuals only; `families/looks.jsonl` unchanged).
-  Open for U24: §7 item 6 (the √N normalization) before G1's registration.
+  Normalization per the Meyers papers (user, 2026-10-10; §7 item 6): RMedV · √N · xmult and the T+1 polynomial
+  velocity / its SD, refit over 21 sessions. Open for U24: the refit window, at registration.
 - U24–U31 — not started.

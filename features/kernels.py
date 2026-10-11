@@ -12,8 +12,10 @@ Conventions (numba, structure of arrays, float64 throughout, no `fastmath`):
   documents for float32).
 
     rmedv_all(x, start, ns)            Siegel's repeated-median slope (hierarchical; scipy.stats.siegelslopes)
-    sg_velocity_all(x, start, ns, d)   Savitzky–Golay endpoint derivative of a degree-d fit (d = 1: the LS slope)
-    prior_sigma(x, sess, k)            σ of the within-session 1-bar log returns of the k previous sessions
+    sg_velocity_all(x, start, ns, d)   Meyers' next-bar velocity of a degree-d least-squares polynomial (Savitzky–Golay)
+    rmedv_normalized(raw, ns, sess, k) RMedV · √N · xmult (Meyers 2025), xmult refit over the k previous sessions
+    poly_normalized(raw, sess, k)      velocity / its SD per (degree, N) (Meyers 2026), refit over the k previous sessions
+    prior_sd(values, sess, k)          SD of each row's values over the k previous sessions
     band_state(o, c, sess, slot, L)    Zarattini band: (gap-adjusted distance in band units, band)
     session_vwap(c, v, sess)           cumulative Σ close·volume / Σ volume within the session
     session_layout(index, minutes)     (sess, start, pos, slot) of every bar
@@ -121,15 +123,16 @@ def rmedv_all(x, start, ns) -> np.ndarray:
     return out
 
 
-# ── Savitzky–Golay (polynomial) velocity ─────────────────────────────────────
+# ── Polynomial (Savitzky–Golay) velocity ─────────────────────────────────────
 
 
-def sg_weights(n: int, degree: int) -> np.ndarray:
+def sg_weights(n: int, degree: int, offset: int = 1) -> np.ndarray:
     """
-    FIR weights w (length n, oldest first) of the derivative at the window's last point of the least-squares
-    polynomial of `degree` through n equally spaced points: velocity = Σ_k w_k x_{t−n+1+k}. Meyers' nth-order
-    fixed-memory polynomial velocity is this endpoint derivative; degree 1 is the least-squares slope (the same at
-    every point of the window). Fit on centred, scaled abscissae (conditioning); Σ w = 0 to rounding.
+    FIR weights w (length n, oldest first) of the velocity of the least-squares polynomial of `degree` through the last
+    n points, evaluated `offset` bars after the last point: velocity = Σ_k w_k x_{t−n+1+k}. offset 1 is Meyers' nth-order
+    fixed-memory polynomial velocity, the derivative of the next bar's forecast, Velocity(T+1) (Meyers 2026, Appendix I;
+    Morrison 1969 ch. 7); offset 0 is the derivative at the last point. Degree 1 is the least-squares slope at any offset.
+    Fit on centred, scaled abscissae (conditioning); Σ w = 0 to rounding.
     """
     if not (isinstance(degree, int | np.integer) and 1 <= degree < n):
         raise ValueError(f"degree must be an integer in [1, n), got {degree} for n={n}")
@@ -138,9 +141,10 @@ def sg_weights(n: int, degree: int) -> np.ndarray:
     s = (u - c) / h  # in [−1, 1]; the last point is s = 1
     A = np.vander(s, degree + 1, increasing=True)
     coef = np.linalg.pinv(A)  # row j: the weights of the s**j coefficient
+    s0 = (n - 1 + offset - c) / h
     j = np.arange(1, degree + 1)
-    # d/du Σ_j a_j s**j at s = 1 = Σ_j j a_j / h
-    return (j[:, None] * coef[1:]).sum(axis=0) / h
+    # d/du Σ_j a_j s**j at s0 = Σ_j j a_j s0**(j − 1) / h
+    return ((j * s0 ** (j - 1))[:, None] * coef[1:]).sum(axis=0) / h
 
 
 @numba.njit(cache=True)
@@ -160,60 +164,93 @@ def _fir_kernel(x: np.ndarray, start: np.ndarray, ns: np.ndarray, w: np.ndarray,
             out[a, t] = acc
 
 
-def sg_velocity_all(x, start, ns, degree: int = 1) -> np.ndarray:
-    """Savitzky–Golay endpoint derivative of a degree-`degree` fit over the last N bars of the session for every N
-    in `ns` (sg_weights): float64[len(ns), len(x)], NaN for the first N − 1 bars of every session."""
+def sg_velocity_all(x, start, ns, degree: int = 1, offset: int = 1) -> np.ndarray:
+    """The polynomial velocity of a degree-`degree` fit over the last N bars of the session, `offset` bars past the
+    last (sg_weights; 1 = Meyers' next-bar velocity), for every N in `ns`: float64[len(ns), len(x)], NaN for the first
+    N − 1 bars of every session."""
     x = _check_x(x)
     ns = _check_ns(ns, 2)
     w = np.zeros((len(ns), int(ns.max())))
     for a, n in enumerate(ns):
-        w[a, :n] = sg_weights(int(n), degree)
+        w[a, :n] = sg_weights(int(n), degree, offset)
     out = np.empty((len(ns), len(x)))
     _fir_kernel(x, np.ascontiguousarray(start, dtype=np.int64), ns, w, out)
     return out
 
 
-# ── Normalization: the previous sessions' 5Min σ ─────────────────────────────
+# ── Normalization (Meyers' multipliers, refit every session) ─────────────────
 
 
 @numba.njit(cache=True)
-def _prior_sigma_kernel(x: np.ndarray, sess: np.ndarray, firsts: np.ndarray, k: int, out: np.ndarray) -> None:
+def _prior_sd_kernel(v: np.ndarray, firsts: np.ndarray, k: int, ddof: int, out: np.ndarray) -> None:
     n_sess = firsts.shape[0] - 1  # firsts holds a sentinel at the end
-    sig = np.full(n_sess, np.nan)
-    for d in range(k, n_sess):
-        # within-session returns of sessions d−k … d−1 (the first bar of a session has none)
-        lo, hi = firsts[d - k], firsts[d]
-        m = 0
-        acc = 0.0
-        for t in range(lo + 1, hi):
-            if sess[t] == sess[t - 1]:
-                acc += x[t] - x[t - 1]
-                m += 1
-        if m < 2:
-            continue
-        mean = acc / m
-        ss = 0.0
-        for t in range(lo + 1, hi):
-            if sess[t] == sess[t - 1]:
-                dv = x[t] - x[t - 1] - mean
-                ss += dv * dv
-        sig[d] = np.sqrt(ss / m)
-    for t in range(x.shape[0]):
-        out[t] = sig[sess[t]]
+    for a in range(v.shape[0]):
+        for d in range(n_sess):
+            out[a, d] = np.nan
+            if d < k:
+                continue
+            lo, hi = firsts[d - k], firsts[d]
+            m = 0
+            acc = 0.0
+            for t in range(lo, hi):
+                if v[a, t] == v[a, t]:
+                    acc += v[a, t]
+                    m += 1
+            if m <= ddof + 1:
+                continue
+            mean = acc / m
+            ss = 0.0
+            for t in range(lo, hi):
+                if v[a, t] == v[a, t]:
+                    dv = v[a, t] - mean
+                    ss += dv * dv
+            out[a, d] = np.sqrt(ss / (m - ddof))
 
 
-def prior_sigma(x, sess, k: int = 5) -> np.ndarray:
-    """Per bar: the standard deviation (ddof 0, PLAN3 §1.2's diagnostic) of the within-session 1-bar log returns of
-    the k sessions before the bar's session (overnight returns excluded); NaN for the first k sessions. Known at the
-    session's open: refit per session, never reading the current one."""
-    x = _check_x(x)
+def prior_sd(values, sess, k: int, ddof: int = 1) -> np.ndarray:
+    """
+    Per row of `values` (float64[rows, bars]; NaN = undefined, skipped) and per bar: the standard deviation of the
+    row's defined values over the k sessions before the bar's session (NaN for the first k sessions or with fewer than
+    ddof + 2 values). Known at the session's open; never reads the current session.
+    """
+    v = np.ascontiguousarray(np.atleast_2d(values), dtype=np.float64)
     sess = np.ascontiguousarray(sess, dtype=np.int64)
     if not (isinstance(k, int | np.integer) and k >= 1):
         raise ValueError(f"k must be an integer >= 1, got {k}")
+    if v.shape[1] != len(sess):
+        raise ValueError(f"values have {v.shape[1]} bars, sess {len(sess)}")
     firsts = np.r_[np.flatnonzero(np.r_[True, sess[1:] != sess[:-1]]), len(sess)] if len(sess) else np.zeros(1, int)
-    out = np.empty(len(x))
-    _prior_sigma_kernel(x, sess, firsts.astype(np.int64), k, out)
-    return out
+    per = np.empty((v.shape[0], len(firsts) - 1))
+    _prior_sd_kernel(v, firsts.astype(np.int64), int(k), int(ddof), per)
+    return per[:, sess] if len(sess) else np.zeros((v.shape[0], 0))
+
+
+def rmedv_normalized(raw, ns, sess, k: int) -> np.ndarray:
+    """
+    Meyers' RMedV normalization (Meyers 2025, Appendix III; the RMV repo's §1.2): RMedV_N · √N · xmult, where
+    xmult = mean over the N in `ns` of 1 / sd(RMedV_N · √N). sd(RMedV_N) falls about as 1 / √N, so √N equalizes the
+    lookbacks and the one scalar xmult brings every N to unit standard deviation; thresholds are then in SD units.
+    Meyers calibrates xmult once on a long sample; a frozen scale fails across volatility regimes (the RMV repo: a 6.45×
+    swing), so it is refit at every session over the k previous sessions (`prior_sd`; the RMV repo refit it per
+    21-session window).
+    """
+    ns = np.asarray(ns, dtype=np.int64)
+    scaled = np.asarray(raw, dtype=np.float64) * np.sqrt(ns)[:, None]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        xmult = np.mean(1.0 / prior_sd(scaled, sess, k), axis=0)
+        return scaled * xmult[None, :]
+
+
+def poly_normalized(raw, sess, k: int) -> np.ndarray:
+    """
+    Meyers' polynomial-velocity normalization (Meyers 2026, Appendix III, "The Normalization Multiplier"): the velocity
+    times Mult = 1 / SD for its own (degree, N), so every lookback and degree has unit standard deviation (his
+    multiplier is a surface fitted to that SD table; there is no √N). Refit at every session over the k previous
+    sessions, as rmedv_normalized.
+    """
+    raw = np.asarray(raw, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return raw / prior_sd(raw, sess, k)
 
 
 # ── Noise band (Zarattini, Aziz & Barbon) and VWAP ───────────────────────────

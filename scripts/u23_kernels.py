@@ -5,6 +5,7 @@ computations and print shapes, counts and parity residuals only, so no look is t
 before a result is read; U24 takes the first one).
 
     uv run python scripts/u23_kernels.py parity       # Meyers worked examples, 4,400 random (N, t) pairs vs scipy
+    uv run python scripts/u23_kernels.py scale        # SD of each normalized velocity by N on SPY / QQQ (indicator only)
     uv run python scripts/u23_kernels.py budgets      # estimators, region positions, specification curve, headline
 """
 
@@ -53,6 +54,30 @@ def parity() -> None:
     )
 
 
+def scale() -> None:
+    """Meyers' normalizations make every velocity one SD at every N (Meyers 2025 / 2026, Appendix III). With the
+    multipliers refit every session over the previous 21 sessions, the SD of the normalized velocity over the window,
+    per N and per year: a second-moment property of the indicator (the RMV repo's §1.2.1 check), never a return."""
+    from data.bars import load_bars
+    from features.kernels import poly_normalized, rmedv_all, rmedv_normalized, session_layout, sg_velocity_all
+
+    for sym in ("SPY", "QQQ"):
+        df = load_bars(sym, "5Min", START, END)
+        sess, start, _, _ = session_layout(df.index, 5)
+        x = np.log(df["close"].to_numpy())
+        years = df.index.year.to_numpy()
+        for name, v in (("rmedv", rmedv_normalized(rmedv_all(x, start, NS), NS, sess, 21)),
+                        ("poly d1", poly_normalized(sg_velocity_all(x, start, NS, 1), sess, 21)),
+                        ("poly d2", poly_normalized(sg_velocity_all(x, start, NS, 2), sess, 21))):  # fmt: skip
+            ok = sess >= 21
+            whole = " ".join(f"N{n}:{np.nanstd(v[a, ok]):.3f}" for a, n in enumerate(NS))
+            by_year = [np.nanstd(v[:, ok & (years == y)], axis=1) for y in np.unique(years[ok])]
+            lo, hi = min(b.min() for b in by_year), max(b.max() for b in by_year)
+            print(
+                f"{sym} {name:8s} SD of the normalized velocity, 2016-2025: {whole}; per year and N {lo:.3f}-{hi:.3f}"
+            )
+
+
 def _clock(days: pd.DatetimeIndex):
     try:
         from data.bars import get_calendar
@@ -70,7 +95,15 @@ def budgets() -> None:
     from data.quotes import read_asof_table
     from experiments.runner import rate_asof
     from families.stats import mean_test
-    from features.kernels import band_state, prior_sigma, rmedv_all, session_layout, session_vwap, sg_velocity_all
+    from features.kernels import (
+        band_state,
+        poly_normalized,
+        rmedv_all,
+        rmedv_normalized,
+        session_layout,
+        session_vwap,  # fmt: skip
+        sg_velocity_all,
+    )
     from primaries import make_primary
     from primaries.mechanism import primary_config
     from risk.costs import fill_costs
@@ -85,12 +118,11 @@ def budgets() -> None:
     x = np.log(spy["close"].to_numpy())
     o, c, v = (spy[k].to_numpy(dtype=float) for k in ("open", "close", "volume"))
 
-    def estimators():
-        rmedv_all(x, start, NS)
-        sg_velocity_all(x, start, NS, 1)
+    def estimators():  # each velocity in its own published normalization, refit every session over 21 sessions
+        rmedv_normalized(rmedv_all(x, start, NS), NS, sess, 21)
+        poly_normalized(sg_velocity_all(x, start, NS, 1), sess, 21)
         band_state(o, c, sess, slot, 14)
         session_vwap(c, v, sess)
-        prior_sigma(x, sess, 5)
 
     t = time.perf_counter()
     estimators()  # includes numba's compile on a cold cache
@@ -162,9 +194,9 @@ def budgets() -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["parity", "budgets"])
+    ap.add_argument("cmd", choices=["parity", "scale", "budgets"])
     a = ap.parse_args()
-    {"parity": parity, "budgets": budgets}[a.cmd]()
+    {"parity": parity, "scale": scale, "budgets": budgets}[a.cmd]()
 
 
 if __name__ == "__main__":

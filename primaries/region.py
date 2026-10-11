@@ -8,14 +8,17 @@ Cells (G1's region R₀ with the defaults: 3 + 2 × 5 × 4 = 43):
     band   × VM ∈ vm_list        +1 while the gap-adjusted distance from the noise band > VM, −1 while < −VM, else 0
                                  (features.kernels.band_state); with band_stop "vwap" a long also needs close > the
                                  session VWAP and a short close < VWAP (Zarattini et al.'s current-band + VWAP stop)
-    rmedv  × N × θ               v = slope · √N / σ₅, slope = the repeated-median slope of log close over N bars
-    sgv    × N × θ               the same with the Savitzky–Golay degree-`sg_degree` endpoint derivative (1 = LS)
-σ₅ = the σ of the within-session 5Min log returns of the `sigma_sessions` previous sessions (features.kernels.
-prior_sigma). Velocity cells, vel_mode "sar" (stop-and-reverse): +1 after v > θ, −1 after v < −θ, held until the
-opposite signal; "flat_inside": sign(v) while |v| > θ, else 0. vel_stop "vwap" flattens a long below the VWAP (a short
-above) and the state stays flat until the next signal. Every cell starts each session flat (no state crosses a
-session) and is flat while its estimator is undefined (warm-up: the first N − 1 bars of the session, the first
-`band_lookback` / `sigma_sessions` sessions).
+    rmedv  × N × θ               v = RMedV_N · √N · xmult: the repeated-median slope of log close over N bars in Meyers'
+                                 (2025) normalization, xmult = mean over N of 1 / sd(RMedV_N · √N)
+    sgv    × N × θ               v = V_N / sd(V_N): Meyers' (2026) next-bar velocity of the degree-`sg_degree`
+                                 least-squares polynomial over N bars (1 = the LS slope), times his Mult = 1 / SD
+Each estimator keeps its own published normalization (features.kernels.rmedv_normalized / poly_normalized), so θ is
+in standard deviations of that estimator; the SDs are refit at every session over the `norm_sessions` previous
+sessions (a frozen scale fails across volatility regimes: the RMV repo). Velocity cells, vel_mode "sar"
+(stop-and-reverse): +1 after v > θ, −1 after v < −θ, held until the opposite signal; "flat_inside": sign(v) while
+|v| > θ, else 0. vel_stop "vwap" flattens a long below the VWAP (a short above) and the state stays flat until the next
+signal. Every cell starts each session flat (no state crosses a session) and is flat while its estimator is undefined
+(warm-up: the first N − 1 bars of the session, the first `band_lookback` / `norm_sessions` sessions).
 
 Decisions: the closes of the bars ending at the marks — `first` (default 10:00), then every `cadence` minutes on the
 grid anchored at 09:30 up to 15:30 / 15:45 / 15:55 — i.e. the schedule sampler's entry times (the decision at the
@@ -90,7 +93,7 @@ class RegionTrend(MechanismPrimary):
         "theta_list": [0.75, 1.0, 1.5, 2.0],
         "vm_list": [1.0, 1.25, 1.5],
         "band_lookback": 14,
-        "sigma_sessions": 5,
+        "norm_sessions": 21,
         "sg_degree": 1,
         "cadence": 30,
         "first": "10:00",
@@ -105,7 +108,7 @@ class RegionTrend(MechanismPrimary):
         est = p["estimators"]
         _check(self.name, isinstance(est, list) and len(est) >= 1 and len(set(est)) == len(est)
                and all(e in ESTIMATORS for e in est), f"estimators must be a list of distinct names in {ESTIMATORS}")  # fmt: skip
-        for key, lo in (("n_list", 3), ("band_lookback", 1), ("sigma_sessions", 1)):
+        for key, lo in (("n_list", 3), ("band_lookback", 1), ("norm_sessions", 1)):
             vals = p[key] if key == "n_list" else [p[key]]
             ok = isinstance(vals, list) and len(vals) >= 1 and all(isinstance(v, int) and not isinstance(v, bool)
                                                                    and v >= lo for v in vals)  # fmt: skip
@@ -175,7 +178,15 @@ class RegionTrend(MechanismPrimary):
     def cell_matrix(self, df: pd.DataFrame, cfg) -> tuple[np.ndarray, np.ndarray]:
         """(decision bar positions, positions float64[n_decisions, n_cells]) over every scheduled decision of df."""
         from data.timeframes import get_timeframe
-        from features.kernels import band_state, prior_sigma, rmedv_all, session_layout, session_vwap, sg_velocity_all
+        from features.kernels import (
+            band_state,
+            poly_normalized,
+            rmedv_all,
+            rmedv_normalized,
+            session_layout,
+            session_vwap,  # fmt: skip
+            sg_velocity_all,
+        )
         from features.vol_profile import ny_minutes
 
         p = self.params
@@ -206,10 +217,11 @@ class RegionTrend(MechanismPrimary):
                     cols.append(np.where(flat, 0.0, pos)[:, None])
             else:
                 ns = np.asarray(p["n_list"], dtype=np.int64)
-                raw = rmedv_all(x, start, ns) if e == "rmedv" else sg_velocity_all(x, start, ns, p["sg_degree"])
-                sig = prior_sigma(x, sess, p["sigma_sessions"])
-                with np.errstate(invalid="ignore", divide="ignore"):
-                    v = np.ascontiguousarray(raw[:, dec] * np.sqrt(ns)[:, None] / sig[dec])
+                if e == "rmedv":
+                    v = rmedv_normalized(rmedv_all(x, start, ns), ns, sess, p["norm_sessions"])
+                else:
+                    v = poly_normalized(sg_velocity_all(x, start, ns, p["sg_degree"]), sess, p["norm_sessions"])
+                v = np.ascontiguousarray(v[:, dec])
                 out = np.empty((len(dec), len(ns) * len(p["theta_list"])))
                 _velocity_cells(v, c[dec], vwap, dsess, flat, np.asarray(p["theta_list"], dtype=float),
                                 p["vel_mode"] == "sar", p["vel_stop"] == "vwap", out)  # fmt: skip
