@@ -1,65 +1,72 @@
-# Session Handoff — U26: time–frequency state and gamma proxies (branch `unit/26-tf-state`)
+# Session Handoff — U28: G6, the SVXY volatility risk premium (branch `unit/28-g6-svxy`)
 
 ## Where it started
-U25 (PR #26) was merged to `main` (eb6133b). U26 was built, reviewed and its diagnostic recorded on `unit/26-tf-state`:
-- SPEC §24 describes the as-built code, the review and the result;
-- PLAN3 §5 U26 lists every done-when with its evidence;
+U26 (PR #27) was merged to `main` (da05171). U28 was built, reviewed, registered and run on `unit/28-g6-svxy`:
+- SPEC §27 describes the as-built code, the review and the result;
+- PLAN3 §5 U28 lists every done-when with its evidence;
 - PLAN3 §9 is the status line.
 
-## What shipped (SPEC §24 has the detail)
-- **`tf_state`** (`features/tf_state.py`, an intraday group). Per session, known at the open, from the previous 5
-  sessions' inside-session 5Min returns:
-  - `pow_hf` / `pow_lf` (Goertzel band power at periods 2–6 / 12–78 bars vs white noise) and `tilt` (their log ratio);
-  - `flatness`;
-  - `modwt_e1..e5` (Haar MODWT energy vs white noise);
-  - `ac1` (the revealed-gamma proxy);
-  - `vov` (SD of log session σ over 21 sessions).
-  - SPY 2016–2025 takes 0.69 s against a 10 s budget.
-- **fastgoertzel pinned at 0.1.9**:
-  - 1.x needs numpy ≥ 2.2, and `uv add` silently moved numpy 1.26 → 2.4, so it was reverted.
-  - 0.1.9 truncates the bin, int(f · N): at f = k / N, 18 of 192 bins land on k − 1. `goertzel_power` calls it at
-    (k + 0.5) / N; parity with a numpy DFT to 1e-10.
-  - Worth fixing upstream in fastgoertzel (the user's package) if 1.x still truncates.
-- **SKEW / VVIX** in `data/exo.py` (CBOE close-only files, caches committed) and `vol_state` (`skew`, `vvix`,
-  `vvix_vix`).
-- **Splits.**
-  - `gamma_sign` and 14 tercile splits (`families/spec.py` `TERCILE_SPLITS`, `U26_SPLITS`).
-  - `families.run.add_splits` and `python -m families splits <id> --look <label>` add splits to a stored result
-    without a re-run. They require a recorded look, never overwrite, check stored splits first, and rewrite only the
-    report's splits section.
-- **Scripts and tests.** `scripts/u26_tf_state.py budget | null` (status only); tests/test_u26.py.
+## User decisions (2026-10-11, before any G6 run)
+- The headline is a region of 15 cells (VX1 / VIX > θ ∈ {1.00, 1.025, 1.05, 1.075, 1.10} × VIX < {20, 25, 30}), not
+  PLAN2 F9's point.
+- The test is `marginal` against G2_core at k = 0.5. Long SVXY carries equity beta, so alpha against zero would restate
+  the equity premium; that alpha is reported only.
+- The target is halved before 2018-02-28 (SVXY −1× until then, −0.5× after).
+- The 15 % drawdown kill is a permanent latch, with a `no_kill` variant.
+
+## What shipped (SPEC §27 has the detail)
+- **`vix_term`** (features/state.py, groups.py): VIX, VX1 / VIX, VX2 / VX1 as of the bar, with no GARCH. vol_state's
+  GARCH needs 500 returns, so a rule reading it would start in 2018.
+- **`vix_carry`** (primaries/vix_carry.py): the region; flat in backwardation (VX1 / VIX < 1); the pre-break scale.
+  - One decision per session at the 10:00 5Min mark, rolled to the next 10:00; the roll trades only the change.
+  - Why not daily bars: the daily engine decides at the previous close, before the 16:20 settlements, so the open of
+    day d would read d − 2's VIX.
+  - SVXY lacks a 10:00 decision on 2018-02-06 and 2024-03-26 only.
+- **Drawdown kill** (risk/profiles.py `kill_dd`, risk/portfolio.py): a latch, exit reason `kill`, `killed_at` in the
+  runner row. Profiles `vrp` (3 % gate + 15 % kill) and `vrp_nokill`. A no-op when None (full suite, pins).
+- **Engine regions** (families/spec.py `region_kind`, families/run.py `engine_cells` / `engine_region`).
+  - Each cell runs as its own rule cell in the batch: no trial, no variant row.
+  - Statistics are on the headline's days; a cell is flat before its live start.
+  - Under `marginal`, cells coherence reads each cell's Δ Sharpe.
+- **Reported additions**: `overlay_alone`, per-variant `kill`, and the `episodes` spec key with a day-by-day report
+  section.
+- **Scripts**: `scripts/u28_g6.py power | smoke` (status only).
+- **Tests**: tests/test_u28.py has 11 tests.
 
 ## Result
-- The look `families/G1 U26 splits` (n = 15) was recorded before the splits were computed. K = 186.
-- No tf_state column and not the gamma sign separates G1's P&L: no tercile pattern is monotone, and every interval
-  overlaps.
-- Low SKEW (4.42 vs 0.36 bp/day) and low VVIX / VIX (5.55 vs 0.50) separate most. These are the high-VIX states, so
-  most likely the known vol effect restated.
-- Everything is reported, never tested.
-- The §1.1 session-shift null is reproduced exactly with the group's Goertzel.
+- **G6 fails.** Sharpe(core + 0.5 × G6) 1.08 vs the core's 1.06: Δ +0.02, p 0.40, Holm 0.62. Floors pass and the
+  cells are coherent (12 / 15 positive).
+- The headline's kill fired on 2019-09-03, so it was flat for 2019-09 → 2025-09.
+- The return is 2016–2017 at −1×: the post-break slice has Sharpe −0.28.
+  - `unscaled` Δ +0.18 (p 0.066).
+  - `no_kill` Δ −0.05, with a −27 % drawdown.
+- February 2018: the 3 % gate flattened it on 01-29 and backwardation kept it flat through the 02-05 / 02-06 crash.
+- Disregard the 2020–2025 split Sharpes and the quasi slice's 26.2: they are artifacts of a flat, near-zero-variance
+  cash stream.
+- Program over G1, G2, G3, G6: G1 PASS (Holm 0.0136); the others fail. Looks K = 209; trials 29 / 42.
+- G2_core re-run under U28's code equals U25's stored stream exactly.
 
 ## Verification
 - `uvx ruff check . && uvx ruff format --check .` — clean.
-- `OMP_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — the full suite passes.
-- `uv run python scripts/u26_tf_state.py budget` and `... null`.
-- Adversarial review: no BREAKING or SEVERE finding; the five MINORs were fixed before the look.
+- `OMP_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — 898 passed.
+- `uv run python scripts/u28_g6.py power` and `... smoke`.
+- Adversarial review: no BREAKING or SEVERE finding; three MINORs fixed before registration.
 
 ## Notes for the next session
-- Write files with LF and UTF-8. On Windows, `Path.write_text` writes CRLF, so use `write_bytes` or the Write tool.
-- A heredoc turns `"\\n"` into real newlines.
-- The reviewer's real-data checks refetched SPY's cache metadata (`coverage_start` 2010). The sidecar was restored
-  from git, and the bars were byte-identical. Watch for that after a review.
-- The G1 report's state splits now follow the spec's order. The committed U25 version was alphabetical, from an
-  earlier re-render.
+- A heredoc turns `"\n"` into real newlines (it bit a test file again). Use the Write / Edit tools for code with
+  escapes.
+- On a 5Min schedule rule, the window's first ~2 sessions have no event (barrier-width warm-up). A window's last bet
+  whose exit falls past the data is dropped, so the book is flat on the last session.
+- families/registry.yaml still holds G1 as U25 wrote it (Holm 0.010 over three families). With G6 in the program,
+  G1's Holm p is 0.0136. Re-run `python -m families registry G1` only if you want the entry to say so.
 
 ## Open decisions (the user's)
 - Algo Trader Plus before U27. U27 then trades G1 alone: a diagnostic whose result is bound by the cost.
-- Whether G2's portfolio claim, which failed its drawdown floor, is worth keeping a forward record of.
-- The G5 data purchase; deleting the remote `origin/unit/*` branches; opening a PR for this branch.
+- Opening a PR for this branch; deleting the remote `origin/unit/*` branches.
+- The G5 data purchase. Whether G2 is worth a forward record.
 
 ## Pick up here
 - **U27** (forward test) once Algo Trader Plus is bought. Its input is `families/registry.yaml` (G1).
-- **Meanwhile:** U28 (G6 SVXY).
 - **Deferred MINORs from U25:**
   - the loader's PLAN2 2 % default floor applies to paired specs;
   - a gate that delays a stream's first live day would drop reference days;

@@ -2071,3 +2071,134 @@ Deferred, with reasons:
 - Program verdict (Holm over G1, G2, G3): G1 PASS (p_holm 0.010), G2 fail, G3 fail. `families/registry.yaml` holds G1
   only, at its U24 run (code 2994b5e, members 64c27ca2…, e76a64a2…). Under U25's code (f840e01) the same cells hash to
   6f97964d…, 67379d46… and reproduce it bit for bit.
+
+## §27 G6: the VIX-carry region, the drawdown kill and engine regions (U28; PLAN3 §5 U28, §3 G6)
+
+**User decisions (2026-10-11, before any G6 configuration ran on the development window).**
+- The headline is a region (protocol v3 §4.1), not PLAN2 F9's point: 15 cells centred on its 1.05 / 25.
+- The test is `marginal` against G2_core at k = 0.5. Long SVXY carries equity beta, so its mean excess return against
+  zero would largely restate the equity premium; the overlay's alpha against zero is reported, never tested.
+- Before 2018-02-28 (SVXY −1× the VIX short-term futures index; −0.5× since) the target is halved, so the futures
+  exposure is the forward −0.5× throughout.
+- The 15 % drawdown kill is permanent for the run (a latch), and a `no_kill` variant shows the rule without it.
+
+**`vix_term`** (features/state.py, features/groups.py). A static exo group: `vix` (the VIX close), `vx1_vix`,
+`vx2_vx1`, each as of the bar under the point-in-time rule (16:20 ET). It exists because `vol_state` is per fold: its
+GARCH needs 500 returns, so a rule reading it starts 500 sessions late and loses February 2018. Every bar of day d,
+09:30 through 15:55, reads day d − 1's closes (test).
+
+**`vix_carry`** (primaries/vix_carry.py; 5Min only; ALLOW_CONTINUOUS, long only).
+- Cells: `signal` (`vx1_vix` or `vx2_vx1`) > θ and VIX < cap (null: no cap), for θ in `theta_list` × cap in
+  `vix_list`. Hard rule, every cell: flat while VX1 / VIX < `backwardation` (1.0). Flat wherever a state it reads is
+  NaN.
+- The target is the cells' mean × `scale_before.scale` on sessions dated before `scale_before.date`.
+- One decision per session at `decision` (10:00): read at the 09:55 bar's close, filled at the 10:00 bar's open,
+  held by the time exit (`exit_time` 10:00, `exit_session` 1) to the next session's 10:00, where the next target
+  replaces it. The simulator's roll trades only the change, so an unchanged target trades nothing (test: shares trade
+  on exactly the sessions where the target recomputed from the previous session's state changes).
+- Why 10:00 on 5Min bars and not the open on 1Day bars: the engine decides at the previous bar's close. On 1Day bars
+  the decision for day d's open is taken at d − 1's 16:00 close, before the 16:20 settlements, so it reads d − 2's
+  VIX. At 10:00 it reads d − 1's, as a pre-open forward loop would, and 10:00 is a mark of U27's half-hour loop.
+- SVXY has its 09:55 and 10:00 bars on every session of 2016-01 → 2025-09 except two: 2018-02-06 (no bar before
+  10:00) and 2024-03-26 (no 10:00 bar; review MINOR 1 corrected an earlier list). A session without its decision bar has no event: the held position exits at the first bar at or after
+  10:00 and the session is flat.
+- `cell_params()` gives the single-cell primaries (θ_list [θ], vix_list [cap]); there is no `cell_matrix`, because the
+  positions are held overnight and wfo.position_backtest models a session-bounded target only.
+- Engine warm-up: the first two sessions of a window have no event (the barrier width's EWM σ), as for every 5Min
+  schedule rule; the cell's stream starts at its first sided event (wfo.rule_pass `live_start`).
+
+**The drawdown kill** (risk/profiles.py `kill_dd`, risk/portfolio.py).
+- At the first close where 1 − equity / its close-marked high-water mark ≥ kill_dd, every position is flattened at
+  its next open (exit reason `kill`, also when a scheduled exit falls on that same open: review MINOR 3) and every later entry is blocked to the end of the span. It never re-arms: under
+  dd_tiers, a flat book's cash yield would slowly lift equity back under the threshold.
+- `attrs["killed_at"]`, the log's `kill` column and the runner row's `killed_at` record it.
+- Profiles: `vrp` (daily_loss 0.03, kill_dd 0.15) and `vrp_nokill` (daily_loss 0.03).
+- wfo.position_backtest refuses a profile with a kill (`_profile_loss` accepts daily_loss only).
+- With kill_dd None nothing changes: every earlier profile and the U12 / U22 pins are as before (full suite).
+
+**Engine regions** (families/spec.py `region_kind`, families/run.py).
+- `region_kind(cls)`: "replica" for a primary with `cell_matrix` (U24, G1), "engine" for one with `cell_params`
+  (U28), else None. `test.coherence: cells` accepts either.
+- `engine_cells(fam)`: per region cell, the headline with the primary's params replaced by the cell's, one stage-F
+  rule cell per instrument. They join the batch (deduplicated), count no trial and write no family-variant row.
+- `engine_region`: each cell's pooled stream, re-priced from its own cost ledger at every cost-curve column as the
+  variants are, gives the mean daily excess return with its Newey–West interval and the excess Sharpe. Under a
+  `marginal` test it also gives the Δ Sharpe of core + k × cell vs the core on their common days, the core as the
+  headline reads it. Every cell statistic is on the headline's days: before a cell's own live start (its first
+  sided event, later for a tighter cell) it is flat, so its excess return there is 0 (review MINOR 2: otherwise a
+  cell's Δ and the headline's covered different spans). That Δ is the cells coherence statistic (`statistic` "delta_sharpe"); otherwise the alpha.
+- There is no parity check: the cells are engine runs, not a replica (`method` "engine", `parity_ok` True). A cell
+  that did not complete is listed in `status` and counts against coherence (NaN; `cells_coherence` takes the median
+  of the finite cells).
+- The report's region section and `cells_curve.png` show the coherence statistic.
+
+**Reported additions** (no verdict reads them).
+- `overlay_alone` (marginal families): the headline's `overlay_alpha` statistics against zero at the verdict's cost.
+  The Newey–West alpha and beta against the family benchmark stay in `compare` as for every kind.
+- `kill`: per variant, each member's `killed_at`.
+- `episodes` (spec key `episodes: [{label, start, end}]`, inside the window; `episode_paths`): day by day, the
+  headline's net return and cumulative path, the position held at the close (`held_fraction`: Σ weight × side × the
+  fraction committed at entry over the positions open across 16:00), the day's VIX close and VX1 / VIX (the next
+  session's decision reads them) and, with a core, the core and core + k × the overlay's excess. Plus a summary
+  (total, worst day, the drawdown inside the episode, sessions held, the core's and the portfolio's totals).
+
+**`families/G6.yaml`.**
+- SVXY, 5Min, `vix_carry` with θ {1.00, 1.025, 1.05, 1.075, 1.10} × cap {20, 25, 30}, backwardation 1.0, decision
+  10:00, scale 0.5 before 2018-02-28; risk profile `vrp`; quotes costs with the U22 switches G1 pins; INIT_CASH 30k,
+  margin account.
+- Core G2_core pinned at 4208d7b, k 0.5. Test: marginal, one-sided, at the booked costs (`registered`: SVXY's spreads
+  are wider than SPY's), cells coherence ≥ 2/3.
+- Floors: overlay net excess ≥ 3 %/yr; max DD(core + k × overlay) no deeper than the core's; edge ≥ 2 × cost.
+- Variants (7; budget 8): `no_kill`, `k1`, `k0.25`, `core_bh`, `vx2_vx1`, `no_vix_cap`, `unscaled`.
+- Episodes: February 2018, March 2020, August 2024. Sample splits: 2016–2019, 2020–2025, post-break (from
+  2018-02-28). State splits: VIX tercile, year, macro day. Benchmark: SVXY held (constant_mix_ew of the one
+  instrument), so the reported NW alpha / beta is the timing against holding SVXY.
+- Power (`scripts/u28_g6.py power`, from the bars and the VIX state alone, as G3's ρ; no mean was computed): 2,446
+  sessions; the region's target from the previous session's state (mean 0.367, a position on 75 % of sessions);
+  the gross overlay's uncentred σ 14.1 %/yr and ρ with the SPY / QQQ mix 0.370; G2's core assumptions (σ 13.5 %,
+  Sharpe 0.7); k 0.5 → ρ(core + k × overlay, core) 0.926 → MDE Δ Sharpe 0.38 (Holm over 4 families). Expected +0.17
+  at PLAN2 F9's overlay Sharpe 0.8. Registered as a DIAGNOSTIC.
+
+**Smoke** (`scripts/u28_g6.py smoke`). G6 and G2_core copied to a scratch directory, the window cut to 2016-01-04 →
+2016-07-01 (one episode moved inside it), run with no quasi cells. It prints statuses, member and cell counts, that
+the kill and episodes were recorded and the report written — no return, Sharpe, alpha, p, floor or kill bar — and
+checks that `families/looks.jsonl` is unchanged.
+
+**Review (one adversarial pass, before registration; no dev-window statistic read).** No BREAKING or SEVERE finding.
+Three MINORs, all fixed before registration, each with a test:
+1. The halt-day list was wrong (the scan had read 09:30–09:40 bars): the sessions without a 10:00 decision are
+   2018-02-06 and 2024-03-26 (G6.yaml comment, the vix_carry docstring, this section).
+2. The cells' statistics were on each cell's own live window, not the headline's days (fixed as above).
+3. A kill fired at the close one bar before a scheduled open exit was labelled `time` (now `kill`; the fill, price and
+   cost class were already right).
+Confirmed by the reviewer: no lookahead in vix_term or the 10:00 decision (UTC available_at, DST correct); the roll
+trades only target changes; the latch never re-enters; the engine cells differ from the headline in the params only;
+kill_dd None changes nothing (full suite, U12 / U22 pins); G1 / G2 / G3 trial keys unchanged; the power script reads
+no mean.
+
+**Result** (registered at 4d90603, run once at 5422e7c in 47 s against a 10-minute budget; the look
+`families/G6.yaml (U28 run)`, n = 23 = 8 trials + 15 cells, was recorded after the run and before any result line was
+read: K 186 → 209). **G6 fails.**
+- Headline: Sharpe(core + 0.5 × G6) 1.08 vs the core's 1.06 on 2,400 days. Δ +0.02, one-sided p 0.40 (Holm over G1,
+  G2, G3, G6: 0.62). Floors pass (net excess 4.2 %/yr; drawdown −19.4 % vs −19.4 %; edge 8.3 × cost). Cells coherent
+  (12 / 15 cells with a positive Δ, share 0.80; median Δ +0.04); the variants coherent (0.71).
+- **The kill decided it.** The headline's 15 % kill fired at 2019-09-03's 09:30 bar: G6 was flat from then to the end of
+  the window. Every 2020–2025 slice is the flat book's cash. Their reported Sharpes (2020 1.17, the quasi-holdout
+  slice's 26.2, …) are artifacts of a near-zero-variance stream (the simulator's cash interest vs the T-bill accrual),
+  not returns. March 2020 and August 2024: flat.
+- Year by year (bp/day, excess): 2016 +11.0, 2017 +12.9, 2018 −4.3, 2019 −2.0, then 0. The post-break slice (from
+  2018-02-28, the instrument that would be traded forward) has Sharpe −0.28.
+- February 2018: the 3 % daily loss gate flattened the position on 2018-01-29 (−3.1 %, the episode's worst day), and the
+  curve was in backwardation from that day (VX1 / VIX 0.98 on 01-29, 0.89 on 02-05), so G6 was flat through the
+  02-05 / 02-06 crash. The episode lost 3.3 %; core + 0.5 × overlay −3.2 % vs the core's −1.4 %.
+- Variants: `no_kill` Δ −0.05 (net 8.3 %/yr, max DD −27 %, floors fail: it held through 2020 and 2022, −2.8 % and
+  −8.9 %); `unscaled` (SVXY as traded, −1× before 2018-02-28) Δ +0.18, p 0.066 — the −1× years 2016–2017, its kill fired
+  2018-04-27; `vx2_vx1` +0.06, `core_bh` +0.05, `k0.25` +0.02, `no_vix_cap` +0.02, `k1` −0.02.
+- The overlay alone (reported, never tested): 1.81 bp/day, 4.5 %/yr, one-sided p 0.0496, Newey–West t 1.57, Sharpe 0.51;
+  NW beta to SVXY held 0.07. It is the 2016–2017 return.
+- Costs are immaterial: 0.023 round trips per day; Δ 0.023 at the booked costs, 0.035 at 1.0 bp.
+- Checks: G2_core, re-run in G6's batch under U28's code, equals U25's stored core stream exactly (max |Δ| 0.0 over
+  2,400 days). The program verdict over G1, G2, G3, G6: G1 PASS (Holm 0.0136), G2 / G3 / G6 fail. families/registry.yaml
+  still holds G1 as U25 wrote it (Holm 0.010 over three families; not rewritten).
+- Reading (reported, not tested): the variance premium via SVXY earned in 2016–2017 at −1× and not after the
+  instrument was halved; with the registered kill, a 2019 drawdown ended the strategy. No forward record is proposed.

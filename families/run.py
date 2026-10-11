@@ -39,8 +39,18 @@ variant `benchmark` = the core family's benchmark mix) is pooled with the core f
 costs; the reference is pooled at the same cost as the stream at every point of the cost curve (a gated stream and
 its ungated reference are priced alike). A marginal family's report adds, per variant, the account check of core +
 k × overlay together (the overlay members' positions × k plus the core's; PLAN3 G2's buying-power check).
+
+U28 additions (SPEC §27): an ENGINE region (a primary with `cell_params`, families.spec.region_kind "engine": G6's
+positions are held overnight, which wfo.position_backtest does not model) runs every region cell as its own stage-F
+rule cell in the batch (the headline with the primary's params replaced by the cell's; no ledger variant row, no
+trial); the specification curve reads each cell's stream re-priced from its own cost ledger at every cost, and with
+`test.coherence: cells` the verdict's coherence is the share of cells whose headline statistic (the alpha, or with a
+`marginal` test the Δ Sharpe of core + k × cell vs the core) has the headline's sign. A marginal family also reports
+the overlay's own alpha against zero (the `overlay_alpha` statistics, never tested); every family reports the members'
+drawdown-kill bars (risk.profiles kill_dd) and the spec's `episodes` day by day (`episode_paths`).
 """
 
+import copy
 import hashlib
 import json
 from datetime import UTC, datetime
@@ -62,6 +72,7 @@ from families.spec import (
     check_registered,
     load_family,
     make_cells,
+    region_kind,
 )
 from features.tf_state import COLUMNS as TF_COLUMNS
 from features.tf_state import tf_state_days
@@ -510,6 +521,8 @@ def run_family(
     refs = ref_families(fam, path, repo, check_registration)  # U25: core / reference families, run in this batch
     batch += [c for rid, labels in _ref_labels(fam).items() for lb in labels if lb != "benchmark"
               for c in refs[rid].cells[lb]]  # fmt: skip
+    ecells = engine_cells(fam) if _is_engine_region(fam) else {}  # U28: an engine region's cells, run in the batch
+    batch += [c for cs in ecells.values() for c in cs]
     batch = list({(c.stage, c.spec_json()): c for c in batch}.values())  # one run per distinct cell
     hashes: dict[tuple, str] = {}
     run(batch, ledger=ledger, root=root, source=source, jobs=jobs, spec_name=fam.id,
@@ -601,12 +614,16 @@ def run_family(
     if _is_region(fam):  # U24: the region's cells, re-simulated (specification curve, cells coherence)
         region = region_cells(fam, fam.cells[HEADLINE], pooled[HEADLINE]["members"], rows_by_hash, root, source, rf,
                               weights, at_cost)  # fmt: skip
+    if ecells:  # U28: an engine region's cells, each its own engine stream
+        region = engine_region(fam, ecells, rows_by_hash, hashes, root, rf=rf, weights=weights, curve=curve,
+                               measured=measured, refs_at=refs_at, k=(k_by_variant or {}).get(HEADLINE, 1.0))  # fmt: skip
     cell_alphas = None
     if region is not None and not region["parity_ok"]:
         print(f"[FAM]  {fam.id}: the region's re-simulation does not reproduce its members ({region['parity']}): the "
               "cells are not used for coherence")  # fmt: skip
     elif region is not None and key in region["costs"]:
-        cell_alphas = {k: v[key]["alpha_bp"] for k, v in region["cells"].items()}
+        stat = region.get("statistic", "alpha_bp")  # U28: an engine region under a marginal test: the Δ Sharpe
+        cell_alphas = {k: (v[key][stat] if v.get(key) is not None else np.nan) for k, v in region["cells"].items()}
     refs_key = refs_at(key)
     ev = T.evaluate(sub, streams, bench, costs, rf, refs_key, k_by_variant, cell_alphas)
     if failed:  # a variant that did not run is reported, and counts against coherence as not sharing the sign
@@ -694,7 +711,19 @@ def run_family(
         "power_realized": _power_realized(
             fam, streams[HEADLINE], rf, (refs_key or {}).get(HEADLINE), (k_by_variant or {}).get(HEADLINE, 1.0)
         ),
+        "kill": {
+            k: {h[:16]: rows_by_hash[h].get("killed_at") for h in p["members"]}
+            for k, p in pooled.items()
+            if p["status"] == "ok"
+        },
     }
+    if fam.test["kind"] == "marginal":  # U28: the overlay's own alpha against zero (reported, never tested)
+        result["overlay_alone"] = T.compare(streams[HEADLINE], bench, fam.benchmark, {**fam.test, "kind": "overlay_alpha"},
+                                            rf)  # fmt: skip
+    if fam.episodes:
+        result["episodes"] = episode_paths(fam, streams[HEADLINE], (refs_key or {}).get(HEADLINE),
+                                           (k_by_variant or {}).get(HEADLINE, 1.0), rf, pooled[HEADLINE], weights,
+                                           source)  # fmt: skip
     extra = {}
     if fam.test["kind"] == "marginal":  # each distinct core, raw at its booked costs
         for v in ok:
@@ -1000,14 +1029,161 @@ def trade_stats(fam, pooled: dict, root: Path, weights: pd.Series) -> dict:
     return {"per_instrument": per, "pooled": pooled_row}
 
 
-def _is_region(fam) -> bool:
-    """A headline whose cells a region primary supplies (pooled rule cells of a primary with `cell_matrix`)."""
+def _region_cls(fam):
+    """The headline's primary class when its cells can be read (pooled rule cells, no legs / per_instrument)."""
     if fam.basket or fam.headline.config.get("legs") or fam.headline.config.get("per_instrument"):
-        return False
+        return None
     from primaries import REGISTRY
 
     cfg = fam.cells[HEADLINE][0].config()
-    return cfg.META_MODEL == "none" and hasattr(REGISTRY.get(cfg.PRIMARY), "cell_matrix")
+    return REGISTRY.get(cfg.PRIMARY) if cfg.META_MODEL == "none" else None
+
+
+def _is_region(fam) -> bool:
+    """A headline whose cells a region primary supplies, re-simulated by the replica (U24: `cell_matrix`)."""
+    return region_kind(_region_cls(fam)) == "replica"
+
+
+def _is_engine_region(fam) -> bool:
+    """U28: a headline whose region cells run as engine cells (`cell_params`)."""
+    return region_kind(_region_cls(fam)) == "engine"
+
+
+def engine_cells(fam) -> dict[str, list]:
+    """U28: region cell name → its stage-F cells over the family window: the headline with the primary's params
+    replaced by the single cell's (primary.cell_params), one cell per instrument."""
+    from primaries import make_primary
+
+    prim = make_primary(fam.cells[HEADLINE][0].config())
+    out = {}
+    for name, params in prim.cell_params():
+        cfg = copy.deepcopy(fam.headline.config)
+        cfg["primary"] = {**cfg["primary"], "params": copy.deepcopy(params)}
+        out[name] = make_cells(fam, cfg, *fam.window)
+    return out
+
+
+def engine_region(fam, ecells: dict[str, list], rows_by_hash: dict, hashes: dict, root: Path, rf, weights,
+                  curve: dict, measured, refs_at, k: float) -> dict:  # fmt: skip
+    """
+    U28 (SPEC §27): the specification curve of an engine region. Each cell's pooled stream (its members re-priced from
+    their own cost ledgers at every cost-curve column, as the variants are) → the mean daily excess return in bp with
+    its Newey–West 95 % interval, the annualized excess Sharpe and, under a `marginal` test, the Δ Sharpe of core + k ×
+    cell vs the core on their common days (the core as the headline reads it: `refs_at(column)`); the region is the
+    headline's stream. The cells are engine runs, not a replica, so there is no parity to check (`parity_ok` True,
+    `method` "engine"). `statistic` names the coherence statistic (`delta_sharpe` under a marginal test, else
+    `alpha_bp`). Every statistic is on the headline's days: a cell's stream starts at its own first sided event (its
+    live start, which a tighter cell reaches later), and before it the cell is flat, so its excess return there is 0
+    (review MINOR: otherwise a cell's Δ and the headline's would cover different spans). A cell that did not complete
+    is listed in `status` and has no entry (coherence counts it against).
+    """
+    from families.stats import mean_ci_nw, sharpe_ann
+
+    marginal = fam.test["kind"] == "marginal"
+    out: dict = {"method": "engine", "statistic": "delta_sharpe" if marginal else "alpha_bp", "cells": {},
+                 "pooled_cells": {}, "region": {}, "names": list(ecells), "costs": list(curve), "parity": {},
+                 "parity_ok": True, "status": {},
+                 "note": "each cell run by the engine as its own rule cell (risk profile, costs, fills and cash yield "
+                         "of the headline) and re-priced from its cost ledger at each column; the region is the "
+                         "headline stream"}  # fmt: skip
+
+    days = T.day_index(curve["registered"][HEADLINE][0]).index
+
+    def on_headline_days(r: pd.Series) -> pd.Series:
+        x = T.excess(r, rf)
+        early = days[days < x.index.min()] if len(x) else days
+        return pd.concat([pd.Series(0.0, index=early), x]).reindex(days).dropna()
+
+    def stat(r: pd.Series, core: pd.Series | None, headline: bool = False) -> dict:
+        x = T.excess(r, rf) if headline else on_headline_days(r)
+        mm, lo, hi = mean_ci_nw(x.to_numpy())
+        s = {"alpha_bp": mm * 1e4, "ci_bp": [lo * 1e4, hi * 1e4], "sharpe": sharpe_ann(x), "n_days": len(x)}
+        if core is not None:
+            j = pd.concat([x.rename("a"), T.excess(core, rf).rename("c")], axis=1, sort=True).dropna()
+            s["delta_sharpe"] = sharpe_ann(j["c"] + float(k) * j["a"]) - sharpe_ann(j["c"]) if len(j) > 2 else np.nan
+        return s
+
+    for ck, per in curve.items():
+        core = (refs_at(ck) or {}).get(HEADLINE) if marginal else None
+        cost = _curve_cost(ck, measured)
+        for name, cells in ecells.items():
+            p = _pooled(fam, cells, rows_by_hash, hashes, root, weights, cost)
+            out["status"][name] = p["status"]
+            if p["status"] != "ok":
+                for c in cells:
+                    out["cells"].setdefault(f"{c.symbols[0]}:{name}", {})
+                continue
+            for sym, r in p["per_instrument"].items():
+                out["cells"].setdefault(f"{sym}:{name}", {})[ck] = stat(r, core)
+            out["pooled_cells"].setdefault(name, {})[ck] = stat(p["stream"], core)
+        if per.get(HEADLINE) is not None:
+            out["region"].setdefault("pooled", {})[ck] = stat(per[HEADLINE][0], core, headline=True)
+    return out
+
+
+def held_fraction(member_trades: list, weights: pd.Series, days: pd.DatetimeIndex) -> pd.Series:
+    """U28: the pooled position held at each session's close (Σ weight × side × the fraction committed at entry over
+    the positions open across 16:00 NY), from the members' trades (entry_time / exit_time bar stamps)."""
+    out = pd.Series(0.0, index=days)
+    closes = (pd.DatetimeIndex(days).tz_localize("America/New_York") + pd.Timedelta(hours=16)).tz_convert("UTC")
+    for sym, tr, _ in member_trades:
+        if tr is None or not len(tr) or not {"entry_time", "exit_time", "side", "frac"} <= set(tr):
+            continue
+        w = float(weights.get(sym, 1.0))
+        e = pd.to_datetime(tr["entry_time"], utc=True).to_numpy()
+        x = pd.to_datetime(tr["exit_time"], utc=True).to_numpy()
+        s = (tr["side"].astype(float) * tr["frac"].astype(float)).to_numpy()
+        c = closes.to_numpy()
+        held = (e[None, :] <= c[:, None]) & (x[None, :] > c[:, None])
+        out += w * (held * s[None, :]).sum(axis=1)
+    return out
+
+
+def episode_paths(fam, headline: pd.Series, core: pd.Series | None, k: float, rf, pooled_h: dict, weights,
+                  source) -> dict:  # fmt: skip
+    """
+    U28 (SPEC §27; PLAN3 G6's February 2018 and March 2020 paths): per spec episode [start, end), day by day, the
+    headline's net return at the verdict's cost and its cumulative path, the position held at the close, the VIX close
+    and VX1 / VIX settlement of the day (the next session's decision reads them) and, with a core (marginal), the core
+    and core + k × overlay (the overlay's excess, as the test adds it). Reported only.
+    """
+    h = T.day_index(headline)
+    state = {}
+    for name in ("VIX", "VX1_VIX"):
+        try:
+            v = source.exo("cboe", name, fam.window[0], fam.window[1], allow_holdout=False)["value"]
+            v.index = pd.DatetimeIndex(v.index).normalize()
+            state[name] = v
+        except Exception as e:  # noqa: BLE001 — a reported table only: say so
+            print(f"[FAM]  no {name} for the episode paths ({type(e).__name__}: {e})")
+    pos = held_fraction(pooled_h.get("member_trades") or [], weights, pd.DatetimeIndex(h.index))
+    rfd = T.day_index(rf) if rf is not None else None
+    c = T.day_index(core) if core is not None else None
+    out = {}
+    for ep in fam.episodes:
+        d = h.loc[(h.index >= pd.Timestamp(ep["start"])) & (h.index < pd.Timestamp(ep["end"]))]
+        rows, cum, pcum, peak, worst_dd = [], 1.0, 1.0, 1.0, 0.0
+        for day, r in d.items():
+            cum *= 1.0 + float(r)
+            peak = max(peak, cum)
+            worst_dd = min(worst_dd, cum / peak - 1.0)
+            row = {"date": str(day.date()), "position": float(pos.get(day, np.nan)), "ret": float(r), "cum": cum - 1.0,
+                   "vix": float(state["VIX"].get(day, np.nan)) if "VIX" in state else None,
+                   "vx1_vix": float(state["VX1_VIX"].get(day, np.nan)) if "VX1_VIX" in state else None}  # fmt: skip
+            if c is not None:
+                cr = float(c.get(day, np.nan))
+                ex = float(r) - (float(rfd.get(day, 0.0)) if rfd is not None else 0.0)
+                pr = cr + float(k) * ex
+                pcum *= 1.0 + (pr if np.isfinite(pr) else 0.0)
+                row |= {"core": cr, "portfolio": pr, "portfolio_cum": pcum - 1.0}
+            rows.append(row)
+        summary = {"days": len(d), "total": cum - 1.0, "worst_day": float(d.min()) if len(d) else np.nan,
+                   "max_dd": worst_dd, "days_held": int((pos.reindex(d.index).abs() > 0).sum())}  # fmt: skip
+        if c is not None:
+            cc = c.reindex(d.index)
+            summary |= {"core_total": float((1.0 + cc.fillna(0.0)).prod() - 1.0), "portfolio_total": pcum - 1.0}
+        out[ep["label"]] = {"start": ep["start"], "end": ep["end"], "rows": rows, "summary": summary}
+    return out
 
 
 def region_cells(fam, cells, members: list[str], rows_by_hash: dict, root: Path, source, rf, weights,

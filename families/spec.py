@@ -51,6 +51,8 @@ Family specs (SPEC §17.1): `families/<id>.yaml` → a validated FamilySpec and 
                                                              #   .family
     reference: {family: G1, variant: headline, sha: <sha>}   # paired (U25): the stream this one is tested against,
                                                              #   its cells re-run in the batch and priced at each cost
+    episodes: [{label: feb2018, start: 2018-01-29, end: 2018-03-10}]   # U28: reported day-by-day paths of the
+                                                             #   headline (and core + k·overlay) over [start, end)
     account: {kind: margin, equity: 30000, locate_bps: 0}    # the registered account (risk/account.py); default:
                                                              #   a margin account at the headline cells' INIT_CASH
     overlay: {...}                       # stage G (U19); stored, not read here
@@ -108,7 +110,7 @@ RESPONSES = ("sharpe", "sortino", "calmar", "ret_ann", "vol_ann", "max_dd", "ske
              "hit_rate", "crisis_return", "exposure", "worst_day", "longest_flat_run")  # fmt: skip
 TOP_KEYS = {"id", "mechanism", "registered", "instruments", "basket", "timeframe", "window", "headline", "variants",
             "state_splits", "response", "sample_splits", "benchmark", "floors", "test", "overlay", "TRIAL_BUDGET",
-            "notes", "power", "core", "account", "weighting", "reference"}  # fmt: skip
+            "notes", "power", "core", "account", "weighting", "reference", "episodes"}  # fmt: skip
 TEST_KINDS = ("sharpe_vs_benchmark", "overlay_alpha", "marginal", "paired")
 SHARPE_DIFF_KINDS = ("marginal", "paired")  # U25: their MDE line is a Δ Sharpe (families.power.mde_delta_sharpe)
 COHERENCE_KINDS = ("variants", "cells")  # §17: share of variants (+ the median variant's floors); U24: of region cells
@@ -160,6 +162,7 @@ class FamilySpec:
     reference: dict | None = None  # the reference family of a `paired` test (U25)
     account: dict = field(default_factory=dict)  # the registered account (risk.account)
     weighting: str = "equal_risk"  # how instrument streams pool (U24: "equal" = 1/n)
+    episodes: list[dict] = field(default_factory=list)  # U28: reported day-by-day paths {label, start, end}
 
     @property
     def base_id(self) -> str:
@@ -448,7 +451,7 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     if test["coherence"] not in COHERENCE_KINDS:
         raise ValueError(f"test.coherence must be one of {COHERENCE_KINDS}, got {test['coherence']!r}")
     if test["coherence"] == "cells":
-        if basket or _model(headline)["meta"] != "none" or not hasattr(cls, "cell_matrix"):
+        if basket or _model(headline)["meta"] != "none" or region_kind(cls) is None:
             raise ValueError("test.coherence 'cells' needs pooled rule cells of a region primary (one with cells)")
         if headline.get("legs") or headline.get("per_instrument"):
             raise ValueError("test.coherence 'cells' reads one region cell per instrument: no legs / per_instrument")
@@ -517,10 +520,20 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         if stray:
             raise ValueError(f"variant {v.label!r}: per_instrument names {sorted(stray)}, not an instrument of the "
                              "family or of a sample split")  # fmt: skip
+    episodes = []
+    for e in doc.get("episodes") or []:
+        if not isinstance(e, dict) or set(e) != {"label", "start", "end"} or not isinstance(e["label"], str):
+            raise ValueError(f"an episode is {{label, start, end}} with a string label; got {e!r}")
+        a, b = _date(e["start"]), _date(e["end"])
+        if not window[0] <= a < b <= window[1]:
+            raise ValueError(f"episode {e['label']!r}: [{a}, {b}) must be a non-empty range inside the window {window}")
+        episodes.append({"label": e["label"], "start": a, "end": b})
+    if len({e["label"] for e in episodes}) != len(episodes):
+        raise ValueError("duplicate episode labels")
     reg = doc.get("registered")
     fam = FamilySpec(fid, doc, Path(path) if path else None, instruments, basket, tf, window, variants, bench,
                      floors, test, states, response, samples, budget, reg, power=power, core=core,
-                     reference=copy.deepcopy(reference), weighting=weighting)  # fmt: skip
+                     reference=copy.deepcopy(reference), weighting=weighting, episodes=episodes)  # fmt: skip
     fam.cells = {v.label: make_cells(fam, v.config, *window) for v in variants}
     fam.account = _account(doc.get("account"), fam.cells[HEADLINE][0].config().INIT_CASH)
     seen: dict[str, str] = {}
@@ -530,6 +543,17 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
             raise ValueError(f"variant {v.label!r} runs the same configuration as {seen[key]!r}")
         seen[key] = v.label
     return fam
+
+
+def region_kind(cls) -> str | None:
+    """How a region primary's cells are evaluated: "replica" (U24: `cell_matrix`, re-simulated by
+    wfo.position_backtest), "engine" (U28: `cell_params`, every cell run as its own engine cell — positions held
+    overnight, which the replica does not model), or None (not a region)."""
+    if hasattr(cls, "cell_matrix"):
+        return "replica"
+    if hasattr(cls, "cell_params"):
+        return "engine"
+    return None
 
 
 def _family_id(x, what: str) -> str:

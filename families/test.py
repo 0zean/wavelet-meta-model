@@ -340,9 +340,10 @@ def cells_coherence(cell_alphas: dict[str, float], headline_alpha: float, share:
         return {"n_cells": 0, "share": np.nan, "median_alpha": np.nan, "coherent": True, "note": "no cells"}
     sign = np.sign(headline_alpha) if np.isfinite(headline_alpha) else 0.0
     vals = np.array([v for v in cell_alphas.values()], dtype=float)
-    same = int(np.sum(np.sign(vals) == sign)) if sign != 0 else 0
+    same = int(np.sum(np.sign(vals) == sign)) if sign != 0 else 0  # a NaN cell (did not complete) never shares it
     sh = same / len(vals)
-    return {"n_cells": len(vals), "share": sh, "median_alpha": float(np.median(vals)),
+    med = float(np.median(vals[np.isfinite(vals)])) if np.isfinite(vals).any() else np.nan
+    return {"n_cells": len(vals), "share": sh, "median_alpha": med,
             "coherent": bool(sign != 0 and sh >= share - 5e-4)}  # fmt: skip
 
 

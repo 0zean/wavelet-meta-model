@@ -466,6 +466,8 @@ def _run_rule_cell(cell: Cell, cfg: RunConfig, data: dict, root: Path, out: Path
         "cost_table": cfg.COST_TABLE if cfg.COST_MODEL == "quotes" else None,
         "asof_before_first": int(sum(c.attrs.get("asof_before_first", 0) for c in (costs or {}).values())),
         "stress_fills": int(sum(c.attrs.get("stress_fills", 0) for c in (costs or {}).values())),
+        # U28: the bar at whose close the profile's drawdown kill fired (None: never, or no kill)
+        "killed_at": None if eq.attrs.get("killed_at") is None else str(eq.attrs["killed_at"]),
     }
     row |= _u22_row(eq, data, out)
     row["calmar"] = row["ret_ann"] / abs(row["max_dd"]) if row["max_dd"] < 0 else np.nan

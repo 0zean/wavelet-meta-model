@@ -763,6 +763,36 @@ scheduled task on the i9 at 09:20, every half hour, and 16:10 ET. All forward-da
 As PLAN2's U21 with protocol v3 (overlay alpha + marginal to the core), 8 trials, the February 2018 and March
 2020 paths in the report. 1 session. Depends on U22 only.
 
+**Done when.** (status note, 2026-10-11: every criterion with its evidence; SPEC §27 describes the as-built)
+- [x] Spec registered before any G6 configuration ran; ≤ 8 trials.
+  - User decisions (2026-10-11):
+    - the headline is a region of 15 cells (VX1 / VIX > θ ∈ {1.00 … 1.10} × VIX < {20, 25, 30}), not PLAN2's point;
+    - the test is `marginal` against G2_core at k = 0.5: long SVXY carries equity beta, so alpha against zero would
+      restate the equity premium (it is reported, not tested);
+    - the target is halved before 2018-02-28 (SVXY −1× until then, −0.5× after);
+    - the 15 % drawdown kill is a permanent latch, with a `no_kill` variant.
+  - Built (not a user decision; PLAN3 says "daily"): one decision per session at the 10:00 5Min mark. On 1Day bars the
+    engine decides at the previous close, before the 16:20 settlements, so the open of day d would read day d − 2's VIX;
+    at 10:00 it reads d − 1's, as a pre-open loop would.
+  - Registered at 4d90603 (commit 5422e7c), pinning G2_core at 4208d7b. Trials 8 / 8; program 29 / 42, 4 / 5 families.
+  - MDE (`scripts/u28_g6.py power`, bars and VIX state only): Δ Sharpe 0.38 against an expected 0.17 → a DIAGNOSTIC.
+  - The status-only smoke (`scripts/u28_g6.py smoke`, 2016-01 → 2016-06) ran every variant, the 15 cells, the core,
+    the episodes and the report; looks unchanged.
+- [x] Report (`results/families/G6/report.md`): the marginal test with the matched-volatility comparison, the overlay
+  alone, the kill bars, the 15-cell specification curve, the cost curve, the account check of core + k × overlay, and
+  the February 2018, March 2020 and August 2024 paths day by day.
+- [x] Compute: 47 s against a 10-minute budget.
+- [x] Tests and lint: the full suite passes (898); ruff is clean. tests/test_u28.py has 11 tests.
+- [x] Adversarial review (one pass, before registration, no dev-window statistic read): no BREAKING or SEVERE finding.
+  Three MINORs fixed before registration (SPEC §27): the halt-day list (2018-02-06 and 2024-03-26, not 2020-03-09 /
+  03-16); the cells' statistics now on the headline's days; a kill one bar before a scheduled exit labelled `kill`.
+- **Result: G6 fails** (Δ Sharpe +0.02, p 0.40, Holm 0.62; floors pass, cells coherent).
+  - The registered 15 % kill fired on 2019-09-03, so G6 was flat for the window's last six years.
+  - Its return is 2016–2017 at −1×: the post-break slice has Sharpe −0.28. `unscaled` (SVXY as traded) Δ +0.18,
+    p 0.066; `no_kill` Δ −0.05 with a −27 % drawdown.
+  - February 2018: the loss gate flattened it on 01-29 and backwardation kept it flat through the crash; the episode
+    lost 3.3 %. Details in SPEC §27.
+
 ### U29 — Point-in-time stock universe and G5 (gated)
 
 **Goal.** Only if the user buys a survivorship-free source: `data/universe.py` with per-date membership
@@ -800,7 +830,7 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
 
 1. **Algo Trader Plus** (≈ $99/month) before U27; without real-time SIP there is no intraday paper test.
 2. **G5 data purchase** (a point-in-time universe with delisted names) before U29; otherwise G5 stays closed.
-3. **Whether to run G6** (SVXY) at all; it costs one session and 8 trials and its tail risk is not learnable
+3. **Whether to run G6** (SVXY) at all (settled: run in U28, 2026-10-11; it failed); it costs one session and 8 trials and its tail risk is not learnable
    from a one-year paper test.
 4. **`INIT_CASH` for the registered specs** ($30k proposed: above the PDT floor, so the paper account mirrors
    a tradable live account).
@@ -856,4 +886,10 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
   - 15 splits were added to G1's report after a look (K = 186). No tf_state column or the gamma sign separates G1's
     P&L; the CBOE splits restate the vol effect.
   - fastgoertzel is pinned at 0.1.9 (numpy stays 1.26).
-- U27–U31 — not started. Next: U27 with G1 (needs Algo Trader Plus), or U28 (G6) meanwhile.
+- U28 — built and run on `unit/28-g6-svxy` (2026-10-11); SPEC §27 written.
+  - G6 (long SVXY while the VIX futures curve is in contango, a 15-cell region, marginal to G2_core at k 0.5) was
+    registered at 4d90603 as a diagnostic and run once.
+  - **G6 fails:** Δ Sharpe +0.02, p 0.40. Its 15 % kill fired in September 2019; its return is the −1× SVXY of
+    2016–2017.
+  - Program verdict over G1, G2, G3, G6: G1 PASS (Holm 0.0136). Looks K = 209. Program trials 29 / 42.
+- U27, U29–U31 — not started. Next: U27 with G1 (needs Algo Trader Plus).

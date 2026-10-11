@@ -33,6 +33,9 @@ Risk layer on a new entry (profile = risk.profiles.RiskProfile), fraction of equ
 Daily loss gate: session P&L = equity[close b] / equity at the previous session's last close − 1. At ≤ −daily_loss
 every position is flattened at its symbol's next open and entries are blocked for the rest of that session (for
 daily bars, the next session: its open is the next decision). Drawdown tiers use the close-marked equity high-water mark.
+Drawdown kill (U28, profile.kill_dd): at the first close where 1 − equity / high-water mark ≥ kill_dd every position
+is flattened at its symbol's next open and every later entry is blocked, to the end of the span (`attrs["killed_at"]`,
+the log's `kill` column); a latch, so the cash yield's slow recovery never re-arms it.
 Costs: every fill (entry, exit, trim, flatten) pays its one-way cost c adversely on the fill price: SLIPPAGE_PCT
 without `costs`, else the symbol's per-bar cost for the kind of fill (risk.costs.fill_costs, cfg.COST_MODEL): `open`
 for entries, gap exits, gate flattening and trims, `intra` for intrabar barrier exits, `close` for vertical exits.
@@ -297,10 +300,11 @@ def simulate_portfolio(
     prev_eq, hwm, sess_start = cash, cash, cash
     flatten: set[str] = set()
     blocked_session = None
+    killed_at = None  # U28: the bar at whose close the drawdown kill fired
     turnover, pos_bars, pos_sum, held_bars = 0.0, 0, 0.0, 0
     notional, cost_cash = 0.0, 0.0  # Σ traded notional at the fills' reference prices and Σ one-way costs, in cash
     trades: list[dict] = []
-    log = {k: np.zeros(n) for k in ("gross", "net", "long", "short", "count", "max_pos", "dd_mult", "gate")}
+    log = {k: np.zeros(n) for k in ("gross", "net", "long", "short", "count", "max_pos", "dd_mult", "gate", "kill")}
     open_info: dict[str, dict] = {}  # per open lot: entry details for the trade record
     cap = profile.position_cap
     tol = 1.0 + profile.drift_tol
@@ -453,7 +457,7 @@ def simulate_portfolio(
         # positions after the entries' fill, as decided (a freed position has exited by then)
         held = [expo[s] * scale[s] for s in expo if scale[s] > 0 and s not in freed]
         cand = []
-        blocked = blocked_session is not None and session[b] == blocked_session
+        blocked = (blocked_session is not None and session[b] == blocked_session) or killed_at is not None
         for i in entries_at.get(b, ()):
             s = b_sym[i]
             if ((s in held_dec or b_entry_pos[i] <= busy_until[s]) and s not in freed) or blocked:
@@ -485,13 +489,15 @@ def simulate_portfolio(
         for s in here:
             lt = lots.get(s)
             if lt is not None and b_exit_b[lt.bet] == b and b_phase[lt.bet] == 0 and s not in rolls:
-                close_lot(s, b, exit_px(lt.bet, s, b), "barrier", "open")
+                # U28: a kill fired at the previous close exits it here anyway (same fill): label it so
+                close_lot(s, b, exit_px(lt.bet, s, b), "kill" if killed_at is not None and s in flatten else "barrier",
+                          "open")  # fmt: skip
         # (2) gate flattening at this symbol's next open
         for s in here:
             if s in flatten:
                 flatten.discard(s)
                 if s in lots:
-                    close_lot(s, b, px_open(s, b), "gate", "open")
+                    close_lot(s, b, px_open(s, b), "gate" if killed_at is None else "kill", "open")
                     busy_until[s] = int(np.searchsorted(loc[s], b))
         # (3) drift trims (a position that already gapped out at this open has nothing left to trim)
         for s in [s for s in scale if scale[s] < 1.0 and s in lots and s not in rolls]:
@@ -548,6 +554,12 @@ def simulate_portfolio(
                 blocked_session = session[b + 1] if b + 1 < n else None
             else:
                 blocked_session = session[b]
+        if profile.kill_dd is not None and killed_at is None and 1.0 - equity[b] / hwm >= profile.kill_dd - 1e-12:
+            killed_at = b
+            log["kill"][b] = 1
+            flatten |= set(lots)
+        if killed_at is not None:
+            log["kill"][b] = 1
         prev_eq = equity[b]
 
     if lots:  # barrier_exits drops bets whose window runs past the data, so every lot has exited
@@ -561,6 +573,7 @@ def simulate_portfolio(
     out.attrs["auction_fallbacks"] = fallbacks
     out.attrs["cash_interest"] = interest_total
     out.attrs["cash_yield_missing_sessions"] = yield_missing
+    out.attrs["killed_at"] = None if killed_at is None else union[killed_at]
     # the per-session cost ledger (module docstring): starting equity = the previous session's last close (the
     # initial cash for the first), notional and cost paid per fill class
     sid = np.cumsum(new_session) - 1
