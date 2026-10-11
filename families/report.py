@@ -66,9 +66,11 @@ def spec_curve(result: dict, path: Path) -> Path | None:
     ax.set_xticks(range(len(pts)), [p[0] for p in pts], rotation=45, ha="right", fontsize=8)
     kind = result.get("test", {}).get("kind", "sharpe_vs_benchmark")
     ax.set_ylabel(
-        {"overlay_alpha": "alpha (ann., excess)", "marginal": "Δ Sharpe core + k·overlay vs core"}.get(
-            kind, "Sharpe (ann.)" if result.get("benchmark") == "cash" else "Δ Sharpe vs benchmark (ann.)"
-        )
+        {
+            "overlay_alpha": "alpha (ann., excess)",
+            "marginal": "Δ Sharpe core + k·overlay vs core",
+            "paired": "Δ Sharpe vs the reference",
+        }.get(kind, "Sharpe (ann.)" if result.get("benchmark") == "cash" else "Δ Sharpe vs benchmark (ann.)")
     )
     ax.set_title(f"{result['id']}: specification curve, 95 % intervals\n(headline in orange; variants reported, "
                  f"never selected; benchmark {result.get('benchmark')})", fontsize=9)  # fmt: skip
@@ -206,6 +208,45 @@ def _trade_md(result: dict) -> list[str]:
     return md
 
 
+def _refs_md(result: dict) -> list[str]:
+    """U25: the core / reference families (their cells ran in this family's batch) and, for a marginal family, the
+    account check of core + k × overlay per variant."""
+    refs = result.get("refs") or {}
+    if not refs:
+        return []
+    kind = (result.get("test") or {}).get("kind")
+    md = [f"## {'Core' if kind == 'marginal' else 'Reference'} families (run in this batch; no trial, no Holm)", ""]
+    for rid, r in refs.items():
+        reg = r.get("registered") or {}
+        w = ", ".join(f"{k} {v:.2f}" for k, v in (r.get("weights") or {}).items())
+        md.append(f"- {rid}: registered {reg.get('sha', '—')} ({reg.get('date', '—')}); {', '.join(r['instruments'])} "
+                  f"(weights {w}); benchmark {r.get('benchmark')}")  # fmt: skip
+        for lb, x in (r.get("variants") or {}).items():
+            st = x.get("stats") or {}
+            md.append(f"  - {lb}: {len(x.get('members') or [])} member cell(s); raw Sharpe {_f(st.get('sharpe'), 2)}, "
+                      f"return {_f(st.get('ret_ann'), 3, pct=True)}/yr, vol {_f(st.get('vol_ann'), 3, pct=True)}, max DD "
+                      f"{_f(st.get('max_dd'), 3, pct=True)} (booked costs, T-bill credited)")  # fmt: skip
+    md.append("")
+    pa = result.get("portfolio_account") or {}
+    if pa:
+        md += [("**Core + k × overlay on the registered account** (PLAN3 G2: overlay notional + core notional ≤ 2 × "
+                "equity at every decision; the account check applies Reg-T 2× overnight and 4× intraday at or above the "
+                "PDT floor)"), ""]  # fmt: skip
+        rows = []
+        for lb, a in pa.items():
+            bp = a.get("buying_power") or {}
+            rows.append({"variant": lb, "core": a.get("core", "—"), "k": _f(a.get("k"), 2),
+                         "max gross intraday": _f(bp.get("max_gross_intraday"), 2),
+                         "max gross overnight": _f(bp.get("max_gross_overnight"), 2),
+                         "≤ 2× (PLAN3)": _f((a.get("plan3_2x") or {}).get("ok")),
+                         "account": "tradable" if a.get("tradable") else ("not checked" if a.get("tradable") is None
+                                                                          else "NOT tradable"),
+                         "reasons": "; ".join(a.get("reasons") or []) or "—"})  # fmt: skip
+        md += [_table(rows, ["variant", "core", "k", "max gross intraday", "max gross overnight", "≤ 2× (PLAN3)",
+                             "account", "reasons"]), ""]  # fmt: skip
+    return md
+
+
 def spec_diff(result: dict, repo: Path = ROOT) -> str:
     """The registered spec vs the spec that ran: `git diff <registered sha> -- <file>` limited to the spec (empty
     when they agree; the runner refuses a differing spec, so a non-empty diff is the `registered` line only)."""
@@ -246,7 +287,17 @@ def family_markdown(result: dict) -> str:
     md.append(f"- Test: {t.get('kind', 'sharpe_vs_benchmark')}, {t.get('sided', 'two')}-sided, at cost "
               f"{t.get('at_cost', 'registered')}; excess returns: {result.get('rf', 'raw returns')}")  # fmt: skip
     pw = result.get("power")
-    if pw:
+    if pw and "mde_delta_sharpe" in pw:  # U25: the paired kinds
+        md.append(f"- MDE line: Δ Sharpe {_f(pw['mde_delta_sharpe'], 2)} at {pw.get('power', 0.8):.0%} power over "
+                  f"{pw['n_days']} days, ρ {_f(pw['rho'], 3)}, reference Sharpe {_f(pw['sharpe_ref'], 2)}, "
+                  f"{pw['families']} families; expected {_f(pw['expected_delta_sharpe'], 2)} → "
+                  f"{'a DIAGNOSTIC (below its MDE)' if pw.get('diagnostic') else 'a test'}")  # fmt: skip
+        pr = result.get("power_realized")
+        if pr:
+            md.append(f"- MDE at the realized ρ {_f(pr['rho'], 3)} and reference Sharpe {_f(pr['sharpe_ref'], 2)} over "
+                      f"{pr['n_days']} days: Δ Sharpe {_f(pr['mde_delta_sharpe'], 2)} (reported; the registered line "
+                      "is the one above)")  # fmt: skip
+    elif pw:
         md.append(f"- MDE line: {_f(pw['mde_alpha_bp_per_day'], 2)} bp/day at {pw.get('power', 0.8):.0%} power over "
                   f"{pw['n_days']} days, vol {pw['vol_ann']:.1%}, {pw['families']} families; expected "
                   f"{_f(pw['expected_alpha_bp_per_day'], 2)} bp/day → "
@@ -286,6 +337,21 @@ def family_markdown(result: dict) -> str:
                   f"{_f(c.get('dd_core'), 3, pct=True)} (difference {_f(dd.get('value'), 3, pct=True)}, interval "
                   f"{_f((dd.get('ci') or [None, None])[0], 3, pct=True)} … "
                   f"{_f((dd.get('ci') or [None, None])[1], 3, pct=True)})")  # fmt: skip
+        mv = c.get("matched_vol") or {}
+        if mv.get("scale") is not None and np.isfinite(mv.get("scale", np.nan)):
+            md.append(f"- Matched volatility: the core levered ×{_f(mv['scale'], 2)} to the portfolio's "
+                      f"{_f(mv.get('vol_ann'), 3, pct=True)} earns {_f(mv['matched_core_ret_ann'], 3, pct=True)}/yr "
+                      f"(max DD {_f(mv['matched_core_dd'], 3, pct=True)}) vs the portfolio's "
+                      f"{_f(mv['portfolio_ret_ann'], 3, pct=True)}/yr ({_f(mv['portfolio_dd'], 3, pct=True)}); "
+                      f"overlay–core correlation {_f(c.get('corr'), 3)}")  # fmt: skip
+    elif kind == "paired":
+        md.append(f"- Sharpe {_f(c['sharpe'], 2)} vs the reference's {_f(c.get('ref_sharpe'), 2)} on {c['n_days']} days "
+                  f"(excess returns, both at cost {_verdict_cost(result)}): difference {_f(c['delta_ann'], 3)} "
+                  f"(interval {_f(c['ci_ann'][0], 3)} … {_f(c['ci_ann'][1], 3)}), Ledoit–Wolf {c.get('sided')}-sided "
+                  f"p = {_f(c['p'], 4)}; net return {_f(c.get('ret_ann'), 3, pct=True)}/yr vs "
+                  f"{_f(c.get('ref_ret_ann'), 3, pct=True)} (ratio {_f(c.get('ret_ratio'), 3)}); max DD "
+                  f"{_f(c.get('dd'), 3, pct=True)} vs {_f(c.get('ref_dd'), 3, pct=True)}; the streams differ on "
+                  f"{c.get('days_differ')} days, correlation {_f(c.get('corr'), 3)}")  # fmt: skip
     else:
         md.append(f"- Sharpe {_f(c['sharpe'], 2)} vs benchmark {_f(c['bench_sharpe'], 2)} on {c['n_days']} days "
                   f"(excess returns); difference {_f(c['delta_ann'], 2)} (interval {_f(c['ci_ann'][0], 2)} … "
@@ -383,6 +449,7 @@ def family_markdown(result: dict) -> str:
             for kk, vv in d.items():
                 md.append(f"- {k}: {kk}: {vv}")
         md.append("")
+    md += _refs_md(result)
     md += _region_md(result)
     md += _trade_md(result)
     md += ["## Specification curve (reported; no variant is selected)", "", "![spec curve](spec_curve.png)", ""]
@@ -393,16 +460,17 @@ def family_markdown(result: dict) -> str:
             continue
         st = x["stats"]
         rows.append({"variant": k, "status": "ok", "start": x.get("start"), "days": x["compare"]["n_days"],
-                     "sharpe": _f(x["compare"]["sharpe"], 2), "Δ vs bench": _f(x["compare"]["delta_ann"], 2),
+                     "sharpe": _f(x["compare"]["sharpe"], 2), "statistic": _f(x["compare"]["delta_ann"], 2),
                      "Δ on headline days": "—" if k == HEADLINE else _f(x.get("delta_common"), 2),
                      "CI": f"{_f(x['compare']['ci_ann'][0], 2)} … {_f(x['compare']['ci_ann'][1], 2)}",
                      "p": _f(x["compare"]["p"], 4), "net ret": _f(st["ret_ann"], 3, pct=True),
                      "max dd": _f(st["max_dd"], 3, pct=True), "floors": _f(x["floors"]["ok"])})  # fmt: skip
-    cols = ["variant", "status", "start", "days", "sharpe", "Δ vs bench", "CI", "p", "Δ on headline days", "net ret",
+    cols = ["variant", "status", "start", "days", "sharpe", "statistic", "CI", "p", "Δ on headline days", "net ret",
             "max dd", "floors"]  # fmt: skip
     md += [_table(rows, cols), ""]
-    note = ("Coherence reads each variant's Δ on the days it shares with the headline (column 'Δ on headline days'); "
-            "the curve and the p-values are each variant's own sample.")  # fmt: skip
+    note = ("`statistic` is the headline test's (Δ Sharpe vs the benchmark, the alpha, or the Δ Sharpe vs the core / "
+            "reference). Coherence reads each variant's statistic on the days it shares with the headline (column "
+            "'Δ on headline days'); the curve and the p-values are each variant's own sample.")  # fmt: skip
     md += [note, ""]
     if result.get("skipped_segments"):
         md += ["**Skipped segments** (state could not be fit: no events there, flat days): "

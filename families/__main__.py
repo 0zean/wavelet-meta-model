@@ -6,6 +6,7 @@ Family-test CLI (SPEC §17, PLAN2 U17).
     uv run python -m families summary [--out O]               # program verdict over every family result
     uv run python -m families look <label> <n> [--note ...]   # append n looks to families/looks.jsonl (SPEC §22)
     uv run python -m families power --n-days 2400 --vol-ann 0.08 --families 4   # the MDE line (families/power.py)
+    uv run python -m families registry G1 [--freeze-date D]   # a passing claim → families/registry.yaml (U25)
 
 `run` refuses an unregistered or modified spec and a run past the family's TRIAL_BUDGET or the program caps
 (families/program.yaml). Its cells are stage F (rule cells); its ledger rows are one per variant (the counted trials).
@@ -46,6 +47,9 @@ def main() -> None:
     lk.add_argument("label")
     lk.add_argument("n", type=int)
     lk.add_argument("--note", default="")
+    rg = sub.add_parser("registry", help="record a passing claim in families/registry.yaml (families/registry.py)")
+    rg.add_argument("family")
+    rg.add_argument("--freeze-date", default=None)
     pw = sub.add_parser("power", help="the minimum detectable alpha of an overlay test (families/power.py)")
     pw.add_argument("rest", nargs=argparse.REMAINDER)
     a, extra = ap.parse_known_args()  # `power` passes its own flags through (families/power.py parses them)
@@ -69,6 +73,12 @@ def main() -> None:
 
         row = record_look(a.label, a.n, a.note)
         print(f"[FAM]  look recorded: {row['label']} n={row['n']}; K = {looks_total()}")
+    elif a.cmd == "registry":
+        from families.registry import REGISTRY, add_entry
+
+        e = add_entry(a.family, a.out, freeze_date=a.freeze_date)
+        print(f"[FAM]  {a.family} recorded in {REGISTRY}: {len(e['members'])} member cell(s), code "
+              f"{str(e['code_hash'])[:12]}, frozen {e['freeze_date']}")  # fmt: skip
     elif a.cmd == "power":
         from families.power import main as power_main
 

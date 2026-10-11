@@ -34,8 +34,18 @@ and the config's SIZE is `vol_cap` (so the notional is SIZE · |target| = |mean|
 σ* / √252 and σ̂_d = features.kernels.session_rv_sigma over the `norm_sessions` previous sessions (known at the open).
 R₀ has no vol target (PLAN3 §3 G1: it would cut the profitable weeks).
 
+Gate (U25, G3: a state filter known at the open, per instrument; null in R₀). The target is multiplied, per session, by
+    {kind: vol_quantile, below: q}   0 when the previous session's σ of 5Min log returns ranks below q among the
+                                     `sessions` (252) sessions ending with it (features.kernels.prior_rank of
+                                     session_sigma: G1's vol_quintile split, per instrument), else 1
+    {kind: vol_size}                 ⌈5 · rank⌉ / 5: 0.2 in the bottom quintile … 1 in the top (size ∝ the quintile)
+    {kind: gamma, min: m}            0 when the lag-1 autocorrelation of 5Min returns over the `sessions` (5) previous
+                                     sessions is below m (the revealed-gamma proxy), else 1
+and is 1 while its state is undefined (the first `sessions` sessions): the gate never removes a session it cannot
+read. A gated session holds no position, so it trades nothing and pays nothing.
+
     cells(df, X, cfg)   every cell's position at the events X.index (the specification curve's input)
-    rule(df, X, cfg)    (sign, |target|) of the target: the cells' mean position (× the vol scale)
+    rule(df, X, cfg)    (sign, |target|) of the target: the cells' mean position (× the vol scale × the gate)
 """
 
 from typing import ClassVar
@@ -53,6 +63,9 @@ ESTIMATORS = ("band", "rmedv", "sgv", "modwt")
 SESSION_BARS = 78  # 5Min bars in a full session: a MODWT window must fit in one
 VEL_MODES = ("sar", "flat_inside")
 CADENCES = (5, 15, 30, 60)
+GATES = {"vol_quantile": {"kind", "below", "sessions"}, "vol_size": {"kind", "sessions"},
+         "gamma": {"kind", "min", "sessions"}}  # fmt: skip
+GATE_SESSIONS = {"vol_quantile": 252, "vol_size": 252, "gamma": 5}  # the state's trailing window (PLAN3 §3 G3)
 
 
 @numba.njit(cache=True)
@@ -113,6 +126,7 @@ class RegionTrend(MechanismPrimary):
         "modwt_filter": "db1",
         "vol_target": None,
         "vol_cap": 2.0,
+        "gate": None,
     }
 
     def validate(self):
@@ -163,6 +177,20 @@ class RegionTrend(MechanismPrimary):
         vt = p["vol_target"]
         _check(self.name, vt is None or (_num(vt) and vt > 0), "vol_target must be null or an annual σ* > 0")
         _check(self.name, _num(p["vol_cap"]) and p["vol_cap"] > 0, "vol_cap must be a number > 0")
+        g = p["gate"]
+        if g is not None:
+            _check(self.name, isinstance(g, dict) and g.get("kind") in GATES,
+                   f"gate must be null or a mapping with kind in {sorted(GATES)}")  # fmt: skip
+            extra = set(g) - GATES[g["kind"]]
+            _check(
+                self.name, not extra, f"gate kind {g['kind']!r} takes {sorted(GATES[g['kind']])}; got {sorted(extra)}"
+            )
+            n = g.get("sessions", GATE_SESSIONS[g["kind"]])
+            _check(self.name, isinstance(n, int) and not isinstance(n, bool) and n >= 2, "gate.sessions must be >= 2")
+            if g["kind"] == "vol_quantile":
+                _check(self.name, _num(g.get("below")) and 0 < g["below"] < 1, "gate.below must be in (0, 1)")
+            if g["kind"] == "gamma":
+                _check(self.name, _num(g.get("min", 0.0)) and -1 <= g.get("min", 0.0) <= 1, "gate.min in [-1, 1]")
 
     # ── the schedule ────────────────────────────────────────────────────────
 
@@ -287,8 +315,34 @@ class RegionTrend(MechanismPrimary):
             m = np.minimum(cap, p["vol_target"] / np.sqrt(252.0) / sig) / cap
         return np.where(np.isfinite(m), m, 0.0)
 
+    def gate_scale(self, df: pd.DataFrame) -> np.ndarray:
+        """Per bar: the gate's multiplier of its session (module docstring), 1 without a gate or while the gate's
+        state is undefined."""
+        g = self.params["gate"]
+        if g is None:
+            return np.ones(len(df))
+        from features.kernels import prior_lag1_autocorr, prior_rank, session_layout, session_sigma
+
+        sess = session_layout(df.index, 5)[0]
+        c = df["close"].to_numpy(dtype=float)
+        n = g.get("sessions", GATE_SESSIONS[g["kind"]])
+        if g["kind"] == "gamma":
+            ac = prior_lag1_autocorr(c, sess, n)
+            m = np.where(np.isnan(ac), 1.0, np.where(ac < g.get("min", 0.0), 0.0, 1.0))
+        else:
+            rank = prior_rank(session_sigma(c, sess), n)
+            if g["kind"] == "vol_quantile":
+                m = np.where(np.isnan(rank), 1.0, np.where(rank < g["below"], 0.0, 1.0))
+            else:  # vol_size: the quintile / 5
+                m = np.where(np.isnan(rank), 1.0, np.ceil(np.nan_to_num(rank) * 5.0) / 5.0)
+        return m[sess]
+
+    def target_scale(self, df: pd.DataFrame) -> np.ndarray:
+        """Per bar: the multiplier of the cells' mean, the vol scale × the gate (1 in R₀)."""
+        return self.vol_scale(df) * self.gate_scale(df)
+
     def rule(self, df, X, cfg):
         target = self.cells(df, X, cfg).to_numpy().mean(axis=1)
-        if self.params["vol_target"] is not None:
-            target = target * self.vol_scale(df)[df.index.get_indexer(X.index)]
+        if self.params["vol_target"] is not None or self.params["gate"] is not None:
+            target = target * self.target_scale(df)[df.index.get_indexer(X.index)]
         return np.sign(target), np.abs(target)

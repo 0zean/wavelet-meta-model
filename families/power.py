@@ -11,6 +11,10 @@ innovations: the fat-tailed, clustered daily returns of a long-volatility overla
 `families.stats.mean_test`. A family spec records the MDE it was given (`power.mde_alpha_bp_per_day`); the spec
 loader refuses one that disagrees with `mde_alpha` by more than 10 %, and a family whose expected magnitude is below
 its MDE must declare itself a diagnostic (`power.diagnostic: true`).
+
+U25: `mde_delta_sharpe` is the same line for the paired Sharpe-difference kinds (`marginal`, `paired`): the minimum
+detectable annualized Δ Sharpe from the Jobson–Korkie / Memmel variance at the streams' correlation ρ; such a spec
+records `mde_delta_sharpe` and `expected_delta_sharpe` with n_days, rho, sharpe_ref and families.
 """
 
 import argparse
@@ -38,6 +42,39 @@ def mde_alpha(
         "mde_bp_per_day": float(mde * 1e4), "mde_ann": float(mde * TRADING_DAYS),
         "mde_sharpe_ann": float(mde / (vol_ann / np.sqrt(TRADING_DAYS)) * np.sqrt(TRADING_DAYS)),
     }  # fmt: skip
+
+
+def mde_delta_sharpe(
+    n_days: int,
+    rho: float,
+    sharpe_ref: float,
+    *,
+    alpha: float = 0.05,
+    power: float = 0.8,
+    families: int = 1,
+    sided: str = "one",
+) -> dict:
+    """
+    Minimum detectable annualized Sharpe difference of a paired test (U25: `marginal`, core + k·overlay vs the core;
+    `paired`, a gated stream vs its ungated reference), from the asymptotic variance of the difference of two Sharpe
+    ratios on the same days (Jobson & Korkie 1981 as corrected by Memmel 2003; iid normal returns):
+    Var(ŜR_a − ŜR_b) = [2(1 − ρ) + ½(SR_a² + SR_b² − 2 SR_a SR_b ρ²)] / n, per-day Sharpes, evaluated at the null
+    SR_a = SR_b = `sharpe_ref` (annualized) — i.e. [2(1 − ρ) + SR²(1 − ρ²)] / n. ρ is the correlation of the two daily
+    streams, which a family states from its construction (core + overlay: σ_core / σ_portfolio for an overlay
+    uncorrelated with the core; a gate: √(the share of the reference's variance on the days it keeps)). Fat tails and
+    clustering widen the Ledoit–Wolf test's interval beyond this, as they do the alpha test's: a lower bound on the MDE.
+    """
+    if n_days < 2 or not -1 < rho < 1 or not 0 < alpha < 1 or not 0 < power < 1 or families < 1:
+        raise ValueError("need n_days >= 2, -1 < rho < 1, 0 < alpha, power < 1, families >= 1")
+    s = sharpe_ref / np.sqrt(TRADING_DAYS)
+    var = (2.0 * (1.0 - rho) + s * s * (1.0 - rho * rho)) / n_days
+    se_ann = float(np.sqrt(var * TRADING_DAYS))
+    a = alpha / families
+    z_a = norm.ppf(1 - a) if sided == "one" else norm.ppf(1 - a / 2)
+    z_p = norm.ppf(power)
+    return {"n_days": int(n_days), "rho": float(rho), "sharpe_ref": float(sharpe_ref), "alpha": alpha, "power": power,
+            "families": families, "sided": sided, "se_delta_sharpe": se_ann, "z_alpha": float(z_a),
+            "z_power": float(z_p), "mde_delta_sharpe": float((z_a + z_p) * se_ann)}  # fmt: skip
 
 
 def garch_t(n: int, vol_daily: float, rng, nu: float = 5.0, a: float = 0.05, b: float = 0.90) -> np.ndarray:

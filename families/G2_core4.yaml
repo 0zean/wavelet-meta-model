@@ -1,0 +1,20 @@
+# G2_core4 — G2's variant core (PLAN3 §3 G2 variant "core = F1 on SPY/QQQ/IWM/DIA", U25): F1's registered headline on
+# its own four instruments with F1's equal-risk weights (families/F1.yaml at e19b44f), re-run under U22's engine as
+# G2_core is. A CORE, not a hypothesis family (G2_core.yaml's header: run in G2's batch, no trial, no Holm).
+id: G2_core4
+mechanism: >-
+  Variance is highly predictable at a one-month horizon while the equity premium is not proportionally higher when
+  variance is high (Moreira & Muir 2017); scaling index exposure by sigma*/sigma_hat, capped at 1, cuts drawdowns at
+  about the same return. F1 on its four index ETFs, the core of one of G2's variants.
+instruments: [SPY, QQQ, IWM, DIA]
+timeframe: 1Day
+headline:
+  primary: {name: vol_target, params: {sigma_target: 0.15, window: 21, band: 0.10, vol_source: rv}}
+  cost_model: quotes
+  risk_profile: none
+  overrides: {INIT_CASH: 30000, FILL_AUCTION: print, COST_TABLE: asof, CASH_YIELD: tbill, SESSION_CLOCK: calendar,
+              STRESS_MULT: 1.0}
+benchmark: buy_and_hold_er
+floors: {min_net_ret_vs_benchmark: 0.8, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 1
