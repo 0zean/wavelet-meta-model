@@ -255,9 +255,16 @@ def test_an_engine_region_runs_every_cell_and_reads_coherence_on_the_marginal_st
         h = hashes[cells[0].spec_json()]
         for ck in ("registered", "1.0"):
             cell = _by_symbol(cells, [h], root, None if ck == "registered" else float(ck))["SVXY"]
-            j = pd.concat([T.excess(cell, rf).rename("a"), T.excess(core, rf).rename("c")], axis=1).dropna()
+            # on the headline's days: a cell is flat (zero excess) before its own live start
+            hd = s[HEADLINE].dropna().index
+            a = T.excess(cell, rf).reindex(hd)
+            a[hd < cell.index.min()] = 0.0
+            assert a.notna().all()
+            j = pd.concat([a.rename("a"), T.excess(core, rf).rename("c")], axis=1).dropna()
             want = T.sharpe_ann(j["c"] + 0.5 * j["a"]) - T.sharpe_ann(j["c"])
-            assert reg["cells"][f"SVXY:{name}"][ck]["delta_sharpe"] == pytest.approx(want, rel=1e-9, abs=1e-12)
+            st = reg["cells"][f"SVXY:{name}"][ck]
+            assert st["delta_sharpe"] == pytest.approx(want, rel=1e-9, abs=1e-12)
+            assert st["n_days"] == len(hd)
         assert _daily_costs(root, h) is not None
         vals.append(reg["cells"][f"SVXY:{name}"]["registered"]["delta_sharpe"])
     coh = res["evaluation"]["variants"][HEADLINE]["cells"]
@@ -337,3 +344,55 @@ def test_g6_is_registered_as_the_user_chose():
     assert {e["label"] for e in fam.episodes} >= {"feb2018", "mar2020"}
     prog = yaml.safe_load((ROOT / "families" / "program.yaml").read_text(encoding="utf-8"))
     assert "G6" in prog["families"]
+
+
+class CrashSource(VixSource):
+    """VixSource with a state that is always fully long (VX1 / VIX 1.1, VIX 15) and SVXY falling 45 % inside the
+    09:55 bar of CRASH_DAY: the kill fires at that close, one bar before the position's scheduled 10:00 exit."""
+
+    CRASH_DAY = pd.Timestamp("2022-02-15")
+
+    def __init__(self):
+        super().__init__()
+        days = pd.bdate_range(self.START, self.END, inclusive="left")
+        self._exo = {"VIX": _series(days, np.full(len(days), 15.0)), "VX1_VIX": _series(days, np.full(len(days), 1.1)),
+                     "VX2_VX1": _series(days, np.full(len(days), 1.05))}  # fmt: skip
+
+    def _full(self, symbol):
+        df = super()._full(symbol)
+        if symbol != "SVXY" or getattr(self, "_crashed", False):
+            return df
+        df = df.copy()
+        m = df.index >= (self.CRASH_DAY + pd.Timedelta("09:55:00")).tz_localize(NY)
+        first = np.flatnonzero(m)[0]
+        cols = ["open", "high", "low", "close"]
+        df.loc[m, cols] *= 0.55
+        df.iloc[first, df.columns.get_indexer(["open", "high"])] /= 0.55  # the 09:55 bar opens before the drop
+        self._cache[symbol], self._crashed = df, True
+        return df
+
+
+def test_a_kill_one_bar_before_the_scheduled_exit_is_labelled_kill_and_latches(tmp_path, monkeypatch):
+    from experiments import ledger as L
+    from families.run import _read, run_family
+
+    docs = {"C1": _region_doc(id="C1", variants=[]), "G6": _g6_doc()}
+    for k, d in docs.items():
+        (tmp_path / f"{k}.yaml").write_text(yaml.safe_dump(d, sort_keys=False), encoding="utf-8")
+    prog = tmp_path / "program.yaml"
+    prog.write_text("program: P\nfamilies: [G6]\nmax_families: 5\nmax_trials: 42\n", encoding="utf-8")
+    res = run_family(tmp_path / "G6.yaml", ledger=L.Ledger(tmp_path / "ledger.jsonl"), root=tmp_path / "root",
+                     out_dir=tmp_path / "out", source=CrashSource(), repo=tmp_path, check_registration=False,
+                     program=prog, quasi=False)  # fmt: skip
+    h = res["members"][HEADLINE][0]
+    k = pd.Timestamp(res["kill"][HEADLINE][h[:16]]).tz_convert(NY)
+    assert k == (CrashSource.CRASH_DAY + pd.Timedelta("09:55:00")).tz_localize(NY)
+    tr = _read(tmp_path / "root", h, "trades.csv")
+    last = tr.iloc[-1]
+    assert last["exit_reason"] == "kill"
+    assert pd.Timestamp(last["exit_time"]).tz_convert(NY) == k + pd.Timedelta(minutes=5)
+    assert (pd.to_datetime(tr["entry_time"], utc=True) < pd.Timestamp(last["exit_time"])).all()  # no later entry
+    # no_kill keeps trading after the crash
+    h2 = res["members"]["no_kill"][0]
+    tr2 = _read(tmp_path / "root", h2, "trades.csv")
+    assert (pd.to_datetime(tr2["entry_time"], utc=True) > pd.Timestamp(last["exit_time"])).any()

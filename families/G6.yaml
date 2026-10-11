@@ -13,8 +13,8 @@
 #   bar's open, held to the next session's 10:00 where the next target replaces it; the roll trades only the change).
 #   The daily engine decides at the previous close, before the 16:20 CBOE / CFE settlements, so on 1Day bars the open
 #   of day d would read day d − 2's VIX; at 10:00 the decision reads day d − 1's, as a pre-open forward loop would, and
-#   10:00 is a mark of U27's half-hour loop. SVXY has its 09:55 and 10:00 bars on every session but halts
-#   (2018-02-06, 2020-03-09, 2020-03-16: no decision, flat that session).
+#   10:00 is a mark of U27's half-hour loop. SVXY has its 09:55 and 10:00 bars on every session of 2016-01 →
+#   2025-09 but two (2018-02-06: no bar before 10:00; 2024-03-26: no 10:00 bar): no decision, flat that session.
 # - State: the vix_term group (VIX close, VX1 / VIX, VX2 / VX1; no per-fold GARCH, so no 500-session warm-up).
 # - Test `marginal` (the user's choice): long SVXY carries equity beta, so its mean excess return against zero would
 #   largely restate the equity premium; the claim tested is that it improves G2's core. Paired Ledoit–Wolf Sharpe

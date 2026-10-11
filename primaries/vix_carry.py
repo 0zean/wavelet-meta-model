@@ -14,9 +14,9 @@ Decision (one per session): the close of the bar before `decision` (default 10:0
 `decision` bar's open and held to the same mark of the next session (time exit "HH:MM", exit_session 1), where the
 next decision's target replaces it — the portfolio simulator's roll trades only the change (an unchanged target holds
 its shares, untraded). The state is the vix_term group (features/state.py) as of the decision bar: the CBOE closes and
-CFE settlements of the previous session (available 16:20 ET). A session without its decision bar (a halt: SVXY on
-2018-02-06, 2020-03-09, 2020-03-16) has no decision: the held position exits at the first bar at or after the mark
-and the session stays flat. A NaN state drops the event (wfo.rule_pass), with the same effect.
+CFE settlements of the previous session (available 16:20 ET). A session without its decision bar (SVXY 2016-01 →
+2025-09: 2018-02-06, no bar before 10:00; 2024-03-26, no 10:00 bar) has no decision: the held position exits at the
+first bar at or after the mark and the session stays flat. A NaN state drops the event (wfo.rule_pass), with the same effect.
 
 The specification curve runs every cell as its own engine cell (`cell_params`; families/run.py `engine_cells`, U28),
 not by a replica: the positions are held overnight, which wfo.position_backtest does not model.

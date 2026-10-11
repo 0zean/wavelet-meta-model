@@ -489,7 +489,9 @@ def simulate_portfolio(
         for s in here:
             lt = lots.get(s)
             if lt is not None and b_exit_b[lt.bet] == b and b_phase[lt.bet] == 0 and s not in rolls:
-                close_lot(s, b, exit_px(lt.bet, s, b), "barrier", "open")
+                # U28: a kill fired at the previous close exits it here anyway (same fill): label it so
+                close_lot(s, b, exit_px(lt.bet, s, b), "kill" if killed_at is not None and s in flatten else "barrier",
+                          "open")  # fmt: skip
         # (2) gate flattening at this symbol's next open
         for s in here:
             if s in flatten:

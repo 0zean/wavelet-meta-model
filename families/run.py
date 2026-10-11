@@ -1072,7 +1072,10 @@ def engine_region(fam, ecells: dict[str, list], rows_by_hash: dict, hashes: dict
     cell vs the core on their common days (the core as the headline reads it: `refs_at(column)`); the region is the
     headline's stream. The cells are engine runs, not a replica, so there is no parity to check (`parity_ok` True,
     `method` "engine"). `statistic` names the coherence statistic (`delta_sharpe` under a marginal test, else
-    `alpha_bp`). A cell that did not complete is listed in `status` and has no entry (coherence counts it against).
+    `alpha_bp`). Every statistic is on the headline's days: a cell's stream starts at its own first sided event (its
+    live start, which a tighter cell reaches later), and before it the cell is flat, so its excess return there is 0
+    (review MINOR: otherwise a cell's Δ and the headline's would cover different spans). A cell that did not complete
+    is listed in `status` and has no entry (coherence counts it against).
     """
     from families.stats import mean_ci_nw, sharpe_ann
 
@@ -1084,8 +1087,15 @@ def engine_region(fam, ecells: dict[str, list], rows_by_hash: dict, hashes: dict
                          "of the headline) and re-priced from its cost ledger at each column; the region is the "
                          "headline stream"}  # fmt: skip
 
-    def stat(r: pd.Series, core: pd.Series | None) -> dict:
+    days = T.day_index(curve["registered"][HEADLINE][0]).index
+
+    def on_headline_days(r: pd.Series) -> pd.Series:
         x = T.excess(r, rf)
+        early = days[days < x.index.min()] if len(x) else days
+        return pd.concat([pd.Series(0.0, index=early), x]).reindex(days).dropna()
+
+    def stat(r: pd.Series, core: pd.Series | None, headline: bool = False) -> dict:
+        x = T.excess(r, rf) if headline else on_headline_days(r)
         mm, lo, hi = mean_ci_nw(x.to_numpy())
         s = {"alpha_bp": mm * 1e4, "ci_bp": [lo * 1e4, hi * 1e4], "sharpe": sharpe_ann(x), "n_days": len(x)}
         if core is not None:
@@ -1107,7 +1117,7 @@ def engine_region(fam, ecells: dict[str, list], rows_by_hash: dict, hashes: dict
                 out["cells"].setdefault(f"{sym}:{name}", {})[ck] = stat(r, core)
             out["pooled_cells"].setdefault(name, {})[ck] = stat(p["stream"], core)
         if per.get(HEADLINE) is not None:
-            out["region"].setdefault("pooled", {})[ck] = stat(per[HEADLINE][0], core)
+            out["region"].setdefault("pooled", {})[ck] = stat(per[HEADLINE][0], core, headline=True)
     return out
 
 
