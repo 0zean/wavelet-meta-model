@@ -401,7 +401,7 @@ def test_marginal_reproduces_the_paired_sharpe_test_and_excess_returns_tilt_the_
     a = pd.Series(core.to_numpy() * 0.5 + rng.normal(3e-4, 0.006, 1000), index=d)
     overlay = a - core  # core + 1 × overlay = a
     test = {"kind": "marginal", "sided": "one", "block_days": 21, "n_boot": 499, "alpha": 0.05, "seed": 0}
-    c = T.compare(overlay, core, "cash", test, rf=None, core=core, k=1.0)
+    c = T.compare(overlay, core, "cash", test, rf=None, ref=core, k=1.0)
     ref = sharpe_test(a.to_numpy(), core.to_numpy(), block=21, n_boot=499, seed=0, sided="one")
     assert c["delta_ann"] == pytest.approx(ref["delta_ann"]) and c["p"] == ref["p"]
     assert c["portfolio_sharpe"] == pytest.approx(T.sharpe_ann(a)) and "dd_difference" in c
@@ -473,8 +473,16 @@ def test_spec_v3_keys_power_core_account_and_aliases():
         _doc(test={"kind": "overlay_alpha"}, power={**power, "expected_alpha_bp_per_day": 1.0, "diagnostic": True})
     )
     assert diag.power["diagnostic"]
+    from families.power import mde_delta_sharpe
+
+    sp = {"n_days": 2400, "rho": 0.85, "sharpe_ref": 0.7, "families": 4,
+          "mde_delta_sharpe": round(mde_delta_sharpe(2400, 0.85, 0.7, families=4)["mde_delta_sharpe"], 3),
+          "expected_delta_sharpe": 0.45, "diagnostic": True}  # fmt: skip
     with pytest.raises(ValueError, match="needs core"):
-        parse(_doc(test={"kind": "marginal"}, power=power))
+        parse(_doc(test={"kind": "marginal"}, power=sp))
+    with pytest.raises(ValueError, match="takes"):  # the alpha line is not a paired kind's
+        parse(_doc(test={"kind": "marginal"}, power=power, core={"family": "F1"}))
+    power = sp
     marg = parse(_doc(test={"kind": "marginal"}, power=power, core={"family": "F1", "k": 1.0},
                       variants=[{"label": "k2", "core.k": 2.0}, {"label": "vix20", "primary.params.vix_max": 20}]))  # fmt: skip
     assert marg.variants[1].core == {"family": "F1", "k": 2.0} and marg.variants[2].core == {"family": "F1", "k": 1.0}

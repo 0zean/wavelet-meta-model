@@ -1,0 +1,70 @@
+# G2 — vol-managed core plus the G1 overlay (PLAN3 §3 G2, U25): the portfolio claim. The overlay is G1's registered
+# headline R₀ copied exactly (families/G1.yaml at c168961; tests/test_u25.py pins G2's headline cells to G1's); the core
+# is families/G2_core.yaml (F1's headline on SPY / QQQ 50/50 under U22's engine), its cells run in G2's batch.
+# Choices made at registration (U25), after G1's U24 result (alpha 2.09 bp/day at 1.0 bp, cost-bound) was read:
+# - Test `marginal`: the paired Ledoit–Wolf Sharpe difference of core + k × overlay vs the core on their common days,
+#   one-sided, at k = 1 (overlay notional = core notional), excess returns; the overlay at a 1.0 bp round trip (as G1),
+#   the core at its booked costs (daily auction-print fills; the cost curve re-prices the overlay only).
+# - Floors (PLAN3 §3 G2): the overlay's net excess return ≥ 3 %/yr at the registered cost; max DD(core + overlay) no
+#   deeper than max DD(core) (`max_dd_vs_core: 1.0`); gross edge ≥ 2 × the cost per round trip (PLAN3 §4.4, as G1).
+# - Coherence over the five variants (§17): the share with the headline's sign ≥ 2/3 and the median variant's floors.
+# - Variants (5; PLAN3 lists 5): k 0.5 and 2; core = the plain buy-and-hold mix (G2_core's benchmark: SPY / QQQ 50/50
+#   rebalanced daily, costless — it never trades, so it pays nothing); core = F1 on SPY / QQQ / IWM / DIA with F1's
+#   equal-risk weights (families/G2_core4.yaml); the overlay vol-targeted at 10 % (G1's `vol_target` variant). k = 2 puts
+#   up to 3× equity at risk intraday: above PLAN3's 2× line, inside the 4× day-trading buying power of a margin account
+#   above the PDT floor; the report's account table shows both.
+# - Power (PLAN3 §4.5; families.power.mde_delta_sharpe, Jobson–Korkie / Memmel): n 2,400 days, ρ(core + overlay, core)
+#   0.86 = σ_core / σ_portfolio for an uncorrelated overlay (σ_core 13.5 %: the 50/50 index mix capped at exposure 1 and
+#   15 % target; σ_overlay 8 %, PLAN3 §3 G1), reference Sharpe 0.7 (the core's excess), Holm over 4 families: MDE
+#   Δ Sharpe 0.53. Expected 0.45 (PLAN3 §3 G2: core ≈ 0.9 → portfolio 1.2–1.5); G1's realized alpha implies less
+#   (≈ 0.25). Below the MDE: registered as a DIAGNOSTIC, as G1 (the test, floors and coherence run unchanged).
+# - The core block pins each core's registered sha (G2_core and G2_core4 at 4208d7b): a run refuses a core registered
+#   at any other sha, so the core cannot be changed after G2's result (U25 review).
+# - No state or sample splits: they would describe the overlay stream, which is G1's (its report has them).
+id: G2
+registered: {sha: 'e66c3143ce0532885cdc0d3da92b6b2dbd93b0df', date: '2026-10-11'}
+mechanism: >-
+  A zero-beta, long-volatility intraday overlay (G1: trend continuation after a move beyond the day's noise band,
+  flat overnight) earns most when a long-only core loses (2018, 2020, 2022); adding it to a volatility-managed index
+  core (Moreira & Muir 2017) at equal notional raises the portfolio's Sharpe ratio and does not deepen its drawdown,
+  which leverage alone would not do.
+instruments: [SPY, QQQ]
+timeframe: 5Min
+weighting: equal
+headline:
+  primary:
+    name: region_trend
+    params:
+      estimators: [band, rmedv, sgv]
+      n_list: [6, 9, 12, 18, 24]
+      theta_list: [0.75, 1.0, 1.5, 2.0]
+      vm_list: [1.0, 1.25, 1.5]
+      band_lookback: 14
+      norm_sessions: 21
+      sg_degree: 1
+      cadence: 30
+      first: "10:00"
+      exit: close
+      band_stop: vwap
+      vel_stop: null
+      vel_mode: sar
+  cost_model: quotes
+  risk_profile: loss_gate
+  overrides: {INIT_CASH: 30000, FILL_AUCTION: print, COST_TABLE: asof, CASH_YIELD: tbill, SESSION_CLOCK: calendar,
+              STRESS_MULT: 1.0}
+core: {family: G2_core, variant: headline, k: 1.0, sha: '4208d7bf2bc47097b5f91f320fe96cad69cfffe8'}
+variants:
+  - {label: k0.5, core.k: 0.5}
+  - {label: k2, core.k: 2.0}
+  - {label: core_bh, core.variant: benchmark}
+  - {label: core_f1_4, core.family: G2_core4, core.sha: '4208d7bf2bc47097b5f91f320fe96cad69cfffe8'}
+  - {label: overlay_vol_target, primary.params.vol_target: 0.10, primary.params.vol_cap: 2.0}
+response: [sharpe, ret_ann, vol_ann, max_dd, skew, worst_day, crisis_return]
+benchmark: constant_mix_ew
+floors: {min_net_ret: 0.03, min_edge_to_cost: 2.0, max_dd_vs_core: 1.0}
+test: {kind: marginal, sided: one, at_cost: 1.0, alpha: 0.05, block_days: 21, n_boot: 5000, coherence_share: 0.667,
+       coherence: variants, seed: 0}
+power: {n_days: 2400, rho: 0.86, sharpe_ref: 0.7, families: 4, mde_delta_sharpe: 0.53, expected_delta_sharpe: 0.45,
+        diagnostic: true}
+account: {kind: margin, equity: 30000}
+TRIAL_BUDGET: 6

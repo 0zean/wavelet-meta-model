@@ -39,9 +39,18 @@ Family specs (SPEC §17.1): `families/<id>.yaml` → a validated FamilySpec and 
            alpha: 0.05, block_days: 21, n_boot: 5000,        #   (PLAN2) | overlay_alpha | marginal; sided one | two;
            coherence_share: 0.667, seed: 0,                  #   at_cost registered | <round-trip bp> | measured;
            coherence: cells}                                 #   U24: coherence over variants (§17) | cells (a region)
-    power: {n_days: 2400, vol_ann: 0.08, families: 4,       # required by overlay_alpha / marginal: the MDE line
+    power: {n_days: 2400, vol_ann: 0.08, families: 4,       # required by overlay_alpha / marginal / paired: the MDE
             mde_alpha_bp_per_day: 3.17, expected_alpha_bp_per_day: 3.5, diagnostic: false}
-    core: {family: F1, variant: headline, k: 1.0}            # marginal: the core family's stream (results dir)
+    # marginal / paired (U25): {n_days, rho, sharpe_ref, families, mde_delta_sharpe, expected_delta_sharpe, diagnostic}
+    # floors (U25): max_dd_vs_core x (marginal: |max DD(core + k·overlay)| ≤ x · |max DD(core)|),
+    #               min_net_ret_vs_reference x (paired: net excess return ≥ x × the reference's on the same days)
+    core: {family: G2_core, variant: headline, k: 1.0,      # marginal: the core family's stream (U25: its cells run
+           sha: <G2_core's registered sha>}                  #   (the sha pins the core: a run refuses another)
+                                                             #   in this family's batch; variant `benchmark` = its
+                                                             #   benchmark); variants may change core.k / .variant /
+                                                             #   .family
+    reference: {family: G1, variant: headline, sha: <sha>}   # paired (U25): the stream this one is tested against,
+                                                             #   its cells re-run in the batch and priced at each cost
     account: {kind: margin, equity: 30000, locate_bps: 0}    # the registered account (risk/account.py); default:
                                                              #   a margin account at the headline cells' INIT_CASH
     overlay: {...}                       # stage G (U19); stored, not read here
@@ -91,17 +100,21 @@ RESPONSES = ("sharpe", "sortino", "calmar", "ret_ann", "vol_ann", "max_dd", "ske
              "hit_rate", "crisis_return", "exposure", "worst_day", "longest_flat_run")  # fmt: skip
 TOP_KEYS = {"id", "mechanism", "registered", "instruments", "basket", "timeframe", "window", "headline", "variants",
             "state_splits", "response", "sample_splits", "benchmark", "floors", "test", "overlay", "TRIAL_BUDGET",
-            "notes", "power", "core", "account", "weighting"}  # fmt: skip
-TEST_KINDS = ("sharpe_vs_benchmark", "overlay_alpha", "marginal")
+            "notes", "power", "core", "account", "weighting", "reference"}  # fmt: skip
+TEST_KINDS = ("sharpe_vs_benchmark", "overlay_alpha", "marginal", "paired")
+SHARPE_DIFF_KINDS = ("marginal", "paired")  # U25: their MDE line is a Δ Sharpe (families.power.mde_delta_sharpe)
 COHERENCE_KINDS = ("variants", "cells")  # §17: share of variants (+ the median variant's floors); U24: of region cells
 WEIGHTINGS = ("equal_risk", "equal")
 POWER_KEYS = {"n_days", "vol_ann", "families", "mde_alpha_bp_per_day", "expected_alpha_bp_per_day", "diagnostic"}
+POWER_SHARPE_KEYS = {"n_days", "rho", "sharpe_ref", "families", "mde_delta_sharpe", "expected_delta_sharpe",
+                     "diagnostic"}  # fmt: skip
 MDE_TOLERANCE = 0.10  # a recorded MDE must agree with families.power.mde_alpha within this fraction
 ACCOUNT_KEYS = {"kind", "equity", "locate_bps"}
 HEADLINE_KEYS = {"primary", "exit", "sampler", "cost_model", "risk_profile", "sizer", "overrides", "timeframe",
                  "per_instrument", "legs", "model", "feature_groups", "pwfo", "meta_train", "seed"}  # fmt: skip
 PATCH_KEYS = HEADLINE_KEYS - {"per_instrument", "timeframe", "legs"}  # what a per-instrument or leg patch may set
-FLOOR_KEYS = {"min_net_ret": None, "min_net_ret_vs_benchmark": None, "min_edge_to_cost": None, "max_dd": None}
+FLOOR_KEYS = {"min_net_ret": None, "min_net_ret_vs_benchmark": None, "min_edge_to_cost": None, "max_dd": None,
+              "max_dd_vs_core": None, "min_net_ret_vs_reference": None}  # fmt: skip
 TEST_DEFAULTS = {"alpha": 0.05, "block_days": 21, "n_boot": 5000, "coherence_share": 0.667, "seed": 0,
                  "kind": "sharpe_vs_benchmark", "sided": "two", "at_cost": "registered", "coherence": "variants"}  # fmt: skip
 HEADLINE = "headline"
@@ -136,6 +149,7 @@ class FamilySpec:
     cells: dict[str, list[Cell]] = field(default_factory=dict)  # variant label → its cells (dev window)
     power: dict | None = None  # the MDE line (protocol v3)
     core: dict | None = None  # the core family of a `marginal` test
+    reference: dict | None = None  # the reference family of a `paired` test (U25)
     account: dict = field(default_factory=dict)  # the registered account (risk.account)
     weighting: str = "equal_risk"  # how instrument streams pool (U24: "equal" = 1/n)
 
@@ -153,7 +167,11 @@ class FamilySpec:
         without code or data, so an amendment that reuses a label with a new configuration is a new trial, and the same
         configuration re-run (new code, a re-registered amendment) is not."""
         cfg = sorted(c.spec_json() for c in self.cells[label])
-        return f"{self.base_id}/{hashlib.sha256(json.dumps(cfg).encode()).hexdigest()[:12]}"
+        core = next((v.core for v in self.variants if v.label == label), None)
+        # U25: a core (core.k, core.variant, core.family) makes a distinct configuration; without one the key is as
+        # before (G1's registered trial keys do not move)
+        payload = json.dumps(cfg) if core is None else json.dumps([cfg, core], sort_keys=True)
+        return f"{self.base_id}/{hashlib.sha256(payload.encode()).hexdigest()[:12]}"
 
 
 def _date(x) -> str:
@@ -360,6 +378,8 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         cfg = copy.deepcopy(headline)
         vcore = copy.deepcopy(core)
         for k, x in changes.items():
+            if k == "reference" or k.startswith("reference."):
+                raise ValueError(f"variant {label!r}: every variant is tested against the family's one reference")
             if k == "core" or k.startswith("core."):
                 if core is None:
                     raise ValueError(f"variant {label!r} changes `core`, which the family does not set")
@@ -395,8 +415,9 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
         given["min_net_ret_vs_benchmark" if long_only else "min_net_ret"] = 0.8 if long_only else 0.02
     given.setdefault("min_edge_to_cost", 3.0)
     floors |= given
-    if floors["min_net_ret"] is None and floors["min_net_ret_vs_benchmark"] is None:
-        raise ValueError("a family needs a net-return floor (min_net_ret or min_net_ret_vs_benchmark)")
+    if all(floors[k] is None for k in ("min_net_ret", "min_net_ret_vs_benchmark", "min_net_ret_vs_reference")):
+        raise ValueError("a family needs a net-return floor (min_net_ret, min_net_ret_vs_benchmark or "
+                         "min_net_ret_vs_reference)")  # fmt: skip
     if floors["min_edge_to_cost"] is None or not floors["min_edge_to_cost"] > 0:
         raise ValueError("a family needs min_edge_to_cost > 0 (the magnitude floor; default 3)")
     if floors["max_dd"] is not None and not 0 < floors["max_dd"] < 1:
@@ -429,20 +450,35 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     if basket and "weighting" in doc:
         raise ValueError("weighting pools instruments; a basket is one portfolio cell (its sizing weights it)")
     power = _power(doc.get("power"), test)
-    if test["kind"] in ("overlay_alpha", "marginal") and power is None:
+    if test["kind"] in ("overlay_alpha", *SHARPE_DIFF_KINDS) and power is None:
         raise ValueError(f"test.kind {test['kind']!r} needs the `power` block (the MDE line, PLAN3 §4.5)")
     if test["kind"] == "marginal":
         if not isinstance(core, dict) or not core.get("family"):
             raise ValueError("test.kind 'marginal' needs core: {family, variant (headline), k (1.0)}")
-        extra = set(core) - {"family", "variant", "k"}
-        if extra:
-            raise ValueError(f"core takes family, variant and k; got {sorted(extra)}")
         for v in variants:
+            extra = set(v.core or {}) - {"family", "variant", "k", "sha"}
+            if extra:
+                raise ValueError(f"core takes family, variant, k and sha; got {sorted(extra)}")
             kk = (v.core or {}).get("k", 1.0)
             if isinstance(kk, bool) or not isinstance(kk, (int, float)) or not kk > 0:
                 raise ValueError(f"variant {v.label!r}: core.k must be a number > 0, got {kk!r}")
+            _family_id(v.core["family"], f"variant {v.label!r}: core.family")
     elif core is not None:
         raise ValueError("`core` is read by test.kind 'marginal' only")
+    reference = doc.get("reference")
+    if test["kind"] == "paired":
+        if not isinstance(reference, dict) or not reference.get("family") or \
+                set(reference) - {"family", "variant", "sha"}:  # fmt: skip
+            raise ValueError("test.kind 'paired' needs reference: {family, variant (headline), sha}")
+        _family_id(reference["family"], "reference.family")
+        if reference["family"].split(".v")[0] == fid.split(".v")[0]:
+            raise ValueError("a paired family's reference is another family")
+    elif reference is not None:
+        raise ValueError("`reference` is read by test.kind 'paired' only")
+    for fk, kind in (("max_dd_vs_core", "marginal"), ("min_net_ret_vs_reference", "paired")):
+        x = floors[fk]
+        if x is not None and (test["kind"] != kind or isinstance(x, bool) or not isinstance(x, (int, float)) or x <= 0):
+            raise ValueError(f"floors.{fk} is a number > 0 for test.kind {kind!r} only")
     states = list(doc.get("state_splits") or [])
     bad = [s for s in states if s not in STATE_SPLITS]
     if bad:
@@ -476,7 +512,7 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     reg = doc.get("registered")
     fam = FamilySpec(fid, doc, Path(path) if path else None, instruments, basket, tf, window, variants, bench,
                      floors, test, states, response, samples, budget, reg, power=power, core=core,
-                     weighting=weighting)  # fmt: skip
+                     reference=copy.deepcopy(reference), weighting=weighting)  # fmt: skip
     fam.cells = {v.label: make_cells(fam, v.config, *window) for v in variants}
     fam.account = _account(doc.get("account"), fam.cells[HEADLINE][0].config().INIT_CASH)
     seen: dict[str, str] = {}
@@ -488,11 +524,39 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     return fam
 
 
+def _family_id(x, what: str) -> str:
+    if not isinstance(x, str) or not re.fullmatch(r"[A-Za-z0-9_]+(\.v\d+)?", x):
+        raise ValueError(f"{what} must be a family id (the stem of families/<id>.yaml), got {x!r}")
+    return x
+
+
+def _power_sharpe(block, test: dict) -> dict:
+    """U25: the Δ Sharpe MDE line of the paired kinds, validated against families.power.mde_delta_sharpe."""
+    from families.power import mde_delta_sharpe
+
+    need = {"n_days", "rho", "sharpe_ref", "families", "mde_delta_sharpe", "expected_delta_sharpe"}
+    if not isinstance(block, dict) or set(block) - POWER_SHARPE_KEYS or not need <= set(block):
+        raise ValueError(f"power (test.kind {test['kind']!r}) takes {sorted(POWER_SHARPE_KEYS)}; got {block!r}")
+    ref = mde_delta_sharpe(int(block["n_days"]), float(block["rho"]), float(block["sharpe_ref"]), alpha=test["alpha"],
+                           families=int(block["families"]), sided=test["sided"])  # fmt: skip
+    rec, exp = float(block["mde_delta_sharpe"]), float(block["expected_delta_sharpe"])
+    if abs(rec - ref["mde_delta_sharpe"]) > MDE_TOLERANCE * ref["mde_delta_sharpe"]:
+        raise ValueError(f"power.mde_delta_sharpe {rec} disagrees with families.power.mde_delta_sharpe "
+                         f"{ref['mde_delta_sharpe']:.3f} (n {block['n_days']}, rho {block['rho']})")  # fmt: skip
+    diag = bool(block.get("diagnostic", False))
+    if exp < ref["mde_delta_sharpe"] and not diag:
+        raise ValueError(f"expected Δ Sharpe {exp} is below the MDE {ref['mde_delta_sharpe']:.2f}: register the "
+                         "family as a diagnostic (power.diagnostic: true), not as a test")  # fmt: skip
+    return {**ref, "mde_delta_sharpe": rec, "expected_delta_sharpe": exp, "diagnostic": diag}
+
+
 def _power(block, test: dict) -> dict | None:
-    """The MDE line (PLAN3 §4.5): validated against families.power.mde_alpha; a family expecting less than its MDE
-    must declare itself a diagnostic."""
+    """The MDE line (PLAN3 §4.5): validated against families.power.mde_alpha (mde_delta_sharpe for the paired kinds);
+    a family expecting less than its MDE must declare itself a diagnostic."""
     if block is None:
         return None
+    if test["kind"] in SHARPE_DIFF_KINDS:
+        return _power_sharpe(block, test)
     from families.power import mde_alpha
 
     if (

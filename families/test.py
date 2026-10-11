@@ -13,8 +13,11 @@ stream and the benchmark less the T-bill accrual `rf` per session, SPEC §22.7):
 - `sharpe_vs_benchmark` (PLAN2): the Ledoit–Wolf Sharpe difference vs the benchmark (`cash`: Sharpe vs 0);
 - `overlay_alpha`: the mean of the overlay's daily excess return against zero (families.stats.mean_test: a
   studentized circular block bootstrap, Newey–West t alongside, PSR(0)); `delta_ann` is then the annualized alpha;
-- `marginal`: the paired Ledoit–Wolf Sharpe difference of core + k × overlay vs the core (`core` = the core family's
-  stream on the same days), with the drawdown difference and its bootstrap interval.
+- `marginal`: the paired Ledoit–Wolf Sharpe difference of core + k × overlay vs the core (`ref` = the core family's
+  stream on the same days), with the drawdown difference and its bootstrap interval, and the matched-volatility
+  comparison (the core levered to the portfolio's volatility: is the gain more than leverage?);
+- `paired` (U25): the paired Ledoit–Wolf Sharpe difference of the stream vs its reference (`ref` = the reference
+  family's stream, priced at the same cost, on the same days), with the difference in annualized net return.
 `test.sided` is "one" (H1: the statistic is positive) or "two". The cost curve (`reprice`) re-prices a member's
 stream at another one-way cost per fill class from its per-session cost ledger (risk.portfolio `daily_costs`), so
 the report shows every statistic at 0.3 / 1.0 / 2.3 bp round trip and at the measured profile; the verdict reads the
@@ -157,10 +160,11 @@ def compare(
     kind: str,
     test: dict,
     rf: pd.Series | None = None,
-    core: pd.Series | None = None,
+    ref: pd.Series | None = None,
     k: float = 1.0,
 ) -> dict:
-    """The headline statistic of a stream (module docstring): `test["kind"]` on excess returns, `test["sided"]`."""
+    """The headline statistic of a stream (module docstring): `test["kind"]` on excess returns, `test["sided"]`.
+    `ref` is the core (marginal) or the reference (paired) stream, raw (its excess is taken here)."""
     tkind, sided = test.get("kind", "sharpe_vs_benchmark"), test.get("sided", "two")
     j = align(r, bench)
     a = excess(j["a"], rf)
@@ -180,9 +184,9 @@ def compare(
             out |= {"delta_ann": mt["mean_ann"], "p": mt["p"], "ci_ann": list(mt["ci_ann"]), "statistic": "alpha_ann",
                     "alpha_bp_per_day": mt["mean_bp_per_day"], "t": mt["t"], "t_nw": mt["t_nw"], "mean_test": mt}  # fmt: skip
         elif tkind == "marginal":
-            if core is None:
+            if ref is None:
                 raise ValueError("test kind 'marginal' needs the core stream")
-            jc = pd.concat([a.rename("a"), excess(core, rf).rename("c")], axis=1, sort=True).dropna()
+            jc = pd.concat([a.rename("a"), excess(ref, rf).rename("c")], axis=1, sort=True).dropna()
             if len(jc) < 2 * test["block_days"]:
                 raise ValueError(f"core and overlay share only {len(jc)} days")
             port = jc["c"] + float(k) * jc["a"]
@@ -191,18 +195,47 @@ def compare(
             out |= {"delta_ann": lw["delta_ann"], "p": lw["p"], "ci_ann": list(lw["ci_ann"]), "lw": lw,
                     "statistic": "delta_sharpe_marginal", "k": float(k), "n_days": len(jc),
                     "core_sharpe": sharpe_ann(jc["c"]), "portfolio_sharpe": sharpe_ann(port),
-                    "dd_core": drawdown(jc["c"]), "dd_portfolio": drawdown(port), "dd_difference": dd}  # fmt: skip
+                    "dd_core": drawdown(jc["c"]), "dd_portfolio": drawdown(port), "dd_difference": dd,
+                    "matched_vol": matched_vol(port, jc["c"]), "corr": float(jc["a"].corr(jc["c"]))}  # fmt: skip
+        elif tkind == "paired":
+            if ref is None:
+                raise ValueError("test kind 'paired' needs the reference stream")
+            jc = pd.concat([a.rename("a"), excess(ref, rf).rename("c")], axis=1, sort=True).dropna()
+            if len(jc) < 2 * test["block_days"]:
+                raise ValueError(f"the stream and its reference share only {len(jc)} days")
+            lw = sharpe_test(jc["a"], jc["c"], **kw)
+            ra, rc = stream_stats(jc["a"])["ret_ann"], stream_stats(jc["c"])["ret_ann"]
+            out |= {"delta_ann": lw["delta_ann"], "p": lw["p"], "ci_ann": list(lw["ci_ann"]), "lw": lw,
+                    "statistic": "delta_sharpe_paired", "n_days": len(jc), "ref_sharpe": sharpe_ann(jc["c"]),
+                    "ret_ann": ra, "ref_ret_ann": rc, "delta_ret_ann": ra - rc,
+                    "ret_ratio": ra / rc if rc != 0 else np.nan, "corr": float(jc["a"].corr(jc["c"])),
+                    "dd": drawdown(jc["a"]), "ref_dd": drawdown(jc["c"]),
+                    "days_differ": int((jc["a"] - jc["c"]).abs().gt(FLAT_TOL).sum()),
+                    "start": str(a.index.min().date()), "ref_start": str(excess(ref, rf).index.min().date())}  # fmt: skip
         else:
             lw = sharpe_test(a, None if kind == "cash" else b, **kw)
             out |= {"delta_ann": lw["delta_ann"], "p": lw["p"], "ci_ann": list(lw["ci_ann"]), "lw": lw,
                     "statistic": "delta_sharpe"}  # fmt: skip
-    except ValueError as e:  # a flat stream (no trades) has no statistic: nothing to test
+    except (ValueError, ZeroDivisionError) as e:  # a flat stream (no trades), or a paired stream identical to its
+        # reference (a gate that never closed: Δ and its SE are 0, U25 review), has no statistic: nothing to test
         out |= {"delta_ann": np.nan, "p": 1.0, "ci_ann": [np.nan, np.nan], "error": str(e),
-                "statistic": {"overlay_alpha": "alpha_ann", "marginal": "delta_sharpe_marginal"}.get(tkind,
-                                                                                                  "delta_sharpe")}  # fmt: skip
+                "statistic": {"overlay_alpha": "alpha_ann", "marginal": "delta_sharpe_marginal",
+                              "paired": "delta_sharpe_paired"}.get(tkind, "delta_sharpe")}  # fmt: skip
     if kind != "cash" and len(j) > 10 and a.std() > 0:
         out["alpha"] = newey_west_alpha(a, b, lags=5)
     return out
+
+
+def matched_vol(port: pd.Series, core: pd.Series) -> dict:
+    """The core levered (or de-levered) to the portfolio's volatility, both on excess returns: if core + k·overlay
+    beats the matched core in return and drawdown, the gain is not leverage (PLAN3 §3 G2)."""
+    sp, sc = float(port.std(ddof=1)), float(core.std(ddof=1))
+    if not sc > 0:
+        return {"scale": np.nan}
+    m = core * (sp / sc)
+    st_p, st_m = stream_stats(port), stream_stats(m)
+    return {"scale": sp / sc, "vol_ann": sp * np.sqrt(TRADING_DAYS), "portfolio_ret_ann": st_p["ret_ann"],
+            "matched_core_ret_ann": st_m["ret_ann"], "portfolio_dd": st_p["max_dd"], "matched_core_dd": st_m["max_dd"]}  # fmt: skip
 
 
 def _dd_difference(port: np.ndarray, core: np.ndarray, test: dict) -> dict:
@@ -222,14 +255,18 @@ def _dd_difference(port: np.ndarray, core: np.ndarray, test: dict) -> dict:
     return {"value": float(drawdown(port) - drawdown(core)), "ci": [float(lo), float(hi)], "n_boot": n}
 
 
-def floors(r: pd.Series, bench: pd.Series, costs: dict, spec_floors: dict, rf: pd.Series | None = None) -> dict:
+def floors(r: pd.Series, bench: pd.Series, costs: dict, spec_floors: dict, rf: pd.Series | None = None,
+           ref: pd.Series | None = None, k: float = 1.0) -> dict:  # fmt: skip
     """
     Each floor (SPEC §17.2, §22.4) → {value, threshold, ok}; `ok` = every set floor holds. Net return = the
     annualized compounded EXCESS return of the stream (less the T-bill accrual `rf`: the cash yield the simulator
     credits is not return, U22 review); vs benchmark: ≥ k × the benchmark's excess return on the same days; edge to
     cost: gross trading P&L per unit traded notional (net P&L without the cash interest + costs paid) ≥ k × costs
     paid per unit traded notional; max_dd: the daily stream's drawdown ≥ −x. A stream that never trades fails the
-    edge floor.
+    edge floor. U25, with `ref` (the core or the reference stream, raw): max_dd_vs_core x: the max drawdown of
+    core + k × stream ≥ x × the core's (both negative: |DD| no deeper than x times the core's) on their common days;
+    min_net_ret_vs_reference x: the stream's net excess return is not lower than the reference's by more than
+    (1 − x) × |the reference's| on their common days (x × it when the reference earns; U25 review).
     """
     st = stream_stats(excess(r, rf))
     out: dict = {}
@@ -253,6 +290,21 @@ def floors(r: pd.Series, bench: pd.Series, costs: dict, spec_floors: dict, rf: p
                                    "threshold": f["min_edge_to_cost"], "ok": ok}  # fmt: skip
     if f.get("max_dd") is not None:
         out["max_dd"] = {"value": st["max_dd"], "threshold": -f["max_dd"], "ok": bool(st["max_dd"] >= -f["max_dd"])}
+    for key in ("max_dd_vs_core", "min_net_ret_vs_reference"):
+        if f.get(key) is None:
+            continue
+        if ref is None:
+            out[key] = {"value": np.nan, "threshold": np.nan, "ok": False, "note": "no core / reference stream"}
+            continue
+        j = pd.concat([excess(r, rf).rename("a"), excess(ref, rf).rename("c")], axis=1, sort=True).dropna()
+        if key == "max_dd_vs_core":
+            dp, dc = drawdown(j["c"] + float(k) * j["a"]), drawdown(j["c"])
+            out[key] = {"value": dp, "core": dc, "threshold": f[key] * dc, "ok": bool(dp >= f[key] * dc)}
+        else:
+            ra, rc = stream_stats(j["a"])["ret_ann"], stream_stats(j["c"])["ret_ann"]
+            # "not lower by more than (1 − x)·|reference|": x·rc when the reference earns, (2 − x)·rc when it loses
+            thr = rc - (1.0 - f[key]) * abs(rc)
+            out[key] = {"value": ra, "reference": rc, "threshold": thr, "ok": bool(ra >= thr)}
     out["ok"] = bool(out) and all(v["ok"] for v in out.values())  # no floor set is not a pass
     return out
 
@@ -301,19 +353,30 @@ def delta_common(
     kind: str,
     rf: pd.Series | None = None,
     test: dict | None = None,
+    ref: pd.Series | None = None,
+    k: float = 1.0,
 ) -> float:
     """A variant's headline statistic on the days it shares with the headline (and the benchmark): the coherence
     comparison, so a variant that starts later (a longer warm-up, a state fit) or covers fewer days is compared over
     the same sessions as the headline rather than over its own sample. The headline's own test is unaffected (it never
     reads a variant). Sharpe kinds: the Sharpe difference on excess returns; `overlay_alpha`: the annualized mean
-    excess return."""
-    j = pd.concat([day_index(r).rename("a"), day_index(headline).rename("h"), day_index(bench).rename("b")], axis=1,
-                  sort=True).dropna()  # fmt: skip
+    excess return; `marginal`: Sharpe(core + k·r) − Sharpe(core) with the variant's own core and k; `paired`:
+    Sharpe(r) − Sharpe(its reference) (U25: the benchmark's Sharpe is not these kinds' statistic)."""
+    tkind = (test or {}).get("kind")
+    parts = {"a": day_index(r), "h": day_index(headline), "b": day_index(bench)}
+    if tkind in ("marginal", "paired"):
+        if ref is None:
+            return np.nan
+        parts["c"] = day_index(ref)
+    j = pd.concat({k_: v for k_, v in parts.items()}, axis=1, sort=True).dropna()
     if len(j) < 2:
         return np.nan
     a = excess(j["a"], rf)
-    if test is not None and test.get("kind") == "overlay_alpha":
+    if tkind == "overlay_alpha":
         return float(a.mean() * TRADING_DAYS)
+    if tkind in ("marginal", "paired"):
+        c = excess(j["c"], rf)
+        return sharpe_ann(c + float(k) * a if tkind == "marginal" else a) - sharpe_ann(c)
     b = excess(j["b"], rf) if kind != "cash" else j["b"]
     return sharpe_ann(a) - (0.0 if kind == "cash" else sharpe_ann(b))
 
@@ -341,20 +404,23 @@ def evaluate(
     bench: pd.Series,
     costs: dict[str, dict],
     rf: pd.Series | None = None,
-    core: pd.Series | None = None,
+    refs: dict[str, pd.Series] | None = None,
     k_by_variant: dict[str, float] | None = None,
     cell_alphas: dict[str, float] | None = None,
 ) -> dict:
-    """Per variant: stream statistics, the headline statistic and the floors; plus the headline verdict. `core` and
-    `k_by_variant` serve the `marginal` kind; `cell_alphas` (a region's cells) the cells coherence."""
+    """Per variant: stream statistics, the headline statistic and the floors; plus the headline verdict. `refs` (variant
+    label → its core or reference stream, raw) and `k_by_variant` serve the `marginal` and `paired` kinds;
+    `cell_alphas` (a region's cells) the cells coherence."""
     out = {}
     for v in fam.variants:
         r = streams[v.label]
         k = (k_by_variant or {}).get(v.label, 1.0)
-        out[v.label] = {"stats": stream_stats(r), "compare": compare(r, bench, fam.benchmark, fam.test, rf, core, k),
-                        "floors": floors(r, bench, costs[v.label], fam.floors, rf), "costs": costs[v.label],
+        ref = (refs or {}).get(v.label)
+        out[v.label] = {"stats": stream_stats(r), "compare": compare(r, bench, fam.benchmark, fam.test, rf, ref, k),
+                        "floors": floors(r, bench, costs[v.label], fam.floors, rf, ref, k), "costs": costs[v.label],
                         "start": str(day_index(r).index.min().date()) if len(r) else None,
-                        "delta_common": delta_common(r, streams[HEADLINE], bench, fam.benchmark, rf, fam.test)}  # fmt: skip
+                        "delta_common": delta_common(r, streams[HEADLINE], bench, fam.benchmark, rf, fam.test, ref,
+                                                     k)}  # fmt: skip
     from validation.stats import psr, return_moments
 
     h = excess(streams[HEADLINE], rf)

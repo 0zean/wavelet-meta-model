@@ -621,12 +621,65 @@ one-sided test on G1's stream; a combined report with the portfolio equity curve
 volatility comparison and the buying-power check (overlay notional + core notional ≤ 2 × equity at every
 decision).
 
-**Done when.**
-- [ ] Both specs registered after U24's decision; ≤ 6 trials each.
-- [ ] Report: Sharpe(core + k × G1) vs Sharpe(core) with intervals at k ∈ {0.5, 1, 2}; the drawdown
-      difference; G3's paired Δ Sharpe and Δ return at every cost.
-- [ ] A `families/registry.yaml` entry for each passing claim with the exact cell hashes, code hash and freeze
-      date (U27's input).
+**Done when.** (status note, 2026-10-11: every criterion with its evidence; SPEC §26 describes the as-built)
+- [x] Both specs registered after U24's decision; ≤ 6 trials each.
+  - User decisions (2026-10-11):
+    - G3's headline gate is PLAN3's bottom quintile, written before G1's look, not the bottom three quintiles that G1's
+      split suggested;
+    - the band-width gate is dropped (it can never fire: the 10:00 band is ≥ 5.4 bp against 2 bp);
+    - the VIX < 13 gate is dropped until U26.
+  - G3 therefore has 3 variants; G2 has PLAN3's 5.
+  - Cores are registered specs whose cells run in the family's batch, so they count no trial and enter no Holm:
+    G2_core (F1 on SPY/QQQ 50/50 under U22's engine) and G2_core4. G3's reference is G1.
+  - Registration order:
+    - G2_core and G2_core4 at 4208d7b (commit b2d5f9b);
+    - G2 and G3 at e66c314 (commit 1a95e8b), pinning those shas and G1's c168961.
+  - No G2/G3 ledger row existed before the run. Trials: G2 6 / 6, G3 4 / 6; program 21 / 42 (G1 11).
+  - MDE lines (Δ Sharpe, `families.power.mde_delta_sharpe`): G2 0.53 vs expected 0.45; G3 0.28 vs expected 0.2. Both
+    are registered as DIAGNOSTICS.
+  - The status-only smoke (`scripts/u25_g2_g3.py smoke`, 2016-01 → 2017-02) ran every variant, core and reference:
+    region parity 0.0, looks unchanged.
+- [x] Report (`results/families/G2/report.md`, `results/families/G3/report.md`):
+  - G2:
+    - Sharpe(core + k × G1) vs Sharpe(core), with intervals, at k 0.5 / 1 / 2 and the three other variants;
+    - the drawdown difference with its interval;
+    - the matched-volatility comparison;
+    - the core + k × overlay account table;
+    - every variant's Δ at 0.3 / 1.0 / 2.3 bp and the booked costs.
+  - G3: the paired Δ Sharpe, Δ return and return ratio, at every cost for every variant.
+  - Process:
+    - Looks were recorded after the runs (G2 n = 9, G3 n = 4; K = 171).
+    - Disclosure: a status grep of the run logs printed the MDE, floors, coherence and quasi-slice lines before the
+      looks were recorded. No p or headline statistic was read first.
+    - G1's headline under U25's code equals U24's stream exactly (2,436 days).
+    - Compute: G2 51 s, G3 42 s against a 10-minute budget.
+- [x] Registry:
+  - `families/registry.yaml` holds G1 only, the one passing claim: program Holm over G1–G3 gives G1 p_holm 0.010, PASS.
+  - The entry records the registered sha, the member cell hashes, the code hash and git sha of its U24 run, the
+    verdict cost (1.0 bp) and freeze date 2026-10-11.
+  - `python -m families registry` refuses G2 and G3.
+- **Results** (decision rule as registered; reported, not re-selected):
+  - **G2 fails.**
+    - Sharpe(core + G1) 1.33 vs core 1.06: Δ +0.26, one-sided p 0.040, Holm 0.080.
+    - The drawdown floor fails: −20.5 % vs −19.4 %. The portfolio's worst drawdown is the 2020 crash, in which the
+      overlay lost 4.9 %.
+    - Not coherent: every variant is positive, but the median variant fails the drawdown floor.
+    - The Δ is cost-bound: +0.07 at the booked costs, +0.04 at 2.3 bp.
+    - Matched-vol: the portfolio earns 20.3 %/yr against 15.7 % for the core levered to its volatility, so the gain is
+      not leverage.
+  - **G3 fails.** Δ Sharpe +0.03, p 0.31; the gamma gate is −0.45; not coherent. Reported only: the gate's Δ rises
+    with the cost (+0.11 at 2.3 bp, p 0.055), which fits the mechanism.
+  - The program goes to U27 with G1 alone (a diagnostic, cost-bound). Whether G2's portfolio claim is worth a forward
+    record is the user's call.
+- [x] Tests and lint: `uv run pytest -q` passes on the final code; ruff is clean. tests/test_u25.py has 17 tests.
+- [x] Adversarial review (one pass, before registration, no dev-window statistic read): no BREAKING finding.
+  - Fixed:
+    - SEVERE: a core or reference could be swapped after the result. Specs now pin its registered sha, and a
+      regression test shows the swap refused.
+    - MINOR: the identical-stream crash; the losing-reference floor; first days printed; the cells note; the registry
+      refuses unregistered results.
+  - Deferred with reasons (SPEC §26): a gate that delays the first live day; the account path; one failed core aborts
+    the test; Holm frozen at entry; the loader's PLAN2 2 % default floor applied to G3.
 
 **Cost.** 1 session; compute ≤ 10 min. Depends on U24.
 
@@ -768,4 +821,12 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
   - IWM/DIA show the wrong sign, the quasi-holdout slice is negative, and the edge sits in the top two vol quintiles.
     All three are reported in the U24 note above.
   - Looks K = 158 (G1's run recorded as n = 98 before its report was read).
-- U25–U31 — not started.
+- U25 — built and run on `unit/25-g2-g3` (2026-10-11); SPEC §26 written.
+  - G2 (core + G1, marginal) and G3 (G1 × vol gate, paired) were registered at e66c314 as diagnostics and run once.
+  - **G2 fails:** Δ Sharpe +0.26, p 0.040 / Holm 0.080; the drawdown floor fails because of the 2020 crash; not
+    coherent.
+  - **G3 fails:** Δ +0.03, p 0.31.
+  - Program verdict: G1 PASS (Holm 0.010). `families/registry.yaml` holds G1 only.
+  - Looks K = 171.
+  - The user's G3 decisions are recorded in the U25 note.
+- U26–U31 — not started. Next: U27 with G1 (needs Algo Trader Plus), or U26 / U28 meanwhile.

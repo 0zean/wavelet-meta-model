@@ -1,57 +1,62 @@
-# Session Handoff — U24: G1 registration and development-window test (branch `unit/24-g1-dev-test`)
+# Session Handoff — U25: G2 portfolio test and G3 volatility gate (branch `unit/25-g2-g3`)
 
 ## Where it started
-U23 (PR #24) was merged to `main` (d7c83a5). U24 was built, registered, run and reviewed on `unit/24-g1-dev-test`:
-- SPEC §25 describes the as-built code;
-- PLAN3 §5 U24 lists every done-when with its evidence;
+U24 (PR #25) was merged to `main` (51dc721). U25 was built, reviewed, registered and run on `unit/25-g2-g3`:
+- SPEC §26 describes the as-built code, the review and the result;
+- PLAN3 §5 U25 lists every done-when with its evidence;
 - PLAN3 §9 is the status line.
 
-## What shipped (SPEC §25 has the detail)
-- **`families/G1.yaml`.** R₀ exactly as PLAN3 §3 G1 states it:
-  - 43 cells per instrument, SPY + QQQ pooled 50/50, every region parameter written out;
-  - `loss_gate` (2 % daily) the only control, INIT_CASH 30k on margin_30k, U22 switches pinned;
-  - `overlay_alpha` one-sided at a 1.0 bp round trip, `coherence: cells`;
-  - floors 3 %/yr and edge ≥ 2× cost;
-  - 10 variants (IWM/DIA is a sample split, since the loader refuses instruments as a variant);
-  - registered as a **diagnostic**: expected 3.0 < MDE 3.17 bp/day (the user's choice).
-- **Code:**
-  - `modwt_slope_all` and `session_rv_sigma` (features/kernels.py);
-  - the `modwt` estimator and `vol_target` size (primaries/region.py);
-  - the `loss_gate` profile;
-  - families: `weighting: equal`, `test.coherence: cells`, `region_cells`, trade stats, per-instrument alpha, realized
-    MDE, the vol_quintile / opex_day splits, report sections. `region_cells` is the 86-cell specification curve
-    re-simulated by position_backtest, with a parity check against the members (exactly 0).
-- `scripts/u24_g1.py smoke` (status only), `tests/test_u24.py` (22 tests).
+## User decisions (2026-10-11)
+- G3's headline gate is PLAN3's bottom vol quintile, written before G1's look. The bottom three quintiles that G1's
+  split suggested were rejected.
+- The band-width gate is dropped: it can never fire (the 10:00 band is ≥ 5.4 bp against a 2 bp threshold).
+- The VIX < 13 gate is dropped until U26's state plumbing.
 
-## Result (the first look at G1; recorded as n = 98, K now 158)
-- **Headline:** alpha 2.09 bp/day (5.3 %/yr excess) at 1.0 bp; one-sided p 0.0034; floors pass; 83 / 86 cells positive.
-  The decision rule passes, so **G1 proceeds to U25**.
-- **Caveats:**
-  - Cost-bound: p 0.108 at booked costs (≈ 2.6 bp round trip) and 0.152 at 2.3 bp.
-  - IWM/DIA have the wrong sign.
-  - The quasi-holdout slice is −1.34 bp/day.
-  - The edge is in vol quintiles q4–q5 only.
-  - 2018 and 2022 carry most of the result.
+## What shipped (SPEC §26 has the detail)
+- **Gate.** `region_trend` has `gate: {vol_quantile | vol_size | gamma}`, per instrument and known at the open, from
+  features/kernels.py: `session_sigma`, `prior_rank`, `prior_lag1_autocorr`. `families.run.vol_rank` reads the same
+  kernels. R₀ is unchanged.
+- **Test kinds.**
+  - New `paired` kind with `reference: {family, variant, sha}`.
+  - `marginal` cores (`core: {family, variant, k, sha}`) are per variant. They and the paired reference are registered
+    specs whose cells run in the family's batch: no trial, no Holm, pinned by sha.
+- **Floors.** `max_dd_vs_core` and `min_net_ret_vs_reference`.
+- **Power.** The Δ Sharpe MDE line, `families.power.mde_delta_sharpe`.
+- **Report.** The matched-volatility comparison and the core + k × overlay account table.
+- **Registry.** `families/registry.py` and `python -m families registry <id>`.
+- **Specs.**
+  - families/G2.yaml and G3.yaml, registered at e66c314;
+  - G2_core.yaml and G2_core4.yaml, registered at 4208d7b.
+- **Other.** `scripts/u25_g2_g3.py smoke` (status only) and tests/test_u25.py (17 tests).
+
+## Result
+- **G2 fails.**
+  - Sharpe(core + G1) 1.33 vs the core's 1.06: Δ +0.26, p 0.040, Holm 0.080.
+  - The drawdown floor fails (−20.5 % vs −19.4 %): the portfolio's worst drawdown is the 2020 crash.
+  - Not coherent.
+  - Cost-bound: +0.07 at the booked costs.
+- **G3 fails.** Δ +0.03, p 0.31. The gate helps more at higher costs (+0.11 at 2.3 bp), reported only.
+- **Program verdict.** G1 PASS (Holm 0.010). `families/registry.yaml` holds G1 only. Looks K = 171.
+- **Disclosure.** A status grep of the run logs showed the floors, coherence and quasi lines before the looks were
+  recorded. No p or headline statistic was seen first. Both looks' notes say so.
 
 ## Verification
 - `uvx ruff check . && uvx ruff format --check .` — clean.
-- `OMP_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — 841 passed.
-- `uv run python scripts/u24_g1.py smoke` — all trials ok, parity 0.0, looks unchanged.
-- `results/families/G1/report.md` — the re-run under the review fixes (d0a31c0). The first run's result is in commit
-  894ece8.
+- `OMP_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — the full suite passes.
+- `uv run python scripts/u25_g2_g3.py smoke` — every variant, core and reference ok; parity 0.0; looks unchanged.
+- `uv run python -m families summary` — G1 PASS, G2 fail, G3 fail.
+- G1's headline under U25's code equals U24's stream exactly over 2,436 days.
 
 ## Open decisions (the user's)
-- Algo Trader Plus details before U27; the G5 data purchase; delete remote `origin/unit/*` branches.
-- **New:** whether G2/G3 (U25) should register with the caveats above in view. In particular, G3's gate as PLAN3 words
-  it ("skip the bottom quintile") reads a split already seen. Its registration should say so, or move the gate to the
-  bottom three quintiles with that disclosed.
+- Algo Trader Plus before U27. U27 then trades G1 alone: a diagnostic whose result is bound by the cost.
+- Whether G2's portfolio claim, which failed its drawdown floor, is worth keeping a forward record of. It cannot be
+  re-selected: an amendment would be a new file with a reason.
+- The G5 data purchase; deleting the remote `origin/unit/*` branches; opening a PR for this branch.
 
 ## Pick up here
-Start U25 on `unit/25-g2-g3`:
-- `families/G2.yaml`: core = the F1 headline on SPY/QQQ re-run under U22's fills and the cash yield; overlay = G1 at
-  k = 1; `marginal` kind.
-- `families/G3.yaml`: G1 × the vol gate, paired one-sided.
-- Each needs its MDE line, registration before any run, and the report with the matched-vol comparison and the
-  buying-power check.
-- The `marginal` kind reads the core family's `streams.csv` from results/families/<core>/: the F1 core must be re-run
-  (a new family id) first.
+- **U27** (forward test) once Algo Trader Plus is bought. Its input is `families/registry.yaml` (G1).
+- **Meanwhile:** U26 (time–frequency state, VIX / SKEW / VVIX splits) or U28 (G6 SVXY), both independent of U27.
+- **Deferred MINORs for a later unit:**
+  - the loader's PLAN2 2 % default floor applies to paired specs;
+  - a gate that delays a stream's first live day would drop reference days;
+  - one failed core aborts a marginal test.

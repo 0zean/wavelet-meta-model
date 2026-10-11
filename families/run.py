@@ -21,8 +21,7 @@ U22 additions: equal-risk weights from the trailing 252 sessions before the wind
 when the data start with it, recorded as `weights_basis`); excess returns against the T-bill accrual (FRED DTB3);
 the cost curve (every variant re-priced at 0.3 / 1.0 / 2.3 bp round trip and at the measured profile from the
 members' per-session cost ledgers; the verdict reads the spec's `test.at_cost`); the account check (risk.account)
-on the headline's positions; N_eff; the looks ledger's K and Bonferroni bound; the `marginal` kind's core stream
-from the core family's results.
+on the headline's positions; N_eff; the looks ledger's K and Bonferroni bound.
 
 U24 additions (SPEC §25): `weighting: equal` pools the instruments 1/n; a region headline (a primary with cells, e.g.
 region_trend) gets its specification curve over every (instrument, cell): each cell's position series re-simulated by
@@ -32,6 +31,14 @@ cell's stream; with `test.coherence: cells` the verdict's coherence is the share
 sign at the verdict's cost. Trade statistics (round trips per day from the cost ledgers, long / short P&L from the
 trades), per-instrument alpha at the verdict's cost, the MDE at the realized volatility, and the state inputs of the
 vol_quintile and opex_day splits.
+
+U25 additions (SPEC §26): the `marginal` kind's core and the `paired` kind's reference are other registered family
+specs (families/<id>.yaml, registration checked) whose cells run in this family's batch — stage F rule cells, never a
+family variant row, so they count no trial and enter no Holm. Each variant's core (`core.family` / `core.variant`, the
+variant `benchmark` = the core family's benchmark mix) is pooled with the core family's own weights at its booked
+costs; the reference is pooled at the same cost as the stream at every point of the cost curve (a gated stream and
+its ungated reference are priced alike). A marginal family's report adds, per variant, the account check of core +
+k × overlay together (the overlay members' positions × k plus the core's; PLAN3 G2's buying-power check).
 """
 
 import hashlib
@@ -182,18 +189,13 @@ def vol_rank(df: pd.DataFrame, sessions: int = VOL_RANK_SESSIONS) -> pd.Series:
     (inside the session) among the σ of the `sessions` sessions ending with it — known at the open; NaN until that many
     sessions exist (PLAN3 §3 G1's trailing-vol quintile).
     """
+    from features.kernels import prior_rank, session_layout, session_sigma
+
     day = _ny_day(df.index)
-    r = np.log(df["close"].astype(float)).groupby(day).diff()
-    sig = r.groupby(day).std(ddof=1)
-    x = sig.to_numpy()
-    out = np.full(len(x), np.nan)
-    for d in range(sessions, len(x)):  # session d reads σ of sessions d − sessions … d − 1 (the last one is x[d − 1])
-        w = x[d - sessions : d]
-        w = w[np.isfinite(w)]
-        v = x[d - 1]
-        if np.isfinite(v) and len(w) >= sessions // 2:
-            out[d] = ((w < v).sum() + 0.5 * (w == v).sum()) / len(w)
-    return pd.Series(out, index=sig.index, name="vol_rank")
+    sess = session_layout(df.index, 5)[0]
+    # U25: the one definition G3's gate reads too (features.kernels)
+    out = prior_rank(session_sigma(df["close"].to_numpy(dtype=float), sess), sessions)
+    return pd.Series(out, index=pd.DatetimeIndex(day.unique()), name="vol_rank")
 
 
 def trailing_rank(x: pd.Series, sessions: int = VOL_RANK_SESSIONS) -> pd.Series:
@@ -459,6 +461,10 @@ def run_family(
                    for s in fam.sample_splits if "instruments" in s}  # fmt: skip
     quasi_cells = make_cells(fam, fam.headline.config, start, QUASI_WINDOW[1]) if quasi else []
     batch += [c for cs in split_cells.values() for c in cs] + quasi_cells
+    refs = ref_families(fam, path, repo, check_registration)  # U25: core / reference families, run in this batch
+    batch += [c for rid, labels in _ref_labels(fam).items() for lb in labels if lb != "benchmark"
+              for c in refs[rid].cells[lb]]  # fmt: skip
+    batch = list({(c.stage, c.spec_json()): c for c in batch}.values())  # one run per distinct cell
     hashes: dict[tuple, str] = {}
     run(batch, ledger=ledger, root=root, source=source, jobs=jobs, spec_name=fam.id,
         feature_cache_dir=feature_cache_dir, family=True, on_hash=lambda c, h: hashes.__setitem__((c.stage, c.spec_json()), h))  # fmt: skip
@@ -511,11 +517,25 @@ def run_family(
     ok = [v for v in fam.variants if pooled[v.label]["status"] == "ok"]
     sub = FamilySpec(**{**fam.__dict__, "variants": ok})
 
-    # the core stream of a marginal test (the core family's result) and the k per variant
-    core_stream, k_by_variant = None, None
+    # U25: the core (marginal; at its booked costs) or the reference (paired; at the stream's cost) of each variant
+    ref_pool = RefStreams(refs, rows_by_hash, hashes, root, source)
+    bad = ref_pool.failed(_ref_labels(fam))
+    if bad:
+        result["error"] = f"core / reference cells did not complete ({bad}); no test"
+        return _save(result, None, out_dir)
+    k_by_variant = None
     if fam.test["kind"] == "marginal":
-        core_stream = _core_stream(fam.core, out_dir)
-        k_by_variant = {v.label: float((v.core or fam.core).get("k", 1.0)) for v in fam.variants}
+        k_by_variant = {v.label: float(v.core.get("k", 1.0)) for v in fam.variants}
+
+    def refs_at(ck: str) -> dict | None:
+        """Variant label → its core / reference stream for the cost-curve column `ck`."""
+        if fam.test["kind"] == "marginal":
+            return {v.label: ref_pool.stream(v.core["family"], v.core.get("variant", HEADLINE), None) for v in ok}
+        if fam.test["kind"] == "paired":
+            rb = fam.reference
+            return {v.label: ref_pool.stream(rb["family"], rb.get("variant", HEADLINE), _curve_cost(ck, measured))
+                    for v in ok}  # fmt: skip
+        return None
 
     # the cost curve: every variant at the booked costs and at each round-trip cost (and the measured profile)
     curve: dict = {"registered": {v.label: (pooled[v.label]["stream"], pooled[v.label]["costs"]) for v in ok}}
@@ -541,7 +561,8 @@ def run_family(
               "cells are not used for coherence")  # fmt: skip
     elif region is not None and key in region["costs"]:
         cell_alphas = {k: v[key]["alpha_bp"] for k, v in region["cells"].items()}
-    ev = T.evaluate(sub, streams, bench, costs, rf, core_stream, k_by_variant, cell_alphas)
+    refs_key = refs_at(key)
+    ev = T.evaluate(sub, streams, bench, costs, rf, refs_key, k_by_variant, cell_alphas)
     if failed:  # a variant that did not run is reported, and counts against coherence as not sharing the sign
         for k, st in failed.items():
             ev["variants"][k] = {"status": st}
@@ -558,17 +579,25 @@ def run_family(
     cost_curve = {}
     for ck, per in curve.items():
         cost_curve[ck] = {}
+        rk = refs_at(ck) or {}
         for label, sc in per.items():
             if sc is None:
                 cost_curve[ck][label] = {"unavailable": "no cost ledger (a PWFO member, or a pre-U22 cell)"}
                 continue
             s, c = sc
-            entry = {"stats": T.stream_stats(s), "floors": T.floors(s, bench, c, fam.floors, rf), "costs": c}
-            if label == HEADLINE:
-                entry["compare"] = T.compare(s, bench, fam.benchmark, fam.test, rf, core_stream,
-                                             (k_by_variant or {}).get(HEADLINE, 1.0))  # fmt: skip
+            kk = (k_by_variant or {}).get(label, 1.0)
+            entry = {"stats": T.stream_stats(s), "floors": T.floors(s, bench, c, fam.floors, rf, rk.get(label), kk),
+                     "costs": c}  # fmt: skip
+            if label == HEADLINE or rk:  # U25: a core / reference makes every variant's statistic worth a column
+                entry["compare"] = T.compare(s, bench, fam.benchmark, fam.test, rf, rk.get(label), kk)
             cost_curve[ck][label] = entry
     result["cost_curve"] = cost_curve
+    if refs:
+        result["refs"] = ref_pool.describe(_ref_labels(fam))
+    if fam.test["kind"] == "marginal":
+        result["portfolio_account"] = {
+            v.label: _portfolio_account(fam, v, pooled[v.label], weights, ref_pool, rf) for v in ok
+        }
 
     sample_streams = {}
     for label, cs in split_cells.items():
@@ -616,11 +645,164 @@ def run_family(
         "region": region,
         "trade_stats": trade_stats(fam, pooled[HEADLINE], root, weights),
         "per_instrument_alpha": _per_instrument_alpha(fam, pooled[HEADLINE]["members"], root, rf, at_cost),
-        "power_realized": _power_realized(fam, streams[HEADLINE], rf),
+        "power_realized": _power_realized(
+            fam, streams[HEADLINE], rf, (refs_key or {}).get(HEADLINE), (k_by_variant or {}).get(HEADLINE, 1.0)
+        ),
     }
-    frame = pd.concat({**{k: T.day_index(s) for k, s in streams.items()}, "benchmark": T.day_index(bench),
+    extra = {}
+    if fam.test["kind"] == "marginal":  # each distinct core, raw at its booked costs
+        for v in ok:
+            lb = f"core:{v.core['family']}/{v.core.get('variant', HEADLINE)}"
+            extra[lb] = T.day_index(refs_key[v.label])
+    elif fam.test["kind"] == "paired":
+        extra[f"reference:{fam.reference['family']}/{fam.reference.get('variant', HEADLINE)}"] = T.day_index(
+            refs_key[HEADLINE]
+        )
+    frame = pd.concat({**{k: T.day_index(s) for k, s in streams.items()}, "benchmark": T.day_index(bench), **extra,
                        **({"rf": T.day_index(rf)} if rf is not None else {})}, axis=1, sort=True)  # fmt: skip
     return _save(result, frame, out_dir)
+
+
+def _curve_cost(ck: str, measured):
+    """A cost-curve column key as _pooled takes it: None (booked), the measured profile, or a round-trip bp."""
+    return None if ck == "registered" else (measured if ck == "measured" else float(ck))
+
+
+def _ref_labels(fam: FamilySpec) -> dict[str, list[str]]:
+    """Core / reference family id → the variant labels this family reads from it (`benchmark` included)."""
+    out: dict[str, list[str]] = {}
+    blocks = [v.core for v in fam.variants] if fam.test["kind"] == "marginal" else \
+        ([fam.reference] if fam.test["kind"] == "paired" else [])  # fmt: skip
+    for b in blocks:
+        lb = str(b.get("variant", HEADLINE))
+        if lb not in out.setdefault(str(b["family"]), []):
+            out[str(b["family"])].append(lb)
+    return out
+
+
+def _ref_shas(fam: FamilySpec) -> dict[str, set]:
+    """Core / reference family id → the registered shas the consuming spec pins for it (`sha` in its blocks)."""
+    blocks = [v.core for v in fam.variants] if fam.test["kind"] == "marginal" else \
+        ([fam.reference] if fam.test["kind"] == "paired" else [])  # fmt: skip
+    out: dict[str, set] = {}
+    for b in blocks:
+        out.setdefault(str(b["family"]), set()).add(b.get("sha"))
+    return out
+
+
+def ref_families(fam: FamilySpec, path, repo: Path, check_registration: bool) -> dict[str, FamilySpec]:
+    """The core / reference families (families/<id>.yaml beside this spec), each validated, registration-checked when
+    this family's is, on this family's window and timeframe-independent; a variant label they do not have raises.
+    With the registration check, the consuming spec must pin each one's registered sha (`sha` in its core / reference
+    block) and the file must be registered at exactly that sha (U25 review: otherwise a core or reference could be
+    edited and re-registered after the family's result was seen, at no trial cost)."""
+    out = {}
+    shas = _ref_shas(fam)
+    for rid, labels in _ref_labels(fam).items():
+        rpath = Path(path).resolve().parent / f"{rid}.yaml"
+        if not rpath.exists():
+            raise FileNotFoundError(f"{fam.id}: core / reference family {rid!r} has no spec at {rpath}")
+        rfam = load_family(rpath)
+        if check_registration:
+            rfam.registered = check_registered(rpath, repo)
+            pinned = shas.get(rid, {None})
+            if pinned != {str(rfam.registered["sha"])}:
+                raise ValueError(f"{fam.id}: core / reference {rid} is registered at {rfam.registered['sha']}, but the "
+                                 f"spec pins {sorted(map(str, pinned))}: a changed core / reference is a new family "
+                                 "version (an amendment)")  # fmt: skip
+        if rfam.window != fam.window:
+            raise ValueError(f"{fam.id}: core / reference {rid} runs over {rfam.window}, not the family's {fam.window}")
+        missing = [lb for lb in labels if lb != "benchmark" and lb not in rfam.cells]
+        if missing:
+            raise ValueError(f"{fam.id}: core / reference family {rid!r} has no variant(s) {missing}")
+        out[rid] = rfam
+    return out
+
+
+class RefStreams:
+    """U25: the core / reference families' pooled streams from this batch's cells (each family's own weights), cached
+    per (family, variant, cost)."""
+
+    def __init__(self, refs: dict[str, FamilySpec], rows_by_hash: dict, hashes: dict, root: Path, source):
+        self.refs, self.rows_by_hash, self.hashes, self.root, self.source = refs, rows_by_hash, hashes, root, source
+        self._w: dict[str, pd.Series] = {}
+        self._cache: dict = {}
+
+    def weights(self, rid: str) -> pd.Series:
+        if rid not in self._w:
+            r = self.refs[rid]
+            self._w[rid] = family_weights(self.source, r.instruments, r.timeframe, r.window, r.weighting)[0]
+        return self._w[rid]
+
+    def pooled(self, rid: str, label: str, cost=None) -> dict:
+        key = (rid, label, json.dumps(cost, sort_keys=True))
+        if key not in self._cache:
+            r = self.refs[rid]
+            if label == "benchmark":  # the core family's benchmark mix: held throughout, no trades, no costs
+                bh = bh_returns(self.source, r.instruments, r.timeframe, *r.window)
+                self._cache[key] = {"status": "ok", "members": [], "benchmark": True,
+                                    "stream": T.benchmark(r.benchmark, bh, self.weights(rid)).rename("ret")}  # fmt: skip
+            else:
+                self._cache[key] = _pooled(r, r.cells[label], self.rows_by_hash, self.hashes, self.root,
+                                           self.weights(rid), cost)  # fmt: skip
+        return self._cache[key]
+
+    def stream(self, rid: str, label: str, cost=None) -> pd.Series:
+        return self.pooled(rid, label, cost)["stream"]
+
+    def failed(self, labels: dict[str, list[str]]) -> dict:
+        return {f"{rid}/{lb}": st for rid, lbs in labels.items() for lb in lbs
+                if (st := self.pooled(rid, lb)["status"]) != "ok"}  # fmt: skip
+
+    def describe(self, labels: dict[str, list[str]]) -> dict:
+        out = {}
+        for rid, lbs in labels.items():
+            r = self.refs[rid]
+            out[rid] = {"registered": r.registered, "instruments": list(r.instruments), "window": list(r.window),
+                        "weights": self.weights(rid).to_dict(), "benchmark": r.benchmark,
+                        "variants": {lb: {"members": self.pooled(rid, lb)["members"],
+                                          "stats": T.stream_stats(self.stream(rid, lb)),
+                                          "costs": self.pooled(rid, lb).get("costs")} for lb in lbs}}  # fmt: skip
+        return out
+
+
+def _portfolio_account(fam, v, pooled: dict, weights: pd.Series, ref_pool: RefStreams, rf) -> dict:
+    """
+    The registered account's check of core + k × overlay held together (PLAN3 G2): the overlay members' positions × k
+    × their weights plus the core members' × the core family's weights (a `benchmark` core: each instrument held at its
+    weight from the first session to the last), on the portfolio's equity path. `plan3_2x` is PLAN3 U25's criterion,
+    overlay notional + core notional ≤ 2 × equity at every decision (the Reg-T overnight limit; a margin account at or
+    above the PDT floor may use 4× intraday, which the account check itself applies).
+    """
+    from risk.account import AccountProfile, check_account
+
+    acc = fam.account
+    profile = AccountProfile(acc["name"], acc["kind"], acc["equity"], locate_bps=acc["locate_bps"])
+    k = float(v.core.get("k", 1.0))
+    rid, lb = v.core["family"], v.core.get("variant", HEADLINE)
+    core = ref_pool.pooled(rid, lb)
+    cw = ref_pool.weights(rid)
+    members = [(sym, k * float(weights[sym]), tr, init) for sym, tr, init in pooled.get("member_trades", [])]
+    if core.get("benchmark"):
+        days = T.day_index(core["stream"]).index
+        t0 = pd.Timestamp(days[0]).tz_localize("America/New_York") + pd.Timedelta(hours=9, minutes=30)
+        t1 = pd.Timestamp(days[-1]).tz_localize("America/New_York") + pd.Timedelta(hours=16)
+        for sym in cw.index:
+            tr = pd.DataFrame({"side": [1], "frac": [1.0], "entry_time": [t0.tz_convert("UTC")],
+                               "exit_time": [t1.tz_convert("UTC")], "rolled": [False]})  # fmt: skip
+            members.append((f"core:{sym}", float(cw[sym]), tr, acc["equity"]))
+    else:
+        members += [(f"core:{sym}", float(cw[sym]), tr, init) for sym, tr, init in core.get("member_trades", [])]
+    j = pd.concat([T.day_index(core["stream"]).rename("c"), T.excess(pooled["stream"], rf).rename("a")], axis=1,
+                  sort=True).fillna(0.0)  # fmt: skip
+    port = j["c"] + k * j["a"]
+    try:
+        out = check_account(members, port, profile)
+    except ValueError as e:  # trades without the bar stamps (pre-U22 cells): say so
+        return {"profile": profile.name, "tradable": None, "reasons": [f"not checked: {e}"], "k": k}
+    gi = out["buying_power"]["max_gross_intraday"]
+    out |= {"k": k, "core": f"{rid}/{lb}", "plan3_2x": {"max_gross": gi, "ok": bool(gi <= 2.0 + 1e-9)}}
+    return out
 
 
 def _cost_arg(at_cost):
@@ -643,13 +825,26 @@ def _per_instrument_alpha(fam, members: list[str], root: Path, rf, at_cost) -> d
     return out
 
 
-def _power_realized(fam, headline: pd.Series, rf) -> dict | None:
+def _power_realized(fam, headline: pd.Series, rf, ref: pd.Series | None = None, k: float = 1.0) -> dict | None:
     """The MDE line recomputed at the headline's realized days and excess volatility (reported, never a gate: the
-    registered line is the spec's)."""
+    registered line is the spec's); for the paired kinds (U25) at the realized correlation of the two compared streams
+    (core + k·overlay with the core; the stream with its reference) and the reference's realized Sharpe."""
     if not fam.power:
         return None
-    from families.power import mde_alpha
+    from families.power import mde_alpha, mde_delta_sharpe
+    from families.spec import SHARPE_DIFF_KINDS
+    from families.stats import sharpe_ann
 
+    if fam.test["kind"] in SHARPE_DIFF_KINDS:
+        if ref is None:
+            return None
+        j = pd.concat([T.excess(headline, rf).rename("a"), T.excess(ref, rf).rename("c")], axis=1, sort=True).dropna()
+        a = j["c"] + k * j["a"] if fam.test["kind"] == "marginal" else j["a"]
+        rho = float(a.corr(j["c"]))
+        if len(j) < 3 or not -1 < rho < 1:
+            return None
+        return mde_delta_sharpe(len(j), rho, sharpe_ann(j["c"]), alpha=fam.test["alpha"],
+                                families=int(fam.power["families"]), sided=fam.test["sided"])  # fmt: skip
     x = T.excess(headline, rf)
     vol = float(x.std(ddof=1) * np.sqrt(T.TRADING_DAYS)) if len(x) > 2 else np.nan
     if not vol > 0:
@@ -748,7 +943,7 @@ def region_cells(fam, cells, members: list[str], rows_by_hash: dict, root: Path,
         bars = df.iloc[b0:]
         keep = dec >= b0
         frame = pd.DataFrame(m[keep], index=df.index[dec[keep]], columns=names)
-        frame["_region"] = frame[names].to_numpy().mean(axis=1) * p.vol_scale(df)[dec[keep]]
+        frame["_region"] = frame[names].to_numpy().mean(axis=1) * p.target_scale(df)[dec[keep]]
         clock = data.get("clock")
         kw = {"prints": (data.get("prints") or {}).get(sym), "cash_yield": data.get("cash_yield"),
               "profile": get_profile(cfg.RISK_PROFILE), "sessions": clock, "grid": decision_grid(bars, cfg, clock)}  # fmt: skip
@@ -800,18 +995,6 @@ def _at_cost(fam, v, rows_by_hash, hashes, root, weights, cost) -> tuple[pd.Seri
     except CostLedgerMissing:
         return None
     return p["stream"], p["costs"]
-
-
-def _core_stream(core: dict, out_dir) -> pd.Series:
-    """The core family's variant stream from its results (streams.csv) for a `marginal` test."""
-    p = Path(out_dir) / str(core["family"]) / "streams.csv"
-    if not p.exists():
-        raise FileNotFoundError(f"core family {core['family']!r} has no results at {p}: run it first")
-    frame = pd.read_csv(p, index_col=0, parse_dates=True)
-    label = str(core.get("variant", HEADLINE))
-    if label not in frame:
-        raise ValueError(f"core family {core['family']!r} has no variant {label!r} in {p}")
-    return frame[label].dropna().rename("core")
 
 
 def program_dsr(rows: list[dict], headline: pd.Series) -> tuple[float, int, float]:

@@ -15,6 +15,9 @@ Conventions (numba, structure of arrays, float64 throughout, no `fastmath`):
     sg_velocity_all(x, start, ns, d)   Meyers' next-bar velocity of a degree-d least-squares polynomial (Savitzky–Golay)
     modwt_slope_all(x, start, js)      one-bar slope of the causal MODWT smooth S_J (U24; db1: (x_t − x_{t−2^J}) / 2^J)
     session_rv_sigma(o, c, sess, k)    √ mean intraday realized variance over the k previous sessions (U24 vol target)
+    session_sigma(c, sess)             per session: σ of its 5Min log returns (U25)
+    prior_rank(values, k)              per session: the previous session's value's percentile among the last k (U25)
+    prior_lag1_autocorr(c, sess, k)    per session: lag-1 autocorrelation of 5Min returns over k sessions (U25)
     rmedv_normalized(raw, ns, sess, k) RMedV · √N · xmult (Meyers 2025), xmult refit over the k previous sessions
     poly_normalized(raw, sess, k)      velocity / its SD per (degree, N) (Meyers 2026), refit over the k previous sessions
     prior_sd(values, sess, k)          SD of each row's values over the k previous sessions
@@ -379,3 +382,78 @@ def session_vwap(close, volume, sess) -> np.ndarray:
     cv = pd.Series(v).groupby(np.asarray(sess)).cumsum().to_numpy()
     with np.errstate(invalid="ignore", divide="ignore"):
         return np.where(cv > 0, pv / cv, np.nan)
+
+
+# ── Session state known at the open (U25: G3's gates) ────────────────────────
+
+
+def _session_returns(close, sess) -> tuple[np.ndarray, np.ndarray]:
+    """(r, first): the 5Min log returns close → close inside each session (NaN at a session's first bar) and the
+    first-bar flags."""
+    c = np.asarray(close, dtype=np.float64)
+    sess = np.asarray(sess, dtype=np.int64)
+    first = np.r_[True, sess[1:] != sess[:-1]] if len(c) else np.zeros(0, bool)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r = np.log(c / np.r_[np.nan, c[:-1]])
+    return np.where(first, np.nan, r), first
+
+
+def session_sigma(close, sess) -> np.ndarray:
+    """Per session (in data order): σ (ddof 1) of its 5Min log returns close → close (the overnight gap and the first
+    bar's open → close excluded); NaN with fewer than two returns."""
+    r, first = _session_returns(close, sess)
+    bounds = np.r_[np.flatnonzero(first), len(r)]
+    out = np.full(len(bounds) - 1, np.nan)
+    for d in range(len(out)):
+        x = r[bounds[d] + 1 : bounds[d + 1]]
+        if len(x) >= 2:
+            out[d] = np.std(x, ddof=1)
+    return out
+
+
+def prior_rank(values, k: int) -> np.ndarray:
+    """
+    Per session d: the mid-rank percentile, in (0, 1), of the PREVIOUS session's value among the `k` sessions ending
+    with it (values[d − k] … values[d − 1], finite ones only, at least k // 2 of them) — known at d's open; NaN for the
+    first k sessions. families.run.vol_rank (G1's vol_quintile split) and G3's gates read this one definition.
+    """
+    x = np.asarray(values, dtype=np.float64)
+    if not (isinstance(k, int | np.integer) and k >= 2):
+        raise ValueError(f"k must be an integer >= 2, got {k}")
+    out = np.full(len(x), np.nan)
+    for d in range(k, len(x)):
+        w = x[d - k : d]
+        w = w[np.isfinite(w)]
+        v = x[d - 1]
+        if np.isfinite(v) and len(w) >= k // 2:
+            out[d] = ((w < v).sum() + 0.5 * (w == v).sum()) / len(w)
+    return out
+
+
+def prior_lag1_autocorr(close, sess, k: int = 5, min_pairs: int = 20) -> np.ndarray:
+    """
+    Per session d: the lag-1 autocorrelation (Pearson) of the 5Min log returns over the k previous sessions, from the
+    pairs (r_{t−1}, r_t) inside one session (PLAN3 §3 G3's revealed-gamma proxy: dealers long gamma damp moves, a
+    negative autocorrelation; short gamma amplifies them). NaN for the first k sessions or with fewer than `min_pairs`
+    pairs. Known at d's open.
+    """
+    if not (isinstance(k, int | np.integer) and k >= 1):
+        raise ValueError(f"k must be an integer >= 1, got {k}")
+    r, first = _session_returns(close, sess)
+    prev = np.r_[np.nan, r[:-1]]
+    ok = np.isfinite(r) & np.isfinite(prev)
+    day = np.cumsum(first) - 1
+    n_sess = int(day[-1]) + 1 if len(r) else 0
+    # per-session sums of the pair moments, then trailing sums over k sessions
+    mom = np.zeros((n_sess, 6))
+    for j, v in enumerate((np.ones_like(r), prev, r, prev * prev, r * r, prev * r)):
+        mom[:, j] = np.bincount(day[ok], weights=v[ok], minlength=n_sess)
+    cs = np.vstack([np.zeros((1, 6)), np.cumsum(mom, axis=0)])
+    out = np.full(n_sess, np.nan)
+    for d in range(k, n_sess):
+        n, sx, sy, sxx, syy, sxy = cs[d] - cs[d - k]
+        if n >= min_pairs:
+            vx, vy = sxx - sx * sx / n, syy - sy * sy / n
+            if vx > 0 and vy > 0:
+                out[d] = (sxy - sx * sy / n) / np.sqrt(vx * vy)
+    return out

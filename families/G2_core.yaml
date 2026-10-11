@@ -1,0 +1,35 @@
+# G2_core — the core of G2 (PLAN3 §3 G2, U25): F1's registered headline (families/F1.yaml at e19b44f) restricted to SPY /
+# QQQ 50/50 and re-run under U22's engine. It is a CORE, not a hypothesis family: G2's run runs its cells in G2's batch
+# (families/run.py, U25), so it never writes a family-variant row, counts no trial and enters no Holm; it is not in
+# families/program.yaml and `python -m families run` refuses it. Registered before G2 runs so the core cannot be chosen
+# after G2's result.
+# Choices made at registration (U25):
+# - The rule is F1's headline unchanged: σ̂ = 21-day realized vol, σ* = 15 %, exposure m = min(1, σ*/σ̂), rebalanced on a
+#   10-point move (band 0.10); risk profile none (the rule sizes itself), as F1.
+# - Pooling 50/50 (`weighting: equal`, PLAN3 "SPY/QQQ 50/50"), not F1's equal-risk weights.
+# - INIT_CASH 30,000 (the G1 / G2 account) and the U22 engine switches pinned as G1 pins them: closing-auction prints,
+#   as-of quotes half-spreads + 1 bp slippage per non-auction side, T-bill cash yield, the calendar session clock, no
+#   stress multiplier. Its costs are its booked costs: G2 re-prices the overlay along the cost curve, never the core.
+# - Benchmark constant_mix_ew (SPY / QQQ 50/50, rebalanced daily, costless): G2's variant `core_bh` reads it as the
+#   plain buy-and-hold core.
+# - test / floors: F1's (Sharpe vs the benchmark, two-sided; net ≥ 0.8 × the benchmark's); required by the spec loader,
+#   never evaluated (the core is not run as a family).
+id: G2_core
+registered: {sha: '4208d7bf2bc47097b5f91f320fe96cad69cfffe8', date: '2026-10-11'}
+mechanism: >-
+  Variance is highly predictable at a one-month horizon while the equity premium is not proportionally higher when
+  variance is high (Moreira & Muir 2017); scaling index exposure by sigma*/sigma_hat, capped at 1 for a retail account,
+  cuts drawdowns at about the same return. G2's core: the overlay is judged by what it adds to this.
+instruments: [SPY, QQQ]
+timeframe: 1Day
+weighting: equal
+headline:
+  primary: {name: vol_target, params: {sigma_target: 0.15, window: 21, band: 0.10, vol_source: rv}}
+  cost_model: quotes
+  risk_profile: none
+  overrides: {INIT_CASH: 30000, FILL_AUCTION: print, COST_TABLE: asof, CASH_YIELD: tbill, SESSION_CLOCK: calendar,
+              STRESS_MULT: 1.0}
+benchmark: constant_mix_ew
+floors: {min_net_ret_vs_benchmark: 0.8, min_edge_to_cost: 3.0}
+test: {alpha: 0.05, block_days: 21, n_boot: 2000, coherence_share: 0.667, seed: 0}
+TRIAL_BUDGET: 1
