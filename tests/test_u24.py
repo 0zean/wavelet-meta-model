@@ -336,3 +336,104 @@ def test_g1_spec_is_r0_as_plan3_states_it():
     assert labels == ["cadence15", "cadence5", "first0935", "exit1530", "vel_vwap_stop", "vel_flat_inside", "modwt",
                       "vol_target", "fill_1555", "stress_2x"]  # fmt: skip
     assert {s["label"] for s in fam.sample_splits} == {"iwm_dia", "2016_2019", "2020_2025"}
+
+
+# ── U24 review fixes ─────────────────────────────────────────────────────────
+
+
+def test_exposure_and_flat_runs_read_excess_returns():
+    """Idle days earn only the T-bill: on excess returns they are flat (U24 review)."""
+    days = pd.bdate_range("2022-01-03", periods=10)
+    rf = pd.Series(1e-5, index=days)
+    r = rf.copy()
+    r.iloc[[2, 5]] += 0.003
+    out = T.responses(r, None, ["exposure", "longest_flat_run", "ret_ann"], rf)
+    assert out["exposure"] == pytest.approx(0.2) and out["longest_flat_run"] == 4
+    assert T.responses(r, None, ["exposure"])["exposure"] == 1.0  # without rf every day is "exposed"
+
+
+def test_a_position_return_is_weighted_by_size_and_has_the_sign_of_its_cash_pnl():
+    t = pd.DataFrame({"sym": ["SPY", "SPY"], "entry_b": [1, 2], "side": [1, 1], "size": [1.0, 0.02],
+                      "pnl_pct": [0.0010, -0.0050], "rolled": [True, False]})  # fmt: skip
+    one = pd.Series([0.001], index=pd.bdate_range("2022-01-03", periods=1))
+    assert T.responses(one, t, ["mean_per_trade_bp"])["mean_per_trade_bp"] == pytest.approx(9.0)
+    cash = t.assign(qty=[100.0, 2.0], entry_px=[300.0, 301.0], pnl=[30.0, -3.01])
+    got = T.position_returns(cash)
+    assert len(got) == 1 and got[0] == pytest.approx((30.0 - 3.01) / 30_000.0)
+    flip = cash.assign(side=[1, -1])  # a side flip inside a rolled chain is two positions
+    assert sorted(T.position_returns(flip)) == pytest.approx(sorted([30.0 / 30_000.0, -3.01 / 602.0]))
+
+
+def test_describe_reports_excess_returns():
+    from families.spec import parse
+
+    fam = parse(_region_doc(state_splits=["year"], response=["exposure"], sample_splits=[{"label": "a", "start": "2022-01-03",
+                                                                    "end": "2022-01-10"}]))  # fmt: skip
+    days = pd.bdate_range("2022-01-03", periods=20)
+    rf = pd.Series(2e-4, index=days)
+    r = pd.Series(np.r_[np.full(10, 5e-4), np.full(10, 2e-4)], index=days)
+    streams = {v.label: r for v in fam.variants}
+    d = T.describe(fam, streams, r * 0, {}, {"SPY": r, "QQQ": r}, None, {}, (r, r * 0), rf)
+    g = d["state_splits"]["year"]["groups"][0]
+    assert g["mean_bp"] == pytest.approx(1.5)  # (10 × 3 bp + 10 × 0) / 20, the T-bill removed
+    assert d["sample_splits"]["a"]["mean_bp"] == pytest.approx(3.0)
+    assert d["quasi_holdout"]["mean_bp"] == pytest.approx(1.5)
+    assert d["responses"][HEADLINE]["exposure"] == pytest.approx(0.5)
+
+
+def test_trailing_rank_of_a_mean_rank_is_uniform():
+    from families.run import trailing_rank
+
+    rng = np.random.default_rng(3)
+    x = pd.Series(rng.normal(size=600).cumsum() * 0 + rng.uniform(size=600) + rng.uniform(size=600))
+    r = trailing_rank(x, sessions=100)
+    assert r.iloc[:49].isna().all() and r.iloc[100:].between(0, 1).all()
+    assert r.iloc[150] == pytest.approx(((x.iloc[51:151] < x.iloc[150]).sum() + 0.5) / 100)
+    counts = np.histogram(r.iloc[100:], bins=5, range=(0, 1))[0]
+    assert counts.min() > 0.6 * counts.mean()
+
+
+def _run_region(tmp_path, doc, **kw):
+    from experiments import ledger as L
+    from families.run import run_family
+    from tests.test_u17 import OvernightSource
+
+    path = tmp_path / "G1.yaml"
+    path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    prog = tmp_path / "program.yaml"
+    prog.write_text("program: P\nfamilies: [G1]\nmax_families: 5\nmax_trials: 42\n", encoding="utf-8")
+    return run_family(path, ledger=L.Ledger(tmp_path / "ledger.jsonl"), root=tmp_path / "root",
+                      out_dir=tmp_path / "out", source=OvernightSource(0.0), repo=tmp_path, check_registration=False,
+                      program=prog, quasi=False, **kw)  # fmt: skip
+
+
+def test_cells_coherence_is_evaluated_at_the_measured_cost(tmp_path, monkeypatch):
+    import families.run as FR
+
+    monkeypatch.setattr(FR, "measured_profile", lambda *a, **k: {c: 0.5 for c in T.FILL_CLASSES})
+    doc = _region_doc()
+    doc["test"] = {**doc["test"], "at_cost": "measured"}
+    res = _run_region(tmp_path, doc)
+    v = res["evaluation"]["verdict"]
+    assert v["at_cost"] == "measured" and v["coherence"]["n_cells"] == len(res["region"]["cells"]) > 0
+    # a uniform 0.5 bp one-way profile is the 1.0 bp round trip: the re-simulated cells agree
+    cells = res["region"]["cells"]
+    assert all(c["measured"]["alpha_bp"] == pytest.approx(c["1.0"]["alpha_bp"], abs=1e-9) for c in cells.values())
+
+
+def test_cells_are_not_used_when_the_region_does_not_reproduce_its_members(tmp_path, monkeypatch):
+    import families.run as FR
+
+    real = FR.region_cells
+
+    def broken(*a, **k):
+        out = real(*a, **k)
+        out["parity"]["SPY"]["max_abs_diff"] = 1e-6
+        out["parity_ok"] = False
+        return out
+
+    monkeypatch.setattr(FR, "region_cells", broken)
+    res = _run_region(tmp_path, _region_doc())
+    v = res["evaluation"]["verdict"]
+    assert v["coherence"]["coherent"] is False and "not evaluated" in v["coherence"]["note"]
+    assert "does not reproduce the members" in Path(res["paths"]["md"]).read_text(encoding="utf-8")

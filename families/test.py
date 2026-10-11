@@ -394,11 +394,17 @@ def _lpm2(r: np.ndarray) -> float:
     return float(np.sqrt((np.minimum(r, 0) ** 2).mean())) if r.size else np.nan
 
 
-def responses(r: pd.Series, trades: pd.DataFrame | None, names: list[str]) -> dict:
-    """The spec's response measures of one stream (and its trades)."""
-    r = day_index(r)
+FLAT_TOL = 1e-12  # |daily excess return| below this is a flat day (an idle day's return equals rf to ~1e-16)
+
+
+def responses(r: pd.Series, trades: pd.DataFrame | None, names: list[str], rf: pd.Series | None = None) -> dict:
+    """The spec's response measures of one stream (and its trades), on EXCESS returns (U24 review: the T-bill credit
+    made every idle day nonzero, so exposure was 1 and the longest flat run 0 for every stream; protocol v3 computes
+    every statistic on excess returns)."""
+    r = excess(r, rf)
     st = stream_stats(r)
     x = r.to_numpy()
+    flat = np.abs(x) < FLAT_TOL
     out = {}
     for n in names:
         if n in ("sharpe", "sortino", "calmar", "ret_ann", "vol_ann", "max_dd"):
@@ -408,7 +414,7 @@ def responses(r: pd.Series, trades: pd.DataFrame | None, names: list[str]) -> di
         elif n == "lpm2":
             out[n] = _lpm2(x) * np.sqrt(TRADING_DAYS)
         elif n == "exposure":
-            out[n] = float((x != 0).mean()) if x.size else np.nan
+            out[n] = float((~flat).mean()) if x.size else np.nan
         elif n == "crisis_return":
             out[n] = {f"{a}..{b}": float((1 + r.loc[a:b]).prod() - 1) for a, b in CRISES if len(r.loc[a:b])}
         elif n in ("mean_per_trade_bp", "hit_rate"):
@@ -420,7 +426,7 @@ def responses(r: pd.Series, trades: pd.DataFrame | None, names: list[str]) -> di
         elif n == "worst_day":
             out[n] = float(x.min()) if x.size else np.nan
         elif n == "longest_flat_run":
-            out[n] = _longest_zero_run(x)
+            out[n] = _longest_zero_run(np.where(flat, 0.0, x))
     return out
 
 
@@ -441,19 +447,37 @@ def chain_ids(rolled: np.ndarray) -> np.ndarray:
 
 
 def position_returns(trades: pd.DataFrame) -> np.ndarray:
-    """Per-unit return of each position: a chain of rolled trades (a position held through rebalances: each trade
-    whose `rolled` flag is set rolled its exit into the next trade's entry) is one position, its trades' returns
-    compounded. Without the column, every trade is a position."""
+    """
+    Per-unit return of each position: a chain of rolled trades (a position held through rebalances: each trade
+    whose `rolled` flag is set rolled its exit into the next trade's entry) is one position, ended also at a side flip
+    (as risk.account). With the cash columns (pnl, qty, entry_px) a position's return is Σ cash pnl / its largest leg
+    notional, so a chain whose legs change size (a region's half-hourly rebalances) is weighted by size and has the
+    sign of its cash P&L (U24 review: compounding the per-unit leg returns let a 2 % leg outweigh a 100 % one); for a
+    chain of constant shares that is its holding return. With `size` only, the legs' per-unit returns weighted by
+    size over the largest size; with neither, compounded.
+    Without `rolled`, every trade is a position.
+    """
     t = trades.reset_index(drop=True)
     if "rolled" not in t or "sym" not in t:
         return t["pnl_pct"].to_numpy(dtype=float)
     order = t.sort_values(["sym", "entry_b"], kind="stable") if "entry_b" in t else t
     rolled = order["rolled"].astype(str).str.lower().isin(("true", "1")).to_numpy()
     sym = order["sym"].to_numpy()
+    side = order["side"].to_numpy(dtype=float) if "side" in order else np.zeros(len(order))
     chain = np.zeros(len(order), int)
     for s in pd.unique(sym):
-        m = sym == s
-        chain[m] = chain_ids(rolled[m])
+        m = np.flatnonzero(sym == s)
+        r = rolled[m].copy()
+        r[:-1] &= side[m][1:] == side[m][:-1]  # a side flip ends the position
+        chain[m] = chain_ids(r)
+    if {"pnl", "qty", "entry_px"} <= set(order):
+        notional = (order["qty"].astype(float).abs() * order["entry_px"].astype(float)).to_numpy()
+        g = pd.DataFrame({"pnl": order["pnl"].astype(float).to_numpy(), "n": notional}).groupby([sym, chain])
+        return (g["pnl"].sum() / g["n"].max()).to_numpy(dtype=float)
+    if "size" in order:  # sizes without cash columns: the legs' per-unit returns weighted by size
+        sz = order["size"].astype(float).abs().to_numpy()
+        g = pd.DataFrame({"w": sz * order["pnl_pct"].astype(float).to_numpy(), "s": sz}).groupby([sym, chain])
+        return (g["w"].sum() / g["s"].max()).to_numpy(dtype=float)
     g = (1.0 + order["pnl_pct"].astype(float)).groupby([sym, chain]).prod() - 1.0
     return g.to_numpy(dtype=float)
 
@@ -523,11 +547,15 @@ def describe(
     state: pd.DataFrame | None,
     sample_streams: dict[str, tuple[pd.Series, pd.Series]],
     quasi: tuple[pd.Series, pd.Series] | None,
+    rf: pd.Series | None = None,
 ) -> dict:
     """Everything reported and never tested: responses per variant, state splits, sample splits, the quasi-holdout
-    slice, per-instrument Sharpes with James–Stein shrinkage, and the specification curve."""
-    h = day_index(streams[HEADLINE])
-    out: dict = {"responses": {v.label: responses(streams[v.label], trades.get(v.label), fam.response)
+    slice, per-instrument Sharpes with James–Stein shrinkage, and the specification curve — all on EXCESS returns
+    (less the T-bill accrual `rf`, as the headline test; U24 review), from the streams the caller passes (the run
+    passes them at the verdict's cost)."""
+    hr = day_index(streams[HEADLINE])
+    h = excess(hr, rf)
+    out: dict = {"responses": {v.label: responses(streams[v.label], trades.get(v.label), fam.response, rf)
                                for v in fam.variants}}  # fmt: skip
     out["state_splits"] = {}
     for k in fam.state_splits:
@@ -536,17 +564,17 @@ def describe(
     out["sample_splits"] = {}
     for s in fam.sample_splits:
         if "start" in s:
-            r, b = h.loc[s["start"] : pd.Timestamp(s["end"]) - pd.Timedelta(days=1)], bench
+            r, b = hr.loc[s["start"] : pd.Timestamp(s["end"]) - pd.Timedelta(days=1)], bench
         elif s["label"] in sample_streams:
             r, b = sample_streams[s["label"]]
         else:
             out["sample_splits"][s["label"]] = {"unavailable": True}
             continue
-        out["sample_splits"][s["label"]] = _slice(r, b, fam)
+        out["sample_splits"][s["label"]] = _slice(r, b, fam, rf)
     if quasi is not None:
-        out["quasi_holdout"] = {**_slice(*quasi, fam), "note": QUASI_NOTE}
+        out["quasi_holdout"] = {**_slice(*quasi, fam, rf), "note": QUASI_NOTE}
     if per_instrument:
-        sr = {s: day_index(r) for s, r in per_instrument.items()}
+        sr = {s: excess(r, rf) for s, r in per_instrument.items()}
         raw = {s: sharpe_ann(r) for s, r in sr.items()}
         ok = [s for s in raw if np.isfinite(raw[s])]
         js = james_stein([raw[s] / np.sqrt(TRADING_DAYS) for s in ok], [len(sr[s]) for s in ok])
@@ -560,8 +588,10 @@ QUASI_NOTE = ("quasi-holdout 2025-10-01 → 2026-09-30: contaminated (the U11 ho
               "outcomes before the families were chosen); a robustness slice, never a gate")  # fmt: skip
 
 
-def _slice(r: pd.Series, b: pd.Series, fam: FamilySpec) -> dict:
+def _slice(r: pd.Series, b: pd.Series, fam: FamilySpec, rf: pd.Series | None = None) -> dict:
+    """A slice's statistics on excess returns: `r` and `b` raw, less `rf` here."""
     j = align(r, b)
+    j = pd.DataFrame({"a": excess(j["a"], rf), "b": j["b"] if fam.benchmark == "cash" else excess(j["b"], rf)})
     out = {"n_days": len(j), "sharpe": sharpe_ann(j["a"]) if len(j) else np.nan,
            "bench_sharpe": sharpe_ann(j["b"]) if len(j) and fam.benchmark != "cash" else 0.0,
            "ret": float((1 + j["a"]).prod() - 1) if len(j) else np.nan,

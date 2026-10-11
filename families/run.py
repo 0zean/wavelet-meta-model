@@ -62,6 +62,7 @@ FAMILY_STAGES_COUNTED = ("F", "G")
 KIND = "family_variant"
 WEIGHT_SESSIONS = 252
 MEASURED_COST_CSV = ROOT / "data" / "costs" / "measured_cost.csv"  # class, cost_bp (U27's reconciliation)
+PARITY_TOL = 1e-9  # the region's re-simulation vs its members (exactly 0 in practice; SPEC §25)
 
 
 class BudgetError(RuntimeError):
@@ -195,6 +196,19 @@ def vol_rank(df: pd.DataFrame, sessions: int = VOL_RANK_SESSIONS) -> pd.Series:
     return pd.Series(out, index=sig.index, name="vol_rank")
 
 
+def trailing_rank(x: pd.Series, sessions: int = VOL_RANK_SESSIONS) -> pd.Series:
+    """The mid-rank percentile of each value among the `sessions` values ending with it (NaN skipped; NaN with fewer
+    than half of them): a mean of several instruments' ranks is not uniform, its own trailing rank is (U24 review)."""
+    v = x.to_numpy(dtype=float)
+    out = np.full(len(v), np.nan)
+    for d in range(len(v)):
+        w = v[max(0, d - sessions + 1) : d + 1]
+        w = w[np.isfinite(w)]
+        if np.isfinite(v[d]) and len(w) >= sessions // 2:
+            out[d] = ((w < v[d]).sum() + 0.5 * (w == v[d]).sum()) / len(w)
+    return pd.Series(out, index=x.index, name=x.name)
+
+
 def load_state(source, start: str, end: str, instruments=(), timeframe: str | None = None,
                need=()) -> pd.DataFrame | None:  # fmt: skip
     """Day state for the reported splits: the previous VIX close (`vix_prev`), the macro-day flag (FOMC, CPI,
@@ -220,7 +234,8 @@ def load_state(source, start: str, end: str, instruments=(), timeframe: str | No
     if "vol_quintile" in need and instruments and timeframe not in (None, "1Day"):
         try:
             ranks = [vol_rank(source.bars(s, timeframe, start, end, allow_holdout=False)) for s in instruments]
-            out["vol_rank"] = pd.concat(ranks, axis=1, sort=True).mean(axis=1).reindex(days)
+            mean_rank = pd.concat(ranks, axis=1, sort=True).mean(axis=1)
+            out["vol_rank"] = (mean_rank if len(ranks) == 1 else trailing_rank(mean_rank)).reindex(days)
         except Exception as e:  # noqa: BLE001 — a reported split only
             print(f"[FAM]  no vol_rank for the state splits ({type(e).__name__}: {e})")
     return out if out.shape[1] else None
@@ -521,7 +536,10 @@ def run_family(
         region = region_cells(fam, fam.cells[HEADLINE], pooled[HEADLINE]["members"], rows_by_hash, root, source, rf,
                               weights, at_cost)  # fmt: skip
     cell_alphas = None
-    if region is not None and key in region["costs"]:
+    if region is not None and not region["parity_ok"]:
+        print(f"[FAM]  {fam.id}: the region's re-simulation does not reproduce its members ({region['parity']}): the "
+              "cells are not used for coherence")  # fmt: skip
+    elif region is not None and key in region["costs"]:
         cell_alphas = {k: v[key]["alpha_bp"] for k, v in region["cells"].items()}
     ev = T.evaluate(sub, streams, bench, costs, rf, core_stream, k_by_variant, cell_alphas)
     if failed:  # a variant that did not run is reported, and counts against coherence as not sharing the sign
@@ -559,20 +577,33 @@ def run_family(
         sw, _ = family_weights(source, syms, fam.timeframe, fam.window, fam.weighting)
         hs = [hashes[(c.stage, c.spec_json())] for c in cs]
         if all(rows_by_hash.get(h, {}).get("status") == "ok" for h in hs):
-            r = _stream(root, hs[0]).rename("ret") if fam.basket else T.pool(_by_symbol(cs, hs, root), sw)
+            if fam.basket:
+                r = T.day_index(_stream(root, hs[0])).rename("ret")
+                if _cost_arg(at_cost) is not None:
+                    r = T.reprice(r, _daily_costs(root, hs[0]), _cost_arg(at_cost))[0]
+            else:
+                r = T.pool(_by_symbol(cs, hs, root, _cost_arg(at_cost)), sw)
             sample_streams[label] = (r, T.benchmark(fam.benchmark, sbh, sw))
     qslice = None
     if quasi_cells:
         hs = [hashes[(c.stage, c.spec_json())] for c in quasi_cells]
         if all(rows_by_hash.get(h, {}).get("status") == "ok" for h in hs):
-            qs = {"_basket": _stream(root, hs[0])} if fam.basket else _by_symbol(quasi_cells, hs, root)
+            if fam.basket:
+                qs = {"_basket": T.day_index(_stream(root, hs[0]))}
+                if _cost_arg(at_cost) is not None:
+                    qs["_basket"] = T.reprice(qs["_basket"], _daily_costs(root, hs[0]), _cost_arg(at_cost))[0]
+            else:
+                qs = _by_symbol(quasi_cells, hs, root, _cost_arg(at_cost))
             qr = qs["_basket"] if fam.basket else T.pool(qs, weights)
             qbh = bh_returns(source, fam.instruments, fam.timeframe, *QUASI_WINDOW)
             qslice = (qr.loc[QUASI_WINDOW[0] :], T.benchmark(fam.benchmark, qbh, weights))
             result["quasi_hashes"] = hs
     state = load_state(source, start, end, fam.instruments, fam.timeframe, fam.state_splits)
-    desc = T.describe(fam, streams, bench, {k: pooled[k].get("trades") for k in streams},
-                      pooled[HEADLINE].get("per_instrument", {}), state, sample_streams, qslice)  # fmt: skip
+    per_inst = {} if fam.basket else _by_symbol(fam.cells[HEADLINE], pooled[HEADLINE]["members"], root,
+                                                 _cost_arg(at_cost))  # fmt: skip
+    desc = T.describe(fam, streams, bench, {k: pooled[k].get("trades") for k in streams}, per_inst, state,
+                      sample_streams, qslice, rf)  # fmt: skip
+    desc["at_cost"] = key
     result |= {
         "evaluation": ev,
         "described": desc,
@@ -690,10 +721,14 @@ def region_cells(fam, cells, members: list[str], rows_by_hash: dict, root: Path,
     curve = [*T.COST_CURVE_BP]
     if at_cost not in ("registered", "measured") and float(at_cost) not in curve:
         curve.append(float(at_cost))
+    measured = measured_profile()
+    if at_cost == "measured" and measured is None:
+        raise ValueError(f"test.at_cost 'measured' needs {MEASURED_COST_CSV}")
     out: dict = {"cells": {}, "pooled_cells": {}, "region": {}, "parity": {}, "names": [],
-                 "costs": ["registered", *map(str, curve)],
-                 "note": "each cell re-simulated by wfo.position_backtest on the member's inputs; the measured profile "
-                         "is per fill class and is not re-simulated here"}  # fmt: skip
+                 "costs": ["registered", *map(str, curve), *(["measured"] if measured is not None else [])],
+                 "note": "each cell re-simulated by wfo.position_backtest on the member's inputs; `measured` prices "
+                         "decision fills at the profile's `open` class and the closing fill at `close_auction` "
+                         "(`close` under FILL_AUCTION last_bar)"}  # fmt: skip
     by_sym: dict[str, dict[str, pd.DataFrame]] = {}
     for c, h in zip(cells, members):
         sym = c.symbols[0]
@@ -705,7 +740,10 @@ def region_cells(fam, cells, members: list[str], rows_by_hash: dict, root: Path,
         names = p.cell_names()
         out["names"] = names
         day = _ny_day(df.index)
-        live_day = day[df.index.get_indexer([pd.Timestamp(rows_by_hash[h]["live_start"])])[0]]
+        at = df.index.get_indexer([pd.Timestamp(rows_by_hash[h]["live_start"])])[0]
+        if at < 0:
+            raise ValueError(f"{sym}: the member's live_start {rows_by_hash[h]['live_start']} is not a bar of its data")
+        live_day = day[at]
         b0 = int(np.flatnonzero(day == live_day)[0])  # the first bar of the member's first live session
         bars = df.iloc[b0:]
         keep = dec >= b0
@@ -720,6 +758,10 @@ def region_cells(fam, cells, members: list[str], rows_by_hash: dict, root: Path,
         rets = {"registered": position_backtest(bars, frame, cfg, costs=booked, **kw).ret}
         for bp in curve:
             rets[str(bp)] = position_backtest(bars, frame, cfg, costs=bp / 2.0 * 1e-4, **kw).ret
+        if measured is not None:  # decisions fill at bar opens after 09:30 (class `open`); the last exit at the close
+            close_cls = "close_auction" if cfg.FILL_AUCTION == "print" else "close"
+            mc = pd.DataFrame({"open": measured["open"] * 1e-4, "close": measured[close_cls] * 1e-4}, index=bars.index)
+            rets["measured"] = position_backtest(bars, frame, cfg, costs=mc, **kw).ret
         member = T.day_index(_stream(root, h))
         reg = T.day_index(rets["registered"]["_region"])
         j = pd.concat([member.rename("m"), reg.rename("r")], axis=1, sort=True)
@@ -728,6 +770,8 @@ def region_cells(fam, cells, members: list[str], rows_by_hash: dict, root: Path,
                               "member_days": int(j["m"].notna().sum()), "resim_days": int(j["r"].notna().sum()),
                               "common_days": len(both)}  # fmt: skip
         by_sym[sym] = rets
+    out["parity_ok"] = all(v["max_abs_diff"] is not None and v["max_abs_diff"] <= PARITY_TOL and v["common_days"] > 0
+                           for v in out["parity"].values())  # fmt: skip
 
     def stat(r: pd.Series) -> dict:
         x = T.excess(r, rf)

@@ -30,6 +30,12 @@ def _g(x) -> str:
     return "—" if x is None or (isinstance(x, float) and not np.isfinite(x)) else f"{x:.3g}"
 
 
+def _basis(wb: dict) -> str:
+    if wb.get("window") == "equal":
+        return "equal weights"
+    return f"from the {wb.get('window', '?')} {wb.get('sessions', '')} sessions"
+
+
 def _table(rows: list[dict], cols: list[str]) -> str:
     out = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     out += ["| " + " | ".join(str(r.get(c, "")) for c in cols) + " |" for r in rows]
@@ -124,6 +130,8 @@ def _region_md(result: dict) -> list[str]:
     ck = _verdict_cost(result)
     md = ["## Region cells (the specification curve over every cell; reported, the region is the headline)", ""]
     par = reg.get("parity") or {}
+    if reg.get("parity_ok") is False:
+        md.append("- **The re-simulation does not reproduce the members: the cells are not used for coherence.**")
     md.append("- Parity of the re-simulation (wfo.position_backtest) with the headline members at the booked costs: "
               + "; ".join(f"{k} max |Δ daily return| {_g(v.get('max_abs_diff'))} over {v.get('common_days')} days"
                           for k, v in par.items()))  # fmt: skip
@@ -229,7 +237,7 @@ def family_markdown(result: dict) -> str:
     weights = ", ".join(f"{k} {v:.2f}" for k, v in result.get("weights", {}).items())
     wb = result.get("weights_basis") or {}
     md.append(f"- Instruments: {', '.join(result['instruments'])} ({'basket' if result.get('basket') else 'pooled'}, "
-              f"weights {weights}, from the {wb.get('window', '?')} {wb.get('sessions', '')} sessions); window "
+              f"weights {weights}, {_basis(wb)}); window "
               f"{result['window'][0]} → {result['window'][1]}; benchmark {result.get('benchmark')}")  # fmt: skip
     ne = result.get("n_eff") or {}
     if ne.get("n_eff") is not None:
@@ -407,6 +415,8 @@ def family_markdown(result: dict) -> str:
         _table([{"variant": k, **{n: _resp(r.get(n)) for n in names}} for k, r in resp.items()], ["variant", *names]),
         "",
     ]
+    ac = d.get("at_cost")
+    md += [f"Responses, splits and slices below: excess of the T-bill{f', at cost {ac}' if ac else ''}.", ""]
     md += ["## State splits (headline; reported with 95 % Newey–West intervals, not tested)", ""]
     for k, s in d.get("state_splits", {}).items():
         if s.get("unavailable"):
