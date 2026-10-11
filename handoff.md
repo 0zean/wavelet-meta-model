@@ -39,7 +39,7 @@ evidence; PLAN3 §9 is the status line.
 ## Open decisions (the user's)
 - **Settled (user, 2026-10-10): the velocity normalization follows the Meyers papers** (PLAN3 §7 item 6; RMedV ·
   √N · xmult; polynomial velocity at T+1 / its SD per (degree, N)); refit every session over 21 sessions (the RMV
-  repo's window). Still the user's at U24 registration: the refit window (21 built). `scripts/u23_kernels.py scale`:
+  repo's window). The 21-session refit window was confirmed by the user (2026-10-10). `scripts/u23_kernels.py scale`:
   normalized SD 1.03–1.14 at every N on SPY/QQQ 2016–2025.
 - Carried: Algo Trader Plus details before U27; the G5 data purchase; delete remote `origin/unit/*` branches.
 
@@ -56,7 +56,7 @@ evidence; PLAN3 §9 is the status line.
   end of the session (see PLAN3 §9 / the PR link).
 
 ## Pick up here
-Merge the U23 PR (user's call); confirm the 21-session refit window with the user; then start U24 on `unit/24-g1-dev-test`:
+U23 PR #24 merged to main (2026-10-10). Start U24 on `unit/24-g1-dev-test`:
 write `families/G1.yaml` (headline R₀, 11 variants, splits, `overlay_alpha` one-sided, MDE line, floors at 1.0 bp,
 INIT_CASH 30k, a gate-only risk profile with daily_loss 0.02), commit it, smoke 2016-01 → 2016-06 (status only),
 register, run once, report with the cost and specification curves.

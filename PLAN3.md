@@ -688,8 +688,8 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
 6. **The velocity normalization (raised by U23; settled 2026-10-10).** The user: the normalizations come from the
    Meyers papers and are estimator-specific. Built: RMedV · √N · xmult (Meyers 2025 App. III) and the polynomial
    velocity (at T+1) / its SD per (degree, N) (Meyers 2026 App. III), refit every session over the previous 21
-   sessions (the RMV repo's window; Meyers calibrates once, which the RMV repo showed fails). Still open for U24's
-   registration: the refit window (21 sessions built; the RMV repo found 10–42 equivalent). Note: §1.2's diagnostic
+   sessions (the RMV repo's window; Meyers calibrates once, which the RMV repo showed fails). The refit window, 21 sessions
+   (the RMV repo found 10–42 equivalent), was confirmed by the user on 2026-10-10. Note: §1.2's diagnostic
    thresholded slope / σ₅ (a third scale), so its magnitudes describe R₀'s velocity cells only loosely.
 
 ## 8. Deferred / out of scope
@@ -713,5 +713,5 @@ Rules: no nested pools; no per-cell backtests for regions; no pandas below the r
   against 5 / 10 / 5 / 120 s; `position_backtest` bit-exact with the portfolio simulator over SPY and QQQ
   2016–2025. No look taken (the scripts print timings and parity residuals only; `families/looks.jsonl` unchanged).
   Normalization per the Meyers papers (user, 2026-10-10; §7 item 6): RMedV · √N · xmult and the T+1 polynomial
-  velocity / its SD, refit over 21 sessions. Open for U24: the refit window, at registration.
+  velocity / its SD, refit over 21 sessions (window confirmed by the user, 2026-10-10). PR #24 merged.
 - U24–U31 — not started.
