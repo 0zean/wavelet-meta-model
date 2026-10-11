@@ -86,6 +86,9 @@ PROFILES: dict[str, RiskProfile] = {
     # position / concurrency caps, drawdown tiers or loss gate: they would override the rule's own sizing. Shorts pay
     # 50 bp/yr borrow (conservative for easy-to-borrow ETFs).
     "basket": RiskProfile("basket", max_gross=1.0, max_net=1.0, borrow_bps=50.0),
+    # U24 (PLAN3 §3 G1): the daily loss gate (2 % of the session's starting equity) and nothing else: a self-sized
+    # region keeps its own sizing (no vol target, caps or drawdown tiers); wfo.position_backtest models exactly this.
+    "loss_gate": RiskProfile("loss_gate", daily_loss=0.02),
 }
 
 

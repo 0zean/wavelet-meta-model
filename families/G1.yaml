@@ -1,0 +1,88 @@
+# G1 — intraday trend continuation in index ETFs (PLAN3 §3 G1, U24). The headline is the region R₀ exactly as PLAN3 §3
+# G1 states it (U23 built it as `region_trend`'s defaults; every parameter is written out here so a later default change
+# cannot move the registered region): 3 band cells (VM 1.0 / 1.25 / 1.5, 14-session noise band, current-band + VWAP
+# stop) + repeated-median and least-squares velocity cells (N 6 / 9 / 12 / 18 / 24 × θ 0.75 / 1.0 / 1.5 / 2.0 SDs, each
+# in its Meyers normalization refit every session over 21 sessions; stop-and-reverse, no stop) = 43 cells per
+# instrument, equal weight; decisions at the 10:00 … 15:30 half-hour marks (read at the 09:55 … 15:25 closes), flat
+# overnight, the last position to the closing auction (the official print).
+# Choices made at registration (U24):
+# - Pooling 50/50 SPY / QQQ (`weighting: equal`, PLAN3's "50/50"), not the PLAN2 equal-risk weights.
+# - Size 1× notional per instrument cell; risk profile `loss_gate` = the 2 % daily loss gate only (PLAN3: "the risk
+#   layer's daily loss gate is the only control"); INIT_CASH 30,000 and the margin_30k account (PLAN3 §7, user).
+# - Engine switches pinned (the U22 defaults at registration): closing-auction prints, as-of quotes half-spreads + 1 bp
+#   slippage per non-auction side, T-bill cash yield, the calendar session clock, no stress multiplier.
+# - Test: overlay alpha (mean daily excess return vs 0), one-sided, block bootstrap 21 sessions × 5,000, at a 1.0 bp
+#   round trip (PLAN3 §3 G1: the registered floor reads 1.0 bp until U27 measures fills). Coherence = the share of the
+#   86 (instrument, cell) points with the headline's alpha sign at that cost (PLAN3 §4.1; U24 decision rule: ≥ 2/3);
+#   the §17 variant coherence is reported beside it.
+# - Floors (PLAN3 §4.4, overlays): net excess return ≥ 3 %/yr; gross edge ≥ 2 × the cost per round trip.
+# - Benchmark constant_mix_ew (SPY/QQQ 50/50, rebalanced daily): the test is against zero; the benchmark gives the
+#   reported beta (G1 claims zero beta).
+# - Variants (10; PLAN3 lists 11): R₀ on IWM and DIA is a sample split (the spec loader refuses other instruments as a
+#   variant; PLAN3's core claim calls it a sample split). The MODWT variant adds J 3 / 4 (Haar, the repo's
+#   WAVELET_FILTER) × the four θ as a fourth estimator (51 cells); the vol-targeted size scales the region's target by
+#   min(2, σ*_d / σ̂_d), σ* = 10 %/yr, σ̂_d = the intraday realized vol of the previous 21 sessions.
+# - Power: MDE 3.17 bp/day (Sharpe 1.00) at n 2,400 days, 8 % overlay vol (PLAN3 §3 G1's figure), Holm over 4 families
+#   (PLAN3 §4.2). Expected 3.0 bp/day = Sharpe 0.95 at the registered 1.0 bp (PLAN3 §1.2's 4-leg portfolio at 1.0 bp),
+#   below the MDE: registered as a DIAGNOSTIC (PLAN3 §4.5; the user's choice, 2026-10-10). The test, floors and the U24
+#   decision rule run unchanged; the dev-window test is underpowered and the forward test (U27) confirms.
+# - State splits per PLAN3 §3 G1; gamma_sign, SKEW and VVIX arrive with U26 (re-rendered then).
+id: G1
+registered: {sha: 'c1689612eef33fd87f87ec99bc793cd3038bbc7b', date: '2026-10-11'}
+mechanism: >-
+  Within a session, a move that exceeds the typical move from the open for that time of day reveals a persistent
+  order imbalance (institutional parent orders worked through the day, leveraged-ETF and option-hedging flows that buy
+  into rises and sell into falls), which continues at the 30–90-minute horizon while the 5–10-minute horizon reverts;
+  a smoothed velocity or a band breakout decided every 30 minutes and held until it reverses earns that continuation,
+  long volatility and flat overnight (Zarattini, Aziz & Barbon 2024; Meyers 2025, 2026).
+instruments: [SPY, QQQ]
+timeframe: 5Min
+weighting: equal
+headline:
+  primary:
+    name: region_trend
+    params:
+      estimators: [band, rmedv, sgv]
+      n_list: [6, 9, 12, 18, 24]
+      theta_list: [0.75, 1.0, 1.5, 2.0]
+      vm_list: [1.0, 1.25, 1.5]
+      band_lookback: 14
+      norm_sessions: 21
+      sg_degree: 1
+      cadence: 30
+      first: "10:00"
+      exit: close
+      band_stop: vwap
+      vel_stop: null
+      vel_mode: sar
+  cost_model: quotes
+  risk_profile: loss_gate
+  overrides: {INIT_CASH: 30000, FILL_AUCTION: print, COST_TABLE: asof, CASH_YIELD: tbill, SESSION_CLOCK: calendar,
+              STRESS_MULT: 1.0}
+variants:
+  - {label: cadence15, primary.params.cadence: 15}
+  - {label: cadence5, primary.params.cadence: 5}
+  - {label: first0935, primary.params.first: "09:35"}
+  - {label: exit1530, primary.params.exit: "15:30"}
+  - {label: vel_vwap_stop, primary.params.vel_stop: vwap}
+  - {label: vel_flat_inside, primary.params.vel_mode: flat_inside}
+  - {label: modwt, primary.params.estimators: [band, rmedv, sgv, modwt], primary.params.modwt_j_list: [3, 4],
+     primary.params.modwt_filter: db1}
+  - {label: vol_target, primary.params.vol_target: 0.10, primary.params.vol_cap: 2.0}
+  - {label: fill_1555, overrides.FILL_AUCTION: last_bar}
+  - {label: stress_2x, overrides.STRESS_MULT: 2.1}
+state_splits: [vol_quintile, vix_tercile, day_of_week, macro_day, opex_day, year, gamma_sign]
+response: [sharpe, ret_ann, vol_ann, max_dd, skew, worst_day, longest_flat_run, hit_rate, mean_per_trade_bp, exposure,
+           crisis_return]
+sample_splits:
+  - {label: iwm_dia, instruments: [IWM, DIA]}
+  - {label: "2016_2019", start: 2016-01-04, end: 2020-01-01}
+  - {label: "2020_2025", start: 2020-01-01, end: 2025-10-01}
+benchmark: constant_mix_ew
+floors: {min_net_ret: 0.03, min_edge_to_cost: 2.0}
+test: {kind: overlay_alpha, sided: one, at_cost: 1.0, alpha: 0.05, block_days: 21, n_boot: 5000,
+       coherence_share: 0.667, coherence: cells, seed: 0}
+power: {n_days: 2400, vol_ann: 0.08, families: 4, mde_alpha_bp_per_day: 3.17, expected_alpha_bp_per_day: 3.0,
+        diagnostic: true}
+account: {kind: margin, equity: 30000}
+TRIAL_BUDGET: 12

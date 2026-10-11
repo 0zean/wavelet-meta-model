@@ -1628,3 +1628,180 @@ scale blind to its own session; the position backtest's parity with the simulato
 and the yield; cached SPY 2024) and its many-series, scalar-cost and yield-only identities.
 
 ## §24 Reserved (U26: time–frequency state)
+
+## §25 G1 registration and the region family layer (U24; PLAN3 §5 U24)
+
+**The registered spec** (`families/G1.yaml`, committed at c168961, registered on 2026-10-11). Its headline is R₀ exactly as
+PLAN3 §3 G1 states it. Every `region_trend` parameter is written out, so a later change to a default cannot move the
+region. The region has 43 cells per instrument on SPY and QQQ, 86 in all. Decisions are at 10:00 … 15:30 and the last
+position exits at the closing auction. Choices:
+- Pooling is 50/50 (`weighting: equal`). Size is 1× notional per instrument cell.
+- `loss_gate` is the only risk control. It is a new profile in risk/profiles.py with daily_loss 0.02 and nothing else,
+  and wfo.position_backtest models exactly that.
+- INIT_CASH is 30,000 on the `margin_30k` account.
+- The U22 engine switches are pinned in `overrides`: FILL_AUCTION print, COST_TABLE asof, CASH_YIELD tbill,
+  SESSION_CLOCK calendar, STRESS_MULT 1.0.
+- The test is `overlay_alpha`: one-sided, at_cost 1.0 bp round trip, 21-session blocks × 5,000 resamples.
+- `coherence: cells`: the verdict's coherence is the share of the 86 (instrument, cell) points whose alpha has the
+  headline's sign, which must be ≥ 0.667 (PLAN3 §4.1 and U24's decision rule).
+- Floors: net excess return ≥ 3 %/yr; gross edge ≥ 2 × the cost.
+- Benchmark `constant_mix_ew`. It supplies the reported beta; the test is against zero.
+
+**Variants.** Ten variants make 11 trials of the 12-trial budget:
+- cadence 15 and cadence 5;
+- first decision 09:35;
+- exit 15:30;
+- VWAP stop on the velocity cells;
+- flat-inside on the velocity cells;
+- the MODWT slope as a fourth estimator;
+- the vol-targeted size;
+- the 15:55 bar fill (FILL_AUCTION last_bar);
+- the 2.1× stress multiplier.
+
+PLAN3's eleventh variant, R₀ on IWM and DIA, is the sample split `iwm_dia`: the loader refuses other instruments as a
+variant (§17.5), and PLAN3's core claim already calls it a sample split. The date slices 2016–2019 and 2020–2025 are
+also sample splits.
+
+**Power.** The MDE is 3.17 bp/day (Sharpe 1.00) at 2,400 days, 8 % vol and Holm over 4 families. The expected alpha is
+3.0 bp/day, PLAN3 §1.2's Sharpe 0.95 at 1.0 bp. That is below the MDE, so G1 is registered with `diagnostic: true`
+(the user's choice, 2026-10-10). The label changes nothing in the test, the floors or the decision rule.
+
+**Kernels** (features/kernels.py).
+- `modwt_slope_weights(J, filt)` collapses the pyramid of features.groups.causal_modwt to its impulse response, of
+  length (2^J − 1)(L − 1) + 1, then differences it. The result is the FIR of the one-bar slope S_J[t] − S_J[t − 1]: one
+  bar longer, with Σ w = 0.
+- `modwt_slope_all(x, start, js, filt)` applies that FIR on session-bounded windows through `_fir_kernel`, the same
+  path as `sg_velocity_all`. It is NaN for the first (width − 1) bars of each session.
+- For Haar (`db1`, the repo's WAVELET_FILTER) S_J is the 2^J-bar trailing mean, so the slope is (x_t − x_{t−2^J}) / 2^J.
+  J = 3 is first defined at the 9th bar of the session, J = 4 at the 17th.
+- Against causal_modwt run on each session's own bars it agrees to 1e-14 for db1, la8 and db2.
+- `session_rv_sigma(o, c, sess, k)` = √(mean over the k previous sessions of Σ r²), where r are the session's 5Min log
+  returns: the first bar open → close, then close → close; the overnight gap is excluded. It is known at the open.
+
+**Region primary** (primaries/region.py).
+- Estimator `modwt`: J ∈ `modwt_j_list` (default [3, 4]) × θ, cells `modwt_j3_t0.75` … The velocity is the slope
+  divided by its own SD per J, refit every session over `norm_sessions` (poly_normalized). The cells are SAR, like the
+  other velocity cells.
+- The loader refuses a window wider than a 78-bar session (la8 at J = 4 is 107 bars) and an unknown filter.
+- `vol_target` σ* (annual; null in R₀) with `vol_cap` (default 2): the rule's target becomes the cells' mean ×
+  min(cap, σ*/√252 / σ̂_d) / cap, where σ̂_d is session_rv_sigma over `norm_sessions`. `config_overrides` then sets
+  SIZE = cap, so the notional is |mean| × min(cap, σ*_d / σ̂_d).
+- `vol_scale(df)` gives the per-bar multiplier. It is 0 while σ̂ is undefined, which falls within the velocity cells'
+  own warm-up.
+- `cells()` and `cell_matrix()` are unchanged: the specification curve is of the unscaled cells.
+
+**Family layer** (families/).
+- `weighting` ∈ {equal_risk (default), equal}. `family_weights(..., "equal")` is 1/n and reads no data. A basket
+  refuses the key.
+- `test.coherence` ∈ {variants (default; §17), cells}. `cells` needs pooled rule cells of a primary with
+  `cell_matrix`, and no legs or per_instrument.
+- `headline_verdict` puts the cells coherence (T.cells_coherence: share ≥ coherence_share to 3 decimals, plus the
+  median cell's alpha) in `coherence` and reports the variant coherence as `variant_coherence`. A region whose cells
+  were not evaluated is not coherent.
+- `families.run.region_cells` builds the region's specification curve. For each headline member it:
+  - loads the member's own inputs (runner.load_cell_data: bars, the as-of quotes rows, prints, cash yield, the calendar
+    clock, stress flags);
+  - builds `cell_matrix` on the member's bars;
+  - re-simulates every cell's positions with wfo.position_backtest under the member's risk profile (the loss gate),
+    from the first bar of the member's first live session;
+  - does so at the booked costs (risk.costs.fill_costs) and at every round-trip cost of the curve (0.3 / 1.0 / 2.3 bp,
+    plus at_cost when it is off the curve).
+- The measured profile is per fill class and is not re-simulated here.
+- The region itself (the cells' mean × vol_scale) is re-simulated beside the cells. At the booked costs it must equal
+  the member's daily_returns.csv. The result's `parity` records max |Δ daily return|; it is 0.0 on the synthetic test
+  and on the 2016-H1 smoke.
+- `region_cells` reports, per (instrument, cell), per pooled cell (the family weights) and per region (instrument and
+  pooled), at each cost: the mean daily excess return in bp, its Newey–West 95 % interval and the excess Sharpe. The
+  verdict's cell alphas are the (instrument, cell) values at the verdict's cost.
+- The headline test still reads the re-priced members (T.reprice, first order). The report prints the region
+  re-simulated at every cost beside it, so the re-pricing error is visible.
+- Cell CSVs are read with `float_precision="round_trip"`. pandas' default parser is not exact: the parity residual was
+  1e-16 before this change, and is 0 after.
+- `trade_stats` reports the headline's round trips per day (Σ traded notional / the session's starting equity / 2,
+  from the cost ledgers, averaged over sessions), the share of sessions with a fill, and long / short trading P&L (Σ
+  trade pnl by side per day of the member's starting cash). Each is given per instrument and pooled.
+- `per_instrument_alpha`: each instrument's stream at the verdict's cost, with its Newey–West interval.
+- `power_realized`: families.power.mde_alpha at the realized days and excess volatility. It is reported only; the
+  registered line governs.
+- New state splits:
+  - `vol_quintile`: the instruments' mean `vol_rank`. That is the mid-rank percentile of the previous session's σ of
+    5Min log returns among the 252 sessions ending with it, so it is known at the open and "n/a" until 252 sessions
+    exist. Quintiles are cut at 0.2 / 0.4 / …
+  - `opex_day`: the OPEX dates of data.events.
+- The report adds:
+  - the cells coherence line;
+  - the MDE at the realized vol;
+  - a "Region cells" section: parity, the region at each cost, the share and median, positives by estimator,
+    `cells_curve.png` (every (instrument, cell) point with its interval, sorted, coloured by estimator, with the region
+    per instrument) and the table of every cell;
+  - trade statistics and per-instrument alpha.
+- `python -m families power --n-days …` now passes its flags through. The U22 parser lost them to argparse's REMAINDER.
+
+**Smoke** (`scripts/u24_g1.py smoke`). It runs the committed spec with its window cut to 2016-01-04 → 2016-07-01, with
+no quasi cells, into a scratch ledger, runner root and results directory, all deleted afterwards. It prints statuses,
+the parity residual, the shapes and the timings: never a return, Sharpe, alpha, p or floor. It asserts that
+families/looks.jsonl is unchanged. On the i9 every trial and split ran in 12 s and the parity residual was 0.0.
+
+**Looks.** The run does not write families/looks.jsonl (PLAN3 U24's done-when), so G1's report prints K = 60 (PLAN3 §1's
+K₀): the looks that preceded its registration. After the run and before its report was read, one look was recorded
+for later families: `families/G1.yaml (U24 run)`, n = 98 (11 trials, 86 cells, the IWM/DIA split).
+
+**U24 review (one adversarial pass, after the registered run).** No BREAKING finding. The reviewer reproduced the
+headline bit for bit from the members' cost ledgers: p 0.0033993, 2.0877 bp/day. The fill classes, the re-pricing at
+1.0 bp, the T-bill accrual, the cells coherence (same cost key, same days), the kernels' causality, the registration
+and the account check all held.
+
+Four SEVERE reporting defects were fixed, then G1 was re-run (same trial keys):
+- (a) The state splits, date slices, responses and per-instrument Sharpe table read RAW returns, T-bill credit
+  included (0.87 bp/day, 42 % of the alpha); the bottom vol quintile flipped sign. The IWM/DIA split and the
+  quasi-holdout slice also read booked costs.
+  - `T.describe` and `T.responses` now take `rf` and report excess returns.
+  - The run passes them the streams at the verdict's cost: per instrument, the instrument splits and the quasi slice
+    all re-priced.
+  - The report says so above the splits.
+- (b) `position_returns` compounded the unweighted per-unit returns of a rolled chain. A region's legs change size
+  every half hour, so mean_per_trade_bp and hit_rate had the wrong sign: −3.8 bp against an edge-to-cost of 3.0.
+  - A position now ends at a side flip too.
+  - Its return is Σ cash pnl / its largest leg notional when the trades carry pnl, qty and entry_px. That is the
+    holding return for constant shares.
+  - Otherwise it is the size-weighted leg return when `size` exists, else compounding, as before.
+- (c) exposure and longest_flat_run counted T-bill-credited idle days as exposed. They now read excess returns with
+  |x| < 1e-12 as flat.
+- (d) With `at_cost: measured`, the cells were never re-simulated at that cost, so a region could only come out "not
+  coherent". `region_cells` now re-simulates the measured profile once it exists: decision fills at its `open` class,
+  the closing fill at `close_auction`, or at `close` under last_bar.
+
+MINOR, fixed:
+- the region's parity is now enforced (`PARITY_TOL` 1e-9): above it, the cells do not enter the coherence and the
+  report says so;
+- a member's live_start that is not a bar raises;
+- `vol_quintile` re-ranks the instruments' mean rank causally (`trailing_rank`), because a mean of ranks is not uniform
+  and q1 held 23 % of the days;
+- the header no longer prints "from the equal 0 sessions".
+
+MINOR, deferred with reasons:
+- **Loss gate per member.** Each instrument cell is its own 30k account with its own 2 % gate, so in the 50/50 pool a
+  sleeve's 2 % loss is 1 % of the account. The family framework pools per-instrument cells; an account-level gate needs
+  a basket cell, which position_backtest does not model. It fired on 11 sessions in ten years. U27's live loop gates
+  the account, and the forward test is scored on that.
+- **vix_tercile cuts.** They come from the full sample (pre-U24, PLAN2 behaviour). This is a reported split only; a
+  causal version belongs with U26's state work.
+- **Early-close off-grid decisions.** On a 13:00 close, marks at or past 13:00 map to the 12:55 bar: 15 five-minute
+  holds in ten years. This is a documented engine rule (§23).
+- **Dropped QQQ sessions.** QQQ's 2018-05-02/03 sessions are dropped by the data layer; the pooled excess is low by
+  0.5 × rf on four days. Negligible.
+
+Tests (tests/test_u24.py, 22; the last six from the review):
+- the MODWT slope against causal_modwt for four (filter, J) pairs, with its NaN warm-up; the Haar identity; a planted
+  overnight gap ignored; causality at a cut;
+- session_rv_sigma by hand and blind to its own session;
+- the modwt cells and their validation;
+- the vol-targeted target by hand (|target| ≤ 1, flat in the warm-up, SIZE = cap);
+- the spec keys' validation and the cells-coherence verdict, including the 2/3 boundary and missing cells;
+- vol_rank as a causal mid-rank, unmoved by today's σ; the vol_quintile and opex_day groups;
+- equal weights;
+- an end-to-end region family on synthetic bars: parity exactly 0 on both instruments, every (instrument, cell) at
+  every cost, the verdict's coherence the cells' share at 1.0 bp, trade statistics, per-instrument alpha, the realized
+  MDE, the report's new sections and cells_curve.png;
+- the registered G1 spec's shape: R₀ = the region defaults, the 12 marks, loss_gate, the pinned switches, the ten
+  variants and the splits.

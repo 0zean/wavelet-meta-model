@@ -1,62 +1,57 @@
-# Session Handoff — U23: intraday kernels and the region primary (branch `unit/23-intraday-kernels`)
+# Session Handoff — U24: G1 registration and development-window test (branch `unit/24-g1-dev-test`)
 
 ## Where it started
-PR #23 (U22) was merged to `main` (62aaad2). The user asked to begin U23 per PLAN3 §5. U23 was built in full on
-`unit/23-intraday-kernels`; SPEC §23 describes the as-built code; PLAN3 §5 U23 lists every done-when with its
-evidence; PLAN3 §9 is the status line.
+U23 (PR #24) was merged to `main` (d7c83a5). U24 was built, registered, run and reviewed on `unit/24-g1-dev-test`:
+- SPEC §25 describes the as-built code;
+- PLAN3 §5 U24 lists every done-when with its evidence;
+- PLAN3 §9 is the status line.
 
-## What shipped (SPEC §23 has the detail)
-- **Kernels** `features/kernels.py` (numba, float64, session-bounded windows: NaN for the first N − 1 bars of each
-  session): `rmedv_all` (Siegel repeated median; bit-equal to scipy siegelslopes), `sg_velocity_all` / `sg_weights`
-  (Meyers' polynomial velocity at the next bar T+1; degree 1 = LS slope), `prior_sd` (trailing SD over the k previous
-  sessions), `rmedv_normalized` (RMedV · √N · xmult, Meyers 2025 App. III) and `poly_normalized` (velocity / its SD
-  per (degree, N), Meyers 2026 App. III), both refit every session over 21 sessions; `band_state` (Zarattini band,
-  gap-adjusted distance in band units), `session_vwap`, `session_layout`.
-- **Region primary** `primaries/region.py` `region_trend` (ALLOW_CONTINUOUS): 43 cells (band × VM 3, rmedv and sgv ×
-  N 5 × θ 4), each velocity in its paper's normalization (θ in SDs), stop-and-reverse reset every session, VWAP stops, decisions = schedule entry times
-  10:00 … 15:30 (read at the 09:55 … 15:25 closes), `next_event` exit to the closing auction; target = the mean cell.
-  Variants supported: cadence 5/15/30/60, `first`, `exit "HH:MM"`, `vel_mode flat_inside`, `vel_stop vwap`,
-  `band_stop`, `sg_degree`. Not yet: the MODWT-slope estimator and the vol-targeted size (G1 variants; U24).
-  `needs_groups()` is empty (the plan said "session group"; a group would drop events on NaN columns).
-- **Position backtest** `wfo/position_backtest.py`: `decision_grid`, `position_backtest` — a share-for-share numba
-  replica of `simulate_portfolio` for one symbol on this schedule (rolls, per-bar costs or a scalar one-way cost,
-  closing print, daily-loss gate, T-bill yield), many target series per call (the spec / cost curve).
-- `scripts/u23_kernels.py parity | budgets`, `tests/test_u23.py` (15 tests), `primaries/__init__.py` registers the
-  region, `tests/test_primaries.py` knows the new registry entry.
+## What shipped (SPEC §25 has the detail)
+- **`families/G1.yaml`.** R₀ exactly as PLAN3 §3 G1 states it:
+  - 43 cells per instrument, SPY + QQQ pooled 50/50, every region parameter written out;
+  - `loss_gate` (2 % daily) the only control, INIT_CASH 30k on margin_30k, U22 switches pinned;
+  - `overlay_alpha` one-sided at a 1.0 bp round trip, `coherence: cells`;
+  - floors 3 %/yr and edge ≥ 2× cost;
+  - 10 variants (IWM/DIA is a sample split, since the loader refuses instruments as a variant);
+  - registered as a **diagnostic**: expected 3.0 < MDE 3.17 bp/day (the user's choice).
+- **Code:**
+  - `modwt_slope_all` and `session_rv_sigma` (features/kernels.py);
+  - the `modwt` estimator and `vol_target` size (primaries/region.py);
+  - the `loss_gate` profile;
+  - families: `weighting: equal`, `test.coherence: cells`, `region_cells`, trade stats, per-instrument alpha, realized
+    MDE, the vol_quintile / opex_day splits, report sections. `region_cells` is the 86-cell specification curve
+    re-simulated by position_backtest, with a parity check against the members (exactly 0).
+- `scripts/u24_g1.py smoke` (status only), `tests/test_u24.py` (22 tests).
 
-## Verification — how to confirm things still work
+## Result (the first look at G1; recorded as n = 98, K now 158)
+- **Headline:** alpha 2.09 bp/day (5.3 %/yr excess) at 1.0 bp; one-sided p 0.0034; floors pass; 83 / 86 cells positive.
+  The decision rule passes, so **G1 proceeds to U25**.
+- **Caveats:**
+  - Cost-bound: p 0.108 at booked costs (≈ 2.6 bp round trip) and 0.152 at 2.3 bp.
+  - IWM/DIA have the wrong sign.
+  - The quasi-holdout slice is −1.34 bp/day.
+  - The edge is in vol quintiles q4–q5 only.
+  - 2018 and 2022 carry most of the result.
+
+## Verification
 - `uvx ruff check . && uvx ruff format --check .` — clean.
-- `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — full suite
-  819 passed on the final code (after the review fixes; 5 min).
-- `uv run python scripts/u23_kernels.py parity` — Meyers examples 1.0; 4,400/4,400 bit-equal to scipy; sgv 7.2e-16.
-- `uv run python scripts/u23_kernels.py budgets` — estimators 1.2 s, positions 1.3 s, spec curve 0.13 s, headline
-  14 s (budgets 5 / 10 / 5 / 120 s); position_backtest vs simulator over SPY/QQQ 2016–2025 with the gate: max |Δ| 0.
-  It prints timings and parity residuals only — **no look** was taken; `families/looks.jsonl` unchanged.
-- Adversarial review (one pass): no BREAKING / SEVERE; four MINOR fixed (exit variant on early closes / missing exit
-  bar; NaN targets raise; numpy-int lookbacks; the √N decision recorded in PLAN3 §7). Probe scripts:
-  session scratchpad `review/` (may not survive).
+- `OMP_NUM_THREADS=1 PYTHONIOENCODING=utf-8 uv run pytest -q -p no:warnings` — 841 passed.
+- `uv run python scripts/u24_g1.py smoke` — all trials ok, parity 0.0, looks unchanged.
+- `results/families/G1/report.md` — the re-run under the review fixes (d0a31c0). The first run's result is in commit
+  894ece8.
 
 ## Open decisions (the user's)
-- **Settled (user, 2026-10-10): the velocity normalization follows the Meyers papers** (PLAN3 §7 item 6; RMedV ·
-  √N · xmult; polynomial velocity at T+1 / its SD per (degree, N)); refit every session over 21 sessions (the RMV
-  repo's window). The 21-session refit window was confirmed by the user (2026-10-10). `scripts/u23_kernels.py scale`:
-  normalized SD 1.03–1.14 at every N on SPY/QQQ 2016–2025.
-- Carried: Algo Trader Plus details before U27; the G5 data purchase; delete remote `origin/unit/*` branches.
-
-## Key files for next session
-- `PLAN3.md` §5 U24 (G1 registration and the dev-window test — the first look; append to `families/looks.jsonl`
-  before reading results); SPEC §22 (protocol v3: `overlay_alpha`, power/MDE line, `cells_coherence`, cost curve),
-  SPEC §23.
-- `primaries/region.py` (add the MODWT-slope estimator and vol-targeted size for G1 variants 6–7),
-  `wfo/position_backtest.py` (the spec curve: `position_backtest(df, cells_frame, cfg, costs=X/2 bp, grid=...)`),
-  `families/run.py`, `families/report.py`.
-
-## Running state
-- No experiment runs; nothing written to the canonical ledger. Branch `unit/23-intraday-kernels`; PR opened at the
-  end of the session (see PLAN3 §9 / the PR link).
+- Algo Trader Plus details before U27; the G5 data purchase; delete remote `origin/unit/*` branches.
+- **New:** whether G2/G3 (U25) should register with the caveats above in view. In particular, G3's gate as PLAN3 words
+  it ("skip the bottom quintile") reads a split already seen. Its registration should say so, or move the gate to the
+  bottom three quintiles with that disclosed.
 
 ## Pick up here
-U23 PR #24 merged to main (2026-10-10). Start U24 on `unit/24-g1-dev-test`:
-write `families/G1.yaml` (headline R₀, 11 variants, splits, `overlay_alpha` one-sided, MDE line, floors at 1.0 bp,
-INIT_CASH 30k, a gate-only risk profile with daily_loss 0.02), commit it, smoke 2016-01 → 2016-06 (status only),
-register, run once, report with the cost and specification curves.
+Start U25 on `unit/25-g2-g3`:
+- `families/G2.yaml`: core = the F1 headline on SPY/QQQ re-run under U22's fills and the cash yield; overlay = G1 at
+  k = 1; `marginal` kind.
+- `families/G3.yaml`: G1 × the vol gate, paired one-sided.
+- Each needs its MDE line, registration before any run, and the report with the matched-vol comparison and the
+  buying-power check.
+- The `marginal` kind reads the core family's `streams.csv` from results/families/<core>/: the F1 core must be re-run
+  (a new family id) first.

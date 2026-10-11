@@ -31,12 +31,14 @@ Family specs (SPEC §17.1): `families/<id>.yaml` → a validated FamilySpec and 
     state_splits: [vix_tercile, macro_day]
     response: [sharpe, max_dd, mean_per_trade_bp, hit_rate]
     sample_splits: [{label: sector, instruments: [XLE, XLF]}, {label: 2016_2019, start: 2016-01-04, end: 2020-01-01}]
+    weighting: equal_risk                # U24: equal_risk (default; ∝ 1/σ of buy-and-hold) | equal (1/n, G1's 50/50)
     benchmark: constant_mix_er           # constant_mix_ew | constant_mix_er | buy_and_hold | cash (PLAN2's
                                          #   buy_and_hold_ew / buy_and_hold_er are aliases of the constant mixes)
     floors: {min_net_ret: 0.02, min_net_ret_vs_benchmark: null, min_edge_to_cost: 3.0, max_dd: null}
     test: {kind: overlay_alpha, sided: one, at_cost: 1.0,    # protocol v3 (U22, SPEC §22): kind sharpe_vs_benchmark
            alpha: 0.05, block_days: 21, n_boot: 5000,        #   (PLAN2) | overlay_alpha | marginal; sided one | two;
-           coherence_share: 0.667, seed: 0}                  #   at_cost registered | <round-trip bp> | measured
+           coherence_share: 0.667, seed: 0,                  #   at_cost registered | <round-trip bp> | measured;
+           coherence: cells}                                 #   U24: coherence over variants (§17) | cells (a region)
     power: {n_days: 2400, vol_ann: 0.08, families: 4,       # required by overlay_alpha / marginal: the MDE line
             mde_alpha_bp_per_day: 3.17, expected_alpha_bp_per_day: 3.5, diagnostic: false}
     core: {family: F1, variant: headline, k: 1.0}            # marginal: the core family's stream (results dir)
@@ -81,14 +83,18 @@ STATE_SPLITS = (
     "prior_day_sign",
     "day_of_week",
     "year",
+    "vol_quintile",
+    "opex_day",
     "gamma_sign",
-)  # fmt: skip  (gamma_sign: no gamma proxy yet, reported as unavailable)
+)  # fmt: skip  (gamma_sign: no gamma proxy yet, reported as unavailable; vol_quintile, opex_day: U24)
 RESPONSES = ("sharpe", "sortino", "calmar", "ret_ann", "vol_ann", "max_dd", "skew", "lpm2", "mean_per_trade_bp",
              "hit_rate", "crisis_return", "exposure", "worst_day", "longest_flat_run")  # fmt: skip
 TOP_KEYS = {"id", "mechanism", "registered", "instruments", "basket", "timeframe", "window", "headline", "variants",
             "state_splits", "response", "sample_splits", "benchmark", "floors", "test", "overlay", "TRIAL_BUDGET",
-            "notes", "power", "core", "account"}  # fmt: skip
+            "notes", "power", "core", "account", "weighting"}  # fmt: skip
 TEST_KINDS = ("sharpe_vs_benchmark", "overlay_alpha", "marginal")
+COHERENCE_KINDS = ("variants", "cells")  # §17: share of variants (+ the median variant's floors); U24: of region cells
+WEIGHTINGS = ("equal_risk", "equal")
 POWER_KEYS = {"n_days", "vol_ann", "families", "mde_alpha_bp_per_day", "expected_alpha_bp_per_day", "diagnostic"}
 MDE_TOLERANCE = 0.10  # a recorded MDE must agree with families.power.mde_alpha within this fraction
 ACCOUNT_KEYS = {"kind", "equity", "locate_bps"}
@@ -97,7 +103,7 @@ HEADLINE_KEYS = {"primary", "exit", "sampler", "cost_model", "risk_profile", "si
 PATCH_KEYS = HEADLINE_KEYS - {"per_instrument", "timeframe", "legs"}  # what a per-instrument or leg patch may set
 FLOOR_KEYS = {"min_net_ret": None, "min_net_ret_vs_benchmark": None, "min_edge_to_cost": None, "max_dd": None}
 TEST_DEFAULTS = {"alpha": 0.05, "block_days": 21, "n_boot": 5000, "coherence_share": 0.667, "seed": 0,
-                 "kind": "sharpe_vs_benchmark", "sided": "two", "at_cost": "registered"}  # fmt: skip
+                 "kind": "sharpe_vs_benchmark", "sided": "two", "at_cost": "registered", "coherence": "variants"}  # fmt: skip
 HEADLINE = "headline"
 
 
@@ -131,6 +137,7 @@ class FamilySpec:
     power: dict | None = None  # the MDE line (protocol v3)
     core: dict | None = None  # the core family of a `marginal` test
     account: dict = field(default_factory=dict)  # the registered account (risk.account)
+    weighting: str = "equal_risk"  # how instrument streams pool (U24: "equal" = 1/n)
 
     @property
     def base_id(self) -> str:
@@ -409,6 +416,18 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
     if not (ac in ("registered", "measured") or (isinstance(ac, (int, float)) and not isinstance(ac, bool)
                                                  and ac > 0)):  # fmt: skip
         raise ValueError(f"test.at_cost must be 'registered', 'measured' or a round-trip cost in bp > 0, got {ac!r}")
+    if test["coherence"] not in COHERENCE_KINDS:
+        raise ValueError(f"test.coherence must be one of {COHERENCE_KINDS}, got {test['coherence']!r}")
+    if test["coherence"] == "cells":
+        if basket or _model(headline)["meta"] != "none" or not hasattr(cls, "cell_matrix"):
+            raise ValueError("test.coherence 'cells' needs pooled rule cells of a region primary (one with cells)")
+        if headline.get("legs") or headline.get("per_instrument"):
+            raise ValueError("test.coherence 'cells' reads one region cell per instrument: no legs / per_instrument")
+    weighting = str(doc.get("weighting", "equal_risk"))
+    if weighting not in WEIGHTINGS:
+        raise ValueError(f"weighting must be one of {WEIGHTINGS}, got {weighting!r}")
+    if basket and "weighting" in doc:
+        raise ValueError("weighting pools instruments; a basket is one portfolio cell (its sizing weights it)")
     power = _power(doc.get("power"), test)
     if test["kind"] in ("overlay_alpha", "marginal") and power is None:
         raise ValueError(f"test.kind {test['kind']!r} needs the `power` block (the MDE line, PLAN3 §4.5)")
@@ -456,7 +475,8 @@ def parse(doc: dict, path: Path | None = None) -> FamilySpec:
                              "family or of a sample split")  # fmt: skip
     reg = doc.get("registered")
     fam = FamilySpec(fid, doc, Path(path) if path else None, instruments, basket, tf, window, variants, bench,
-                     floors, test, states, response, samples, budget, reg, power=power, core=core)  # fmt: skip
+                     floors, test, states, response, samples, budget, reg, power=power, core=core,
+                     weighting=weighting)  # fmt: skip
     fam.cells = {v.label: make_cells(fam, v.config, *window) for v in variants}
     fam.account = _account(doc.get("account"), fam.cells[HEADLINE][0].config().INIT_CASH)
     seen: dict[str, str] = {}

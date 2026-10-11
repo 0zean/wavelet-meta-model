@@ -23,6 +23,15 @@ the cost curve (every variant re-priced at 0.3 / 1.0 / 2.3 bp round trip and at 
 members' per-session cost ledgers; the verdict reads the spec's `test.at_cost`); the account check (risk.account)
 on the headline's positions; N_eff; the looks ledger's K and Bonferroni bound; the `marginal` kind's core stream
 from the core family's results.
+
+U24 additions (SPEC §25): `weighting: equal` pools the instruments 1/n; a region headline (a primary with cells, e.g.
+region_trend) gets its specification curve over every (instrument, cell): each cell's position series re-simulated by
+wfo.position_backtest on the member's bars, costs, prints, cash yield, clock and loss gate at the booked costs and at
+each round-trip cost, with the region (the cells' mean) re-simulated beside them as a parity check against the member
+cell's stream; with `test.coherence: cells` the verdict's coherence is the share of cells with the headline's alpha
+sign at the verdict's cost. Trade statistics (round trips per day from the cost ledgers, long / short P&L from the
+trades), per-instrument alpha at the verdict's cost, the MDE at the realized volatility, and the state inputs of the
+vol_quintile and opex_day splits.
 """
 
 import hashlib
@@ -53,6 +62,7 @@ FAMILY_STAGES_COUNTED = ("F", "G")
 KIND = "family_variant"
 WEIGHT_SESSIONS = 252
 MEASURED_COST_CSV = ROOT / "data" / "costs" / "measured_cost.csv"  # class, cost_bp (U27's reconciliation)
+PARITY_TOL = 1e-9  # the region's re-simulation vs its members (exactly 0 in practice; SPEC §25)
 
 
 class BudgetError(RuntimeError):
@@ -129,13 +139,19 @@ def bh_returns(source, symbols, timeframe: str, start: str, end: str) -> dict[st
     return out
 
 
-def family_weights(source, symbols, timeframe: str, window: tuple[str, str]) -> tuple[pd.Series, dict]:
+def family_weights(source, symbols, timeframe: str, window: tuple[str, str],
+                   weighting: str = "equal_risk") -> tuple[pd.Series, dict]:  # fmt: skip
     """
+    `weighting` "equal" (U24): 1/n per instrument, no data read.
+
     Equal-risk weights (T.risk_weights) over the weighting window (SPEC §22.1): the WEIGHT_SESSIONS sessions before
     the family window when the data reach back that far (a window starting more than 400 days after the development
     window's start), else the family window's first WEIGHT_SESSIONS sessions (Alpaca's history starts with the
     development window). Either way the weights depend on the instruments' own volatility only.
     """
+    if weighting == "equal":
+        syms = sorted(symbols)
+        return pd.Series(1.0 / len(syms), index=syms), {"window": "equal", "sessions": 0, "n": len(syms)}
     start, end = window
     s0 = pd.Timestamp(start)
     if s0 - pd.Timedelta(days=400) >= pd.Timestamp(DEV_WINDOW[0]):
@@ -151,9 +167,53 @@ def family_weights(source, symbols, timeframe: str, window: tuple[str, str]) -> 
     return T.risk_weights(bh), basis
 
 
-def load_state(source, start: str, end: str) -> pd.DataFrame | None:
-    """Day state for the reported splits: the previous VIX close (`vix_prev`) and the macro-day flag (FOMC, CPI,
-    NFP). None for an input the source cannot give (tests' fake sources)."""
+VOL_RANK_SESSIONS = 252  # the causal distribution of the vol_quintile split (PLAN3 §3 G1)
+
+
+def _ny_day(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    if index.tz is not None:
+        return index.tz_convert("America/New_York").normalize().tz_localize(None)
+    return index.normalize()
+
+
+def vol_rank(df: pd.DataFrame, sessions: int = VOL_RANK_SESSIONS) -> pd.Series:
+    """
+    Per session date (tz-naive NY): the mid-rank percentile, in (0, 1), of the PREVIOUS session's σ of 5Min log returns
+    (inside the session) among the σ of the `sessions` sessions ending with it — known at the open; NaN until that many
+    sessions exist (PLAN3 §3 G1's trailing-vol quintile).
+    """
+    day = _ny_day(df.index)
+    r = np.log(df["close"].astype(float)).groupby(day).diff()
+    sig = r.groupby(day).std(ddof=1)
+    x = sig.to_numpy()
+    out = np.full(len(x), np.nan)
+    for d in range(sessions, len(x)):  # session d reads σ of sessions d − sessions … d − 1 (the last one is x[d − 1])
+        w = x[d - sessions : d]
+        w = w[np.isfinite(w)]
+        v = x[d - 1]
+        if np.isfinite(v) and len(w) >= sessions // 2:
+            out[d] = ((w < v).sum() + 0.5 * (w == v).sum()) / len(w)
+    return pd.Series(out, index=sig.index, name="vol_rank")
+
+
+def trailing_rank(x: pd.Series, sessions: int = VOL_RANK_SESSIONS) -> pd.Series:
+    """The mid-rank percentile of each value among the `sessions` values ending with it (NaN skipped; NaN with fewer
+    than half of them): a mean of several instruments' ranks is not uniform, its own trailing rank is (U24 review)."""
+    v = x.to_numpy(dtype=float)
+    out = np.full(len(v), np.nan)
+    for d in range(len(v)):
+        w = v[max(0, d - sessions + 1) : d + 1]
+        w = w[np.isfinite(w)]
+        if np.isfinite(v[d]) and len(w) >= sessions // 2:
+            out[d] = ((w < v[d]).sum() + 0.5 * (w == v[d]).sum()) / len(w)
+    return pd.Series(out, index=x.index, name=x.name)
+
+
+def load_state(source, start: str, end: str, instruments=(), timeframe: str | None = None,
+               need=()) -> pd.DataFrame | None:  # fmt: skip
+    """Day state for the reported splits: the previous VIX close (`vix_prev`), the macro-day flag (FOMC, CPI,
+    NFP), and (U24) the OPEX flag and, for an intraday family whose splits name vol_quintile, the instruments' mean
+    vol_rank. None for an input the source cannot give (tests' fake sources)."""
     days = pd.bdate_range(start, end, inclusive="left")
     out = pd.DataFrame(index=days)
     try:
@@ -168,8 +228,16 @@ def load_state(source, start: str, end: str) -> pd.DataFrame | None:
         ev = read_events()
         macro = pd.DatetimeIndex(pd.to_datetime(ev.loc[ev["kind"].isin(["FOMC", "CPI", "NFP"]), "date"]))
         out["macro"] = days.isin(macro)
+        out["opex"] = days.isin(pd.DatetimeIndex(pd.to_datetime(ev.loc[ev["kind"] == "OPEX", "date"])))
     except Exception as e:  # noqa: BLE001
         print(f"[FAM]  no event calendar for the state splits ({type(e).__name__}: {e})")
+    if "vol_quintile" in need and instruments and timeframe not in (None, "1Day"):
+        try:
+            ranks = [vol_rank(source.bars(s, timeframe, start, end, allow_holdout=False)) for s in instruments]
+            mean_rank = pd.concat(ranks, axis=1, sort=True).mean(axis=1)
+            out["vol_rank"] = (mean_rank if len(ranks) == 1 else trailing_rank(mean_rank)).reindex(days)
+        except Exception as e:  # noqa: BLE001 — a reported split only
+            print(f"[FAM]  no vol_rank for the state splits ({type(e).__name__}: {e})")
     return out if out.shape[1] else None
 
 
@@ -203,7 +271,7 @@ def _read(root: Path, h: str, name: str) -> pd.DataFrame | None:
     p = root / "cells" / h / name
     if not p.exists():
         return None
-    return pd.read_csv(p, index_col=0)
+    return pd.read_csv(p, index_col=0, float_precision="round_trip")  # the written floats, exactly
 
 
 def _stream(root: Path, h: str) -> pd.Series:
@@ -397,7 +465,7 @@ def run_family(
     rows_by_hash = {h: r for (h, st), r in L.done(ledger.rows()).items() if st == "F"}
 
     bh = bh_returns(source, fam.instruments, fam.timeframe, start, end)
-    weights, weights_basis = family_weights(source, fam.instruments, fam.timeframe, fam.window)
+    weights, weights_basis = family_weights(source, fam.instruments, fam.timeframe, fam.window, fam.weighting)
     bench = T.benchmark(fam.benchmark, bh, weights)
     rf, rf_note = load_rf(source, start, end, pd.DatetimeIndex(T.day_index(bench).index))
 
@@ -463,11 +531,22 @@ def run_family(
                          "a PWFO member has none: register at_cost 'registered'")  # fmt: skip
     streams = {k: s for k, (s, _) in curve[key].items()}
     costs = {k: c for k, (_, c) in curve[key].items()}
-    ev = T.evaluate(sub, streams, bench, costs, rf, core_stream, k_by_variant)
+    region = None
+    if _is_region(fam):  # U24: the region's cells, re-simulated (specification curve, cells coherence)
+        region = region_cells(fam, fam.cells[HEADLINE], pooled[HEADLINE]["members"], rows_by_hash, root, source, rf,
+                              weights, at_cost)  # fmt: skip
+    cell_alphas = None
+    if region is not None and not region["parity_ok"]:
+        print(f"[FAM]  {fam.id}: the region's re-simulation does not reproduce its members ({region['parity']}): the "
+              "cells are not used for coherence")  # fmt: skip
+    elif region is not None and key in region["costs"]:
+        cell_alphas = {k: v[key]["alpha_bp"] for k, v in region["cells"].items()}
+    ev = T.evaluate(sub, streams, bench, costs, rf, core_stream, k_by_variant, cell_alphas)
     if failed:  # a variant that did not run is reported, and counts against coherence as not sharing the sign
         for k, st in failed.items():
             ev["variants"][k] = {"status": st}
-        ev["verdict"]["coherence"] = T.coherence(
+        ckey = "variant_coherence" if ev["verdict"].get("coherence_kind") == "cells" else "coherence"
+        ev["verdict"][ckey] = T.coherence(
             {**{k: {"delta_ann": v["compare"]["delta_ann"] if k == HEADLINE else v["delta_common"],
                     "floors_ok": v["floors"]["ok"]}
                 for k, v in ev["variants"].items() if "compare" in v},
@@ -495,23 +574,36 @@ def run_family(
     for label, cs in split_cells.items():
         syms = sorted({x for c in cs for x in c.symbols})  # a basket split is one cell; legs share a symbol
         sbh = bh_returns(source, syms, fam.timeframe, start, end)
-        sw, _ = family_weights(source, syms, fam.timeframe, fam.window)
+        sw, _ = family_weights(source, syms, fam.timeframe, fam.window, fam.weighting)
         hs = [hashes[(c.stage, c.spec_json())] for c in cs]
         if all(rows_by_hash.get(h, {}).get("status") == "ok" for h in hs):
-            r = _stream(root, hs[0]).rename("ret") if fam.basket else T.pool(_by_symbol(cs, hs, root), sw)
+            if fam.basket:
+                r = T.day_index(_stream(root, hs[0])).rename("ret")
+                if _cost_arg(at_cost) is not None:
+                    r = T.reprice(r, _daily_costs(root, hs[0]), _cost_arg(at_cost))[0]
+            else:
+                r = T.pool(_by_symbol(cs, hs, root, _cost_arg(at_cost)), sw)
             sample_streams[label] = (r, T.benchmark(fam.benchmark, sbh, sw))
     qslice = None
     if quasi_cells:
         hs = [hashes[(c.stage, c.spec_json())] for c in quasi_cells]
         if all(rows_by_hash.get(h, {}).get("status") == "ok" for h in hs):
-            qs = {"_basket": _stream(root, hs[0])} if fam.basket else _by_symbol(quasi_cells, hs, root)
+            if fam.basket:
+                qs = {"_basket": T.day_index(_stream(root, hs[0]))}
+                if _cost_arg(at_cost) is not None:
+                    qs["_basket"] = T.reprice(qs["_basket"], _daily_costs(root, hs[0]), _cost_arg(at_cost))[0]
+            else:
+                qs = _by_symbol(quasi_cells, hs, root, _cost_arg(at_cost))
             qr = qs["_basket"] if fam.basket else T.pool(qs, weights)
             qbh = bh_returns(source, fam.instruments, fam.timeframe, *QUASI_WINDOW)
             qslice = (qr.loc[QUASI_WINDOW[0] :], T.benchmark(fam.benchmark, qbh, weights))
             result["quasi_hashes"] = hs
-    state = load_state(source, start, end)
-    desc = T.describe(fam, streams, bench, {k: pooled[k].get("trades") for k in streams},
-                      pooled[HEADLINE].get("per_instrument", {}), state, sample_streams, qslice)  # fmt: skip
+    state = load_state(source, start, end, fam.instruments, fam.timeframe, fam.state_splits)
+    per_inst = {} if fam.basket else _by_symbol(fam.cells[HEADLINE], pooled[HEADLINE]["members"], root,
+                                                 _cost_arg(at_cost))  # fmt: skip
+    desc = T.describe(fam, streams, bench, {k: pooled[k].get("trades") for k in streams}, per_inst, state,
+                      sample_streams, qslice, rf)  # fmt: skip
+    desc["at_cost"] = key
     result |= {
         "evaluation": ev,
         "described": desc,
@@ -521,10 +613,184 @@ def run_family(
         "auction_fallbacks": {k: p.get("auction_fallbacks", 0) for k, p in pooled.items() if p["status"] == "ok"},
         "counters": {k: p.get("counters", {}) for k, p in pooled.items() if p["status"] == "ok"},
         "data_notes": {k: p.get("data_notes", {}) for k, p in pooled.items() if p.get("data_notes")},
+        "region": region,
+        "trade_stats": trade_stats(fam, pooled[HEADLINE], root, weights),
+        "per_instrument_alpha": _per_instrument_alpha(fam, pooled[HEADLINE]["members"], root, rf, at_cost),
+        "power_realized": _power_realized(fam, streams[HEADLINE], rf),
     }
     frame = pd.concat({**{k: T.day_index(s) for k, s in streams.items()}, "benchmark": T.day_index(bench),
                        **({"rf": T.day_index(rf)} if rf is not None else {})}, axis=1, sort=True)  # fmt: skip
     return _save(result, frame, out_dir)
+
+
+def _cost_arg(at_cost):
+    """The spec's at_cost as _by_symbol / T.reprice take it: None for the booked costs, else the round-trip bp."""
+    return None if at_cost == "registered" else (measured_profile() if at_cost == "measured" else float(at_cost))
+
+
+def _per_instrument_alpha(fam, members: list[str], root: Path, rf, at_cost) -> dict:
+    """Each instrument's headline stream at the verdict's cost: mean daily excess return (bp) with its Newey–West 95 %
+    interval, annualized Sharpe of the excess, days (reported)."""
+    from families.stats import mean_ci_nw, sharpe_ann
+
+    if fam.basket:
+        return {}
+    out = {}
+    for sym, r in _by_symbol(fam.cells[HEADLINE], members, root, _cost_arg(at_cost)).items():
+        x = T.excess(r, rf)
+        m, lo, hi = mean_ci_nw(x.to_numpy())
+        out[sym] = {"alpha_bp": m * 1e4, "ci_bp": [lo * 1e4, hi * 1e4], "sharpe": sharpe_ann(x), "n_days": len(x)}
+    return out
+
+
+def _power_realized(fam, headline: pd.Series, rf) -> dict | None:
+    """The MDE line recomputed at the headline's realized days and excess volatility (reported, never a gate: the
+    registered line is the spec's)."""
+    if not fam.power:
+        return None
+    from families.power import mde_alpha
+
+    x = T.excess(headline, rf)
+    vol = float(x.std(ddof=1) * np.sqrt(T.TRADING_DAYS)) if len(x) > 2 else np.nan
+    if not vol > 0:
+        return None
+    return mde_alpha(len(x), vol, alpha=fam.test["alpha"], families=int(fam.power["families"]), sided=fam.test["sided"])
+
+
+def trade_stats(fam, pooled: dict, root: Path, weights: pd.Series) -> dict:
+    """
+    The headline's trading statistics (reported): per instrument and pooled with the stream's weights, round trips per
+    day (Σ traded notional / the session's starting equity / 2, from the cost ledger, averaged over sessions), the
+    share of sessions with a fill, and the long / short trading P&L (Σ trade pnl by side, as bp per day of the member's
+    starting cash; trades without a side column are skipped).
+    """
+    if fam.basket or pooled.get("status") != "ok":
+        return {}
+    per = {}
+    for h, (sym, tr, init) in zip(pooled["members"], pooled["member_trades"]):
+        dc = _daily_costs(root, h)
+        row = {}
+        if dc is not None:
+            notional = sum(dc[f"notional_{k}"] for k in T.FILL_CLASSES)
+            row["round_trips_per_day"] = float((notional / dc["equity_start"]).mean() / 2.0)
+            row["sessions_traded"] = float((notional > 0).mean())
+            n_days = len(dc)
+        else:
+            n_days = len(T.day_index(_stream(root, h)))
+        if tr is not None and len(tr) and "side" in tr and "pnl" in tr:
+            side = tr["side"].astype(float)
+            for name, m in (("long", side > 0), ("short", side < 0)):
+                row[f"{name}_pnl_bp_per_day"] = float(tr.loc[m, "pnl"].sum() / init / max(n_days, 1) * 1e4)
+                row[f"{name}_trades"] = int(m.sum())
+        per[sym] = row
+    keys = sorted({k for r in per.values() for k in r if not k.endswith("_trades")})
+    pooled_row = {k: float(sum(float(weights[s]) * r[k] for s, r in per.items() if k in r)) for k in keys}
+    return {"per_instrument": per, "pooled": pooled_row}
+
+
+def _is_region(fam) -> bool:
+    """A headline whose cells a region primary supplies (pooled rule cells of a primary with `cell_matrix`)."""
+    if fam.basket or fam.headline.config.get("legs") or fam.headline.config.get("per_instrument"):
+        return False
+    from primaries import REGISTRY
+
+    cfg = fam.cells[HEADLINE][0].config()
+    return cfg.META_MODEL == "none" and hasattr(REGISTRY.get(cfg.PRIMARY), "cell_matrix")
+
+
+def region_cells(fam, cells, members: list[str], rows_by_hash: dict, root: Path, source, rf, weights,
+                 at_cost) -> dict:  # fmt: skip
+    """
+    The specification curve of a region headline (U24, SPEC §25): per instrument cell, every region cell's position
+    series (primary.cell_matrix on the member's bars) re-simulated by wfo.position_backtest from the first bar of the
+    member's first live session, on the member's own inputs (runner.load_cell_data: bars, as-of quotes, prints, cash
+    yield, the calendar clock, stress flags; the risk profile's loss gate), at the booked costs and at every round-trip
+    cost of the cost curve (and at_cost when off the curve). The region (the cells' mean, × the vol scale) is
+    re-simulated beside them: its stream at the booked costs must equal the member's (`parity`: max |Δ daily return|).
+    Per (instrument, cell) and cost: the mean daily excess return in bp with its Newey–West 95 % interval and the
+    annualized excess Sharpe; the same for the pooled cell (the instruments' cell streams with the family weights) and
+    for the region.
+    """
+    from experiments.runner import load_cell_data
+    from families.stats import mean_ci_nw, sharpe_ann
+    from primaries import make_primary
+    from risk.costs import fill_costs
+    from risk.profiles import get_profile
+    from wfo.position_backtest import decision_grid, position_backtest
+
+    curve = [*T.COST_CURVE_BP]
+    if at_cost not in ("registered", "measured") and float(at_cost) not in curve:
+        curve.append(float(at_cost))
+    measured = measured_profile()
+    if at_cost == "measured" and measured is None:
+        raise ValueError(f"test.at_cost 'measured' needs {MEASURED_COST_CSV}")
+    out: dict = {"cells": {}, "pooled_cells": {}, "region": {}, "parity": {}, "names": [],
+                 "costs": ["registered", *map(str, curve), *(["measured"] if measured is not None else [])],
+                 "note": "each cell re-simulated by wfo.position_backtest on the member's inputs; `measured` prices "
+                         "decision fills at the profile's `open` class and the closing fill at `close_auction` "
+                         "(`close` under FILL_AUCTION last_bar)"}  # fmt: skip
+    by_sym: dict[str, dict[str, pd.DataFrame]] = {}
+    for c, h in zip(cells, members):
+        sym = c.symbols[0]
+        cfg = c.config()
+        data = load_cell_data(c, cfg, source, final=False)
+        df = data["bars"][sym]
+        p = make_primary(cfg)
+        dec, m = p.cell_matrix(df, cfg)
+        names = p.cell_names()
+        out["names"] = names
+        day = _ny_day(df.index)
+        at = df.index.get_indexer([pd.Timestamp(rows_by_hash[h]["live_start"])])[0]
+        if at < 0:
+            raise ValueError(f"{sym}: the member's live_start {rows_by_hash[h]['live_start']} is not a bar of its data")
+        live_day = day[at]
+        b0 = int(np.flatnonzero(day == live_day)[0])  # the first bar of the member's first live session
+        bars = df.iloc[b0:]
+        keep = dec >= b0
+        frame = pd.DataFrame(m[keep], index=df.index[dec[keep]], columns=names)
+        frame["_region"] = frame[names].to_numpy().mean(axis=1) * p.vol_scale(df)[dec[keep]]
+        clock = data.get("clock")
+        kw = {"prints": (data.get("prints") or {}).get(sym), "cash_yield": data.get("cash_yield"),
+              "profile": get_profile(cfg.RISK_PROFILE), "sessions": clock, "grid": decision_grid(bars, cfg, clock)}  # fmt: skip
+        booked = None
+        if cfg.COST_MODEL != "slippage":
+            booked = fill_costs(bars.index, cfg, (data.get("cost") or {}).get(sym), stress=data.get("stress"))
+        rets = {"registered": position_backtest(bars, frame, cfg, costs=booked, **kw).ret}
+        for bp in curve:
+            rets[str(bp)] = position_backtest(bars, frame, cfg, costs=bp / 2.0 * 1e-4, **kw).ret
+        if measured is not None:  # decisions fill at bar opens after 09:30 (class `open`); the last exit at the close
+            close_cls = "close_auction" if cfg.FILL_AUCTION == "print" else "close"
+            mc = pd.DataFrame({"open": measured["open"] * 1e-4, "close": measured[close_cls] * 1e-4}, index=bars.index)
+            rets["measured"] = position_backtest(bars, frame, cfg, costs=mc, **kw).ret
+        member = T.day_index(_stream(root, h))
+        reg = T.day_index(rets["registered"]["_region"])
+        j = pd.concat([member.rename("m"), reg.rename("r")], axis=1, sort=True)
+        both = j.dropna()
+        out["parity"][sym] = {"max_abs_diff": float((both["m"] - both["r"]).abs().max()) if len(both) else None,
+                              "member_days": int(j["m"].notna().sum()), "resim_days": int(j["r"].notna().sum()),
+                              "common_days": len(both)}  # fmt: skip
+        by_sym[sym] = rets
+    out["parity_ok"] = all(v["max_abs_diff"] is not None and v["max_abs_diff"] <= PARITY_TOL and v["common_days"] > 0
+                           for v in out["parity"].values())  # fmt: skip
+
+    def stat(r: pd.Series) -> dict:
+        x = T.excess(r, rf)
+        mm, lo, hi = mean_ci_nw(x.to_numpy())
+        return {"alpha_bp": mm * 1e4, "ci_bp": [lo * 1e4, hi * 1e4], "sharpe": sharpe_ann(x)}
+
+    for ck in out["costs"]:
+        for col in [*out["names"], "_region"]:
+            per = {sym: T.day_index(rets[ck][col]) for sym, rets in by_sym.items()}
+            pooled_s = T.pool(per, weights)
+            if col == "_region":
+                for sym, r in per.items():
+                    out["region"].setdefault(sym, {})[ck] = stat(r)
+                out["region"].setdefault("pooled", {})[ck] = stat(pooled_s)
+                continue
+            for sym, r in per.items():
+                out["cells"].setdefault(f"{sym}:{col}", {})[ck] = stat(r)
+            out["pooled_cells"].setdefault(col, {})[ck] = stat(pooled_s)
+    return out
 
 
 def _at_cost(fam, v, rows_by_hash, hashes, root, weights, cost) -> tuple[pd.Series, dict] | None:

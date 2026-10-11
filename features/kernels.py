@@ -13,6 +13,8 @@ Conventions (numba, structure of arrays, float64 throughout, no `fastmath`):
 
     rmedv_all(x, start, ns)            Siegel's repeated-median slope (hierarchical; scipy.stats.siegelslopes)
     sg_velocity_all(x, start, ns, d)   Meyers' next-bar velocity of a degree-d least-squares polynomial (Savitzky–Golay)
+    modwt_slope_all(x, start, js)      one-bar slope of the causal MODWT smooth S_J (U24; db1: (x_t − x_{t−2^J}) / 2^J)
+    session_rv_sigma(o, c, sess, k)    √ mean intraday realized variance over the k previous sessions (U24 vol target)
     rmedv_normalized(raw, ns, sess, k) RMedV · √N · xmult (Meyers 2025), xmult refit over the k previous sessions
     poly_normalized(raw, sess, k)      velocity / its SD per (degree, N) (Meyers 2026), refit over the k previous sessions
     prior_sd(values, sess, k)          SD of each row's values over the k previous sessions
@@ -176,6 +178,72 @@ def sg_velocity_all(x, start, ns, degree: int = 1, offset: int = 1) -> np.ndarra
     out = np.empty((len(ns), len(x)))
     _fir_kernel(x, np.ascontiguousarray(start, dtype=np.int64), ns, w, out)
     return out
+
+
+# ── MODWT smooth slope (U24: G1's fourth estimator, a variant) ───────────────
+
+
+def modwt_slope_weights(j: int, filt: str = "db1") -> np.ndarray:
+    """
+    FIR weights (oldest first) of the one-bar slope S_J[t] − S_J[t − 1] of the causal MODWT smooth S_J: the pyramid of
+    features.groups.causal_modwt (Percival & Walden 2000, p.177, no circular wrap) collapsed to its impulse response h
+    (S_J[t] = Σ_k h_k x[t − k], length (2^J − 1)(L − 1) + 1), then differenced (length + 1, Σ w = 0). For Haar ("db1")
+    S_J is the 2^J-bar trailing mean and the slope is (x[t] − x[t − 2^J]) / 2^J.
+    """
+    from pywddff.filters import scaling_filter
+
+    if not (isinstance(j, int | np.integer) and j >= 1):
+        raise ValueError(f"J must be an integer >= 1, got {j}")
+    g = np.asarray(scaling_filter(filt, modwt=True), dtype=np.float64)
+    h = np.array([1.0])  # newest first: weight on x[t − k]
+    for lev in range(int(j)):
+        step = 2**lev
+        nh = np.zeros(len(h) + (len(g) - 1) * step)
+        for n, gn in enumerate(g):
+            nh[n * step : n * step + len(h)] += gn * h
+        h = nh
+    d = np.r_[h, 0.0] - np.r_[0.0, h]  # S_J[t] − S_J[t − 1], newest first
+    return d[::-1].copy()
+
+
+def modwt_slope_all(x, start, js, filt: str = "db1") -> np.ndarray:
+    """The one-bar slope of the causal MODWT smooth S_J of x for every J in `js` (modwt_slope_weights), on
+    session-bounded windows: float64[len(js), len(x)], NaN for the first (window length − 1) bars of every session (for
+    Haar 2^J bars: the window holds x[t − 2^J] … x[t])."""
+    x = _check_x(x)
+    js = _check_ns(js, 1)
+    ws = [modwt_slope_weights(int(j), filt) for j in js]
+    ns = np.array([len(w) for w in ws], dtype=np.int64)
+    w = np.zeros((len(ws), int(ns.max())))
+    for a, wa in enumerate(ws):
+        w[a, : len(wa)] = wa
+    out = np.empty((len(ws), len(x)))
+    _fir_kernel(x, np.ascontiguousarray(start, dtype=np.int64), ns, w, out)
+    return out
+
+
+def session_rv_sigma(open_, close, sess, k: int) -> np.ndarray:
+    """
+    Per bar: the daily intraday volatility known at its session's open, √(mean over the k previous sessions of the
+    session's realized variance Σ r²), with r = the 5Min log returns inside the session (the first bar's open → close,
+    then close → close; the overnight gap excluded: G1 is flat overnight). NaN for the first k sessions.
+    """
+    o = np.asarray(open_, dtype=np.float64)
+    c = np.asarray(close, dtype=np.float64)
+    sess = np.asarray(sess, dtype=np.int64)
+    if not (isinstance(k, int | np.integer) and k >= 1):
+        raise ValueError(f"k must be an integer >= 1, got {k}")
+    n = len(c)
+    if n == 0:
+        return np.zeros(0)
+    first = np.r_[True, sess[1:] != sess[:-1]]
+    r = np.log(c / np.where(first, o, np.r_[np.nan, c[:-1]]))
+    rv = np.bincount(np.cumsum(first) - 1, weights=r * r)
+    cs = np.r_[0.0, np.cumsum(rv)]
+    d = np.arange(len(rv))
+    with np.errstate(invalid="ignore"):
+        prior = np.where(d >= k, (cs[d] - cs[np.maximum(d - k, 0)]) / k, np.nan)
+    return np.sqrt(prior)[np.cumsum(first) - 1]
 
 
 # ── Normalization (Meyers' multipliers, refit every session) ─────────────────
