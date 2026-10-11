@@ -39,6 +39,7 @@
 #   overlay, core) 0.926; Holm over 4 families: MDE Δ Sharpe 0.38. Expected +0.17 at PLAN2 F9's overlay Sharpe 0.8
 #   (0.6–1.0). Below the MDE: registered as a DIAGNOSTIC, as G1–G3 (the test, floors and coherence run unchanged).
 id: G6
+registered: {sha: '4d90603bd83c55b893d0f8e8617d3d44700c9a8b', date: '2026-10-11'}
 mechanism: >-
   Implied volatility exceeds realized volatility on average and the VIX futures curve is in contango most of the time,
   so a short position in VIX short-term futures (long SVXY) earns the variance risk premium and the roll; it carries
