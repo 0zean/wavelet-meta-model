@@ -95,7 +95,15 @@ STATE_SPLITS = (
     "vol_quintile",
     "opex_day",
     "gamma_sign",
-)  # fmt: skip  (gamma_sign: no gamma proxy yet, reported as unavailable; vol_quintile, opex_day: U24)
+)  # fmt: skip  (vol_quintile, opex_day: U24; gamma_sign: the U26 revealed-gamma proxy)
+# U26 (SPEC §24): terciles of the causal trailing-252-session rank of a state known at the open: the instruments' mean
+# tf_state column (features/tf_state.py) or the previous CBOE close (SKEW, VVIX, VVIX / VIX)
+TERCILE_SPLITS = {"tilt_tercile": "tilt", "pow_hf_tercile": "pow_hf", "pow_lf_tercile": "pow_lf",
+                  "flatness_tercile": "flatness", **{f"modwt_e{j}_tercile": f"modwt_e{j}" for j in range(1, 6)},
+                  "ac1_tercile": "ac1", "vov_tercile": "vov", "skew_tercile": "skew", "vvix_tercile": "vvix",
+                  "vvix_vix_tercile": "vvix_vix"}  # fmt: skip
+STATE_SPLITS += tuple(TERCILE_SPLITS)
+U26_SPLITS = ("gamma_sign", *TERCILE_SPLITS)  # the splits G1's report gains in U26's re-render
 RESPONSES = ("sharpe", "sortino", "calmar", "ret_ann", "vol_ann", "max_dd", "skew", "lpm2", "mean_per_trade_bp",
              "hit_rate", "crisis_return", "exposure", "worst_day", "longest_flat_run")  # fmt: skip
 TOP_KEYS = {"id", "mechanism", "registered", "instruments", "basket", "timeframe", "window", "headline", "variants",

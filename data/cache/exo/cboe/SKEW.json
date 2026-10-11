@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-11",
+  "coverage_start": "1990-01-02",
+  "fetched_at": "2026-10-11T02:24:05.167827-04:00",
+  "n_rows": 9245,
+  "name": "SKEW",
+  "schema_version": 1,
+  "sha256": "b10ec9ebd9f77eab119633a9431144893499710c69680318370fb66936b95755",
+  "source": "cboe",
+  "url": "https://cdn-api.cboe.com/api/global/us_indices/daily_prices/SKEW_History.csv"
+}

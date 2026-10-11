@@ -7,6 +7,7 @@ vol_state (per fold; needs exo):
     vix             VIX close (CBOE), as of the bar
     vix9d_vix       VIX9D / VIX, vix3m_vix  VIX3M / VIX (ratios built on common observation dates)
     vx1_vix         front VIX future / VIX, vx2_vx1  second / front future (contango > 1)
+    skew, vvix      CBOE SKEW and VVIX closes (U26), vvix_vix  VVIX / VIX (built on common observation dates)
     rv21_vix        realized σ of the last 21 completed sessions' close-to-close returns (annualized) / (VIX / 100);
                     intraday bars use the sessions before the bar's own (it is not complete), 1Day bars include it
     garch_sigma     GARCH(1,1) one-step conditional σ for the next bar, in session units (intraday: bar returns
@@ -56,7 +57,7 @@ GARCH_MIN_OBS = 500
 TO_CAP = 63
 RELEASE_CAP = 480  # minutes; > 08:30 → 16:00
 
-VOL_STATE_EXO = ("cboe/VIX", "cboe/VIX9D", "cboe/VIX3M", "cboe/VX1_VIX", "cboe/VX2_VX1")
+VOL_STATE_EXO = ("cboe/VIX", "cboe/VIX9D", "cboe/VIX3M", "cboe/VX1_VIX", "cboe/VX2_VX1", "cboe/SKEW", "cboe/VVIX")
 CALENDAR_EXO = ("calendar/FOMC", "calendar/CPI", "calendar/NFP", "calendar/OPEX", "calendar/TOM",
                 "calendar/PRE_HOLIDAY", "calendar/FOMC_SCHEDULE", "calendar/CPI_SCHEDULE",
                 "calendar/NFP_SCHEDULE")  # fmt: skip
@@ -164,6 +165,9 @@ def vol_state_frame(df: pd.DataFrame, state: tuple, cfg, exo) -> dict[str, np.nd
         "vix3m_vix": exo.ratio("cboe/VIX3M", "cboe/VIX", idx),
         "vx1_vix": exo.asof("cboe/VX1_VIX", idx),
         "vx2_vx1": exo.asof("cboe/VX2_VX1", idx),
+        "skew": exo.asof("cboe/SKEW", idx),
+        "vvix": exo.asof("cboe/VVIX", idx),
+        "vvix_vix": exo.ratio("cboe/VVIX", "cboe/VIX", idx),
         "rv21_vix": rv_vix,
         "garch_sigma": np.sqrt(h[1:]) * scale,
         "ret_std_garch": z / np.sqrt(h[:-1]),

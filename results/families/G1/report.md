@@ -174,6 +174,27 @@ Responses, splits and slices below: excess of the T-bill, at cost 1.0; mean_per_
 
 ## State splits (headline; reported with 95 % Newey–West intervals, not tested)
 
+*Added 2026-10-11 at 879bc59 without re-running the family (the stored headline stream; stored split(s) year, vol_quintile reproduced first; look 'families/G1 U26 splits'): gamma_sign, tilt_tercile, pow_hf_tercile, pow_lf_tercile, flatness_tercile, modwt_e1_tercile, modwt_e2_tercile, modwt_e3_tercile, modwt_e4_tercile, modwt_e5_tercile, ac1_tercile, vov_tercile, skew_tercile, vvix_tercile, vvix_vix_tercile.*
+
+**vol_quintile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 363 | -0.46 | -3.01 … 2.08 | -0.30 |
+| q1 low | 497 | 0.49 | -1.78 … 2.76 | 0.28 |
+| q2 | 362 | 0.58 | -2.12 … 3.28 | 0.31 |
+| q3 | 365 | 0.71 | -2.35 … 3.77 | 0.36 |
+| q4 | 404 | 4.25 | 0.16 … 8.33 | 1.63 |
+| q5 high | 445 | 6.35 | 0.45 … 12.26 | 1.44 |
+
+**vix_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| high | 812 | 4.20 | 0.21 … 8.18 | 1.09 |
+| low | 812 | 0.18 | -1.15 … 1.52 | 0.14 |
+| mid | 812 | 1.88 | -0.08 … 3.85 | 0.96 |
+
 **day_of_week**
 
 | group | n_days | mean_bp | ci_bp | sharpe |
@@ -183,8 +204,6 @@ Responses, splits and slices below: excess of the T-bill, at cost 1.0; mean_per_
 | Thursday | 492 | 2.31 | -1.75 … 6.37 | 0.87 |
 | Tuesday | 502 | -0.81 | -3.85 … 2.23 | -0.33 |
 | Wednesday | 498 | 3.47 | -0.58 … 7.52 | 1.21 |
-
-- gamma_sign: unavailable
 
 **macro_day**
 
@@ -200,25 +219,6 @@ Responses, splits and slices below: excess of the T-bill, at cost 1.0; mean_per_
 | opex | 116 | 4.29 | -1.70 … 10.29 | 1.74 |
 | other | 2320 | 1.98 | 0.38 … 3.57 | 0.76 |
 
-**vix_tercile**
-
-| group | n_days | mean_bp | ci_bp | sharpe |
-|---|---|---|---|---|
-| high | 812 | 4.20 | 0.21 … 8.18 | 1.09 |
-| low | 812 | 0.18 | -1.15 … 1.52 | 0.14 |
-| mid | 812 | 1.88 | -0.08 … 3.85 | 0.96 |
-
-**vol_quintile**
-
-| group | n_days | mean_bp | ci_bp | sharpe |
-|---|---|---|---|---|
-| n/a | 363 | -0.46 | -3.01 … 2.08 | -0.30 |
-| q1 low | 497 | 0.49 | -1.78 … 2.76 | 0.28 |
-| q2 | 362 | 0.58 | -2.12 … 3.28 | 0.31 |
-| q3 | 365 | 0.71 | -2.35 … 3.77 | 0.36 |
-| q4 | 404 | 4.25 | 0.16 … 8.33 | 1.63 |
-| q5 high | 445 | 6.35 | 0.45 … 12.26 | 1.44 |
-
 **year**
 
 | group | n_days | mean_bp | ci_bp | sharpe |
@@ -233,6 +233,136 @@ Responses, splits and slices below: excess of the T-bill, at cost 1.0; mean_per_
 | 2023 | 250 | 1.67 | -1.41 … 4.75 | 0.80 |
 | 2024 | 252 | 2.38 | -1.34 … 6.11 | 1.07 |
 | 2025 | 186 | -1.59 | -8.31 … 5.13 | -0.46 |
+
+**gamma_sign**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| ac1 < 0 (long gamma) | 1526 | 1.90 | -0.06 … 3.85 | 0.79 |
+| ac1 >= 0 (short gamma) | 910 | 2.41 | -0.53 … 5.35 | 0.83 |
+
+**tilt_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 801 | 2.87 | -0.19 … 5.93 | 1.02 |
+| t2 | 701 | 0.85 | -2.11 … 3.82 | 0.33 |
+| t3 high | 818 | 2.68 | 0.04 … 5.32 | 1.07 |
+
+**pow_hf_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 789 | 2.35 | -0.59 … 5.29 | 0.82 |
+| t2 | 750 | 2.68 | -0.19 … 5.55 | 0.99 |
+| t3 high | 781 | 1.57 | -0.70 … 3.85 | 0.69 |
+
+**pow_lf_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 813 | 2.82 | 0.11 … 5.52 | 1.12 |
+| t2 | 724 | 1.54 | -1.09 … 4.18 | 0.59 |
+| t3 high | 783 | 2.15 | -0.84 … 5.13 | 0.78 |
+
+**flatness_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 782 | 2.57 | -0.11 … 5.25 | 1.06 |
+| t2 | 775 | 3.10 | 0.58 … 5.62 | 1.14 |
+| t3 high | 763 | 0.89 | -2.52 … 4.30 | 0.32 |
+
+**modwt_e1_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 780 | 1.93 | -1.66 … 5.52 | 0.60 |
+| t2 | 761 | 2.09 | -0.39 … 4.56 | 0.95 |
+| t3 high | 779 | 2.57 | -0.23 … 5.37 | 1.07 |
+
+**modwt_e2_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 767 | 2.74 | 0.01 … 5.46 | 1.04 |
+| t2 | 753 | 1.73 | -1.10 … 4.57 | 0.70 |
+| t3 high | 800 | 2.11 | -0.81 … 5.04 | 0.77 |
+
+**modwt_e3_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 768 | 2.15 | -0.35 … 4.65 | 0.90 |
+| t2 | 794 | 0.77 | -2.08 … 3.62 | 0.31 |
+| t3 high | 758 | 3.74 | 0.21 … 7.26 | 1.24 |
+
+**modwt_e4_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 805 | 2.63 | -0.28 … 5.53 | 0.97 |
+| t2 | 735 | 0.47 | -2.42 … 3.37 | 0.18 |
+| t3 high | 780 | 3.37 | 0.76 … 5.99 | 1.32 |
+
+**modwt_e5_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 781 | 3.27 | 0.35 … 6.20 | 1.12 |
+| t2 | 759 | 1.14 | -1.73 … 4.01 | 0.47 |
+| t3 high | 780 | 2.14 | -0.31 … 4.60 | 0.85 |
+
+**ac1_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 116 | -0.06 | -5.95 … 5.82 | -0.03 |
+| t1 low | 776 | 2.51 | -0.19 … 5.21 | 1.04 |
+| t2 | 764 | 1.71 | -1.30 … 4.71 | 0.71 |
+| t3 high | 780 | 2.37 | -0.84 … 5.58 | 0.78 |
+
+**vov_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| n/a | 122 | -0.18 | -5.76 … 5.40 | -0.09 |
+| t1 low | 765 | 2.23 | -0.43 … 4.89 | 0.92 |
+| t2 | 718 | 1.43 | -0.95 … 3.81 | 0.64 |
+| t3 high | 831 | 2.86 | -0.11 … 5.82 | 0.92 |
+
+**skew_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| t1 low | 742 | 4.42 | 0.56 … 8.29 | 1.19 |
+| t2 | 677 | 2.12 | -0.27 … 4.50 | 1.05 |
+| t3 high | 1017 | 0.36 | -1.20 … 1.92 | 0.20 |
+
+**vvix_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| t1 low | 821 | 1.98 | -0.37 … 4.32 | 0.94 |
+| t2 | 728 | 0.41 | -1.76 … 2.58 | 0.21 |
+| t3 high | 887 | 3.56 | 0.35 … 6.78 | 1.06 |
+
+**vvix_vix_tercile**
+
+| group | n_days | mean_bp | ci_bp | sharpe |
+|---|---|---|---|---|
+| t1 low | 759 | 5.55 | 1.39 … 9.71 | 1.42 |
+| t2 | 626 | 0.54 | -1.58 … 2.67 | 0.28 |
+| t3 high | 1051 | 0.50 | -0.92 … 1.93 | 0.33 |
 
 ## Sample splits (headline; reported)
 

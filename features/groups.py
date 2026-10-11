@@ -432,6 +432,19 @@ class Session:
         return _prefixed("session", {c: frame[c].to_numpy() for c in GROUP_COLUMNS}, df.index)
 
 
+@feature_group("tf_state", intraday_only=True)
+def tf_state(df: pd.DataFrame, cfg, context) -> pd.DataFrame:
+    """
+    Time–frequency state per session, known at its open, from the previous sessions' 5Min returns (SPEC §24,
+    features/tf_state.py): Goertzel band power at periods 2–6 vs 12–78 bars and their log ratio (spectral tilt),
+    spectral flatness, Haar MODWT energy by scale J = 1–5 relative to white noise, the lag-1 autocorrelation (the
+    revealed-gamma proxy) and realized vol-of-vol.
+    """
+    from features.tf_state import tf_state_frame
+
+    return _prefixed("tf_state", tf_state_frame(df, TIMEFRAME_MINUTES[cfg.TIMEFRAME]), df.index)
+
+
 @feature_group("vol_state", per_fold=True, needs=("exo",), exo=VOL_STATE_EXO)
 class VolState:
     """

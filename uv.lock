@@ -353,6 +353,24 @@ wheels = [
 ]
 
 [[package]]
+name = "fastgoertzel"
+version = "0.1.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/69/29b2768b497ff2cc9a8cd364659520b754efa03a689133fb3b38511a3f14/fastgoertzel-0.1.9.tar.gz", hash = "sha256:3bcdc3a297c853850010aa95c580a974e4f40ae2c6014298a756f47ae0124de1", size = 34424, upload-time = "2023-08-21T07:07:32.559Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ff/8b/f0332bb96c815093e1b75f792aa0b383c8093b29f9e971730e790fdda15f/fastgoertzel-0.1.9-cp37-abi3-macosx_10_7_x86_64.whl", hash = "sha256:61089c00d215afcaff80db9db6f2af8a49de9517f641e113deaaa817e5bb0bed", size = 236456, upload-time = "2023-08-21T07:21:03.917Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/f8/81ea9f2be661ce19b9cbff5bb6f93aed690d0150cdc27127b4bc5cd80d9c/fastgoertzel-0.1.9-cp37-abi3-macosx_11_0_arm64.whl", hash = "sha256:4f80799fc1952439e4142b1a2e273ee2e9615a008751295745018cd79d00d401", size = 231727, upload-time = "2023-08-21T07:21:05.893Z" },
+    { url = "https://files.pythonhosted.org/packages/65/8b/915cd5261c03028be7d64c2d7d20fe10ba8f3391b7d93a0b88fb56f85330/fastgoertzel-0.1.9-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:69a1b09b8b847ace59d3d4f6372b283484a2e548583c69e1be8d331799736058", size = 1074278, upload-time = "2023-08-21T07:21:07.859Z" },
+    { url = "https://files.pythonhosted.org/packages/99/21/322e217727cc0f8eb3f0da5e2bcb138f854a95ca81700e52cc2600ec07be/fastgoertzel-0.1.9-cp37-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:11afeb4dae39139b034ce3428b225f568809593aaa21ed6ddf65c340d9fe7580", size = 1084534, upload-time = "2023-08-21T07:21:09.93Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/cd/5c9a8d9788c7adb8dc978ebe031bc91bf8248b586905cb842869975cd292/fastgoertzel-0.1.9-cp37-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:028847d0fdd04b324daf22eb0f41c3bf1b7bbc9d0bb53bba4dc8360ea3433652", size = 1187935, upload-time = "2023-08-21T07:21:12.106Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/8a/a0050a58e52d0620b00a11fdabda655d07ccfa9171a44440f20c8eacbf04/fastgoertzel-0.1.9-cp37-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:92fc3f8cf509a459e116434826a9501a7caa11b3b4fff0a5b71e634ee0717682", size = 1247036, upload-time = "2023-08-21T07:21:13.852Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/44/67d6d088576bd39693574ecf2bec6fccff314014d9a63e7d5cda5164bfef/fastgoertzel-0.1.9-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f29bc088bae256387e7ffd97f3b6809cb7d12062722edabcb99093c9befd2324", size = 1078406, upload-time = "2023-08-21T07:21:15.595Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/c2/c5e9634b094816c08a401b7f1c4dc1f7c41af461ea4cf2992e33a87ecde3/fastgoertzel-0.1.9-cp37-abi3-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:8b2c62060460131b750f4c3972967724d202224f562d4981e7f48977d839966f", size = 1098655, upload-time = "2023-08-21T07:21:17.766Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/af/680288ca64d73e1327869d64e57ebfca830c1a3ab820f68e32a6a86fe2db/fastgoertzel-0.1.9-cp37-abi3-win32.whl", hash = "sha256:c30b126999e5808e381d1c2aaac4c7680db236a27b2e6873a4aa44f8ca5428a5", size = 109298, upload-time = "2023-08-21T07:21:19.722Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/85/0cb930bb7380e63a8e63a405d5bcb17f732940668741e1463d7ef2e104a4/fastgoertzel-0.1.9-cp37-abi3-win_amd64.whl", hash = "sha256:5f6f07270b7c4a0a0bb09749b7f9698c38cd0e65195257952477eef3a4df8bc4", size = 112770, upload-time = "2023-08-21T07:07:31.285Z" },
+]
+
+[[package]]
 name = "fonttools"
 version = "4.66.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1653,6 +1671,7 @@ dependencies = [
     { name = "alpaca-py" },
     { name = "catboost" },
     { name = "dill" },
+    { name = "fastgoertzel" },
     { name = "joblib" },
     { name = "lightgbm" },
     { name = "matplotlib" },
@@ -1681,6 +1700,7 @@ requires-dist = [
     { name = "alpaca-py", specifier = ">=0.44.0" },
     { name = "catboost", specifier = ">=1.2" },
     { name = "dill", specifier = ">=0.3.0" },
+    { name = "fastgoertzel", specifier = "==0.1.9" },
     { name = "joblib", specifier = ">=1.4" },
     { name = "lightgbm", specifier = ">=4.7.0" },
     { name = "matplotlib", specifier = ">=3.11.2" },

@@ -5,8 +5,8 @@ Point-in-time exogenous series (SPEC §12, U13).
     `value` (float), optional extra columns, and `available_at` (tz-aware UTC instant from which the row may be used)
 
 Sources (the `available_at` rules are in AVAILABLE_AT and the functions below):
-- `cboe`: VIX, VIX9D, VIX3M, VIX6M daily OHLC (`value` = close) from CBOE's index history files, available at the
-  session date 16:20 ET. VX1, VX2 (continuous front / second monthly VIX future settlements, rolled on the expiry
+- `cboe`: VIX, VIX9D, VIX3M, VIX6M daily OHLC (`value` = close) and (U26) SKEW, VVIX daily closes (their files carry
+  the close only) from CBOE's index history files, available at the session date 16:20 ET. VX1, VX2 (continuous front / second monthly VIX future settlements, rolled on the expiry
   date, whose row carries the final settlement) and the ratios VX1_VIX, VX2_VX1, from CFE's per-expiry files,
   available at the settlement date 16:20 ET.
 - `fred`: VIXCLS, DGS2, DGS10, T10Y2Y, BAMLH0A0HYM2, BAA10Y, DTWEXBGS, DTB3 from fredgraph.csv. VIXCLS: next
@@ -50,6 +50,7 @@ CFE_FILE_URL = "https://cdn.cboe.com/{path}"
 FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={name}"
 
 CBOE_INDEXES = ("VIX", "VIX9D", "VIX3M", "VIX6M")
+CBOE_CLOSE_INDEXES = ("SKEW", "VVIX")  # U26: history files with DATE and the close only
 VX_SERIES = ("VX1", "VX2", "VX1_VIX", "VX2_VX1")
 FRED_SERIES = ("VIXCLS", "DGS2", "DGS10", "T10Y2Y", "BAMLH0A0HYM2", "BAA10Y", "DTWEXBGS", "DTB3")
 SETTLE_TIME = "16:20"  # CBOE index closes and CFE settlements (16:15 ET) plus 5 minutes
@@ -135,6 +136,17 @@ def parse_cboe_index(text: str) -> pd.DataFrame:
     )
     out.insert(0, "value", pd.to_numeric(raw["CLOSE"], errors="raise").to_numpy(float))
     return _clean(out, "cboe index")
+
+
+def parse_cboe_close(text: str, name: str) -> pd.DataFrame:
+    """CBOE close-only index history CSV (DATE MM/DD/YYYY, NAME) → value = close (SKEW, VVIX)."""
+    raw = pd.read_csv(io.StringIO(text))
+    raw.columns = [c.strip().upper() for c in raw.columns]
+    if list(raw.columns) != ["DATE", name]:
+        raise ValueError(f"unexpected CBOE columns {list(raw.columns)} for {name}")
+    idx = pd.DatetimeIndex(pd.to_datetime(raw["DATE"], format="%m/%d/%Y"), name="date")
+    out = pd.DataFrame({"value": pd.to_numeric(raw[name], errors="raise").to_numpy(float)}, index=idx)
+    return _clean(out, f"cboe {name}")
 
 
 def parse_fred(text: str, name: str) -> pd.DataFrame:
@@ -236,6 +248,9 @@ def _fetch_vx(cache_dir: Path, http) -> pd.DataFrame:
 def _fetch(source: str, name: str, cache_dir: Path, http) -> tuple[pd.DataFrame, str]:
     if source == "cboe" and name in CBOE_INDEXES:
         return _fetch_cboe_index(name, http)
+    if source == "cboe" and name in CBOE_CLOSE_INDEXES:
+        url = CBOE_INDEX_URL.format(name=name)
+        return parse_cboe_close(http(url), name), url
     if source == "cboe" and name in VX_SERIES:
         vx = _fetch_vx(cache_dir, http)
         if name in ("VX1", "VX2"):

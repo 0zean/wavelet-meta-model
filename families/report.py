@@ -503,14 +503,7 @@ def family_markdown(result: dict) -> str:
         ),
         "",
     ]
-    md += ["## State splits (headline; reported with 95 % Newey–West intervals, not tested)", ""]
-    for k, s in d.get("state_splits", {}).items():
-        if s.get("unavailable"):
-            md += [f"- {k}: unavailable", ""]
-            continue
-        md += [f"**{k}**", "", _table([{**g, "mean_bp": _f(g["mean_bp"], 2), "ci_bp": f"{_f(g['ci_bp'][0], 2)} … "
-                                        f"{_f(g['ci_bp'][1], 2)}", "sharpe": _f(g["sharpe"], 2)}
-                                       for g in s["groups"]], ["group", "n_days", "mean_bp", "ci_bp", "sharpe"]), ""]  # fmt: skip
+    md += splits_md(result)
     if d.get("sample_splits"):
         md += ["## Sample splits (headline; reported)", ""]
         md += [_table([{"split": k, **_slice_row(s)} for k, s in d["sample_splits"].items()],
@@ -526,6 +519,46 @@ def family_markdown(result: dict) -> str:
                        for k, x in d["per_instrument"].items()], ["instrument", "sharpe", "sharpe_js"]), ""]  # fmt: skip
     md += ["## Registered vs run spec", "", "```", spec_diff(result), "```", ""]
     return "\n".join(md)
+
+
+SPLITS_HEADER = "## State splits (headline; reported with 95 % Newey–West intervals, not tested)"
+
+
+def splits_md(result: dict) -> list[str]:
+    """The report's state-splits section: the spec's splits in its order, then those added later (U26,
+    families.run.add_splits) in the order added, each addition noted."""
+    ss = result.get("described", {}).get("state_splits", {})
+    order = [k for k in (result.get("spec") or {}).get("state_splits") or [] if k in ss]
+    for a in result.get("splits_added", []):
+        order += [k for k in a["splits"] if k in ss and k not in order]
+    order += [k for k in ss if k not in order]
+    md = [SPLITS_HEADER, ""]
+    for a in result.get("splits_added", []):
+        md += [(f"*Added {str(a['at'])[:10]} at {str(a['git_sha'])[:7]} without re-running the family (the stored "
+                f"headline stream; stored split(s) {', '.join(a['checked'])} reproduced first; look "
+                f"{a.get('look', 'n/a')!r}): {', '.join(a['splits'])}.*"), ""]  # fmt: skip
+    for k in order:
+        s = ss[k]
+        if s.get("unavailable"):
+            md += [f"- {k}: unavailable", ""]
+            continue
+        md += [f"**{k}**", "", _table([{**g, "mean_bp": _f(g["mean_bp"], 2), "ci_bp": f"{_f(g['ci_bp'][0], 2)} … "
+                                        f"{_f(g['ci_bp'][1], 2)}", "sharpe": _f(g["sharpe"], 2)}
+                                       for g in s["groups"]], ["group", "n_days", "mean_bp", "ci_bp", "sharpe"]), ""]  # fmt: skip
+    return md
+
+
+def replace_splits(result: dict, out: Path) -> dict:
+    """Rewrite only the state-splits section of <out>/report.md (and report.html from it), leaving every other line as
+    the run wrote it (result.json is key-sorted, so a full re-render would reorder the run's tables)."""
+    out = Path(out)
+    lines = (out / "report.md").read_text(encoding="utf-8").split("\n")
+    a = lines.index(SPLITS_HEADER)
+    b = next((i for i in range(a + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    md = "\n".join([*lines[:a], *splits_md(result), *lines[b:]])
+    (out / "report.md").write_text(md, encoding="utf-8")
+    (out / "report.html").write_text(_html(f"Family {result['id']}", md), encoding="utf-8")
+    return {"md": out / "report.md", "html": out / "report.html"}
 
 
 def _resp(x) -> str:
