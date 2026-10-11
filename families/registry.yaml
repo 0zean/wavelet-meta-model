@@ -1,0 +1,30 @@
+# The claims registry (families/registry.py, PLAN3 U25): one entry per passing claim; U27's input.
+# Written by `python -m families registry <id>`; do not edit by hand.
+claims:
+  G1:
+    at_cost: '1.0'
+    code_hash: 2994b5e83c6ed1d2c641ce94b3c225d62cde6d7ce2d1f637ad33b97feef53c68
+    diagnostic: true
+    family: G1
+    freeze_date: '2026-10-11'
+    git_sha: d0a31c0192af6ec5dda65cfe48a837bcf539e426
+    kind: overlay_alpha
+    members:
+    - 64c27ca268001f66
+    - e76a64a23b70e0e2
+    refs: {}
+    registered:
+      date: '2026-10-11'
+      sha: c1689612eef33fd87f87ec99bc793cd3038bbc7b
+    run_at: '2026-10-11T04:30:44.047948+00:00'
+    variant_hash: 830671593ae227cd
+    verdict:
+      coherent: true
+      floors_ok: true
+      holm_families:
+      - G1
+      - G2
+      - G3
+      p: 0.0033993201359728054
+      p_holm: 0.010197960407918417
+      statistic: 0.05261002750912162

@@ -1805,3 +1805,184 @@ Tests (tests/test_u24.py, 22; the last six from the review):
   MDE, the report's new sections and cells_curve.png;
 - the registered G1 spec's shape: R₀ = the region defaults, the 12 marks, loss_gate, the pinned switches, the ten
   variants and the splits.
+
+## §26 G2 / G3: cores, references, the gate and the claims registry (U25; PLAN3 §5 U25)
+
+**Registered specs.**
+- `families/G2.yaml` (marginal). The overlay is G1's registered headline R₀ copied exactly; a test pins G2's headline
+  cells to G1's. The core is `families/G2_core.yaml`: F1's headline (σ̂ 21-day RV, σ* 15 %, exposure ≤ 1, 10-point
+  band) on SPY / QQQ 50/50 under the U22 switches G1 pins, INIT_CASH 30k.
+  - Test: the paired Ledoit–Wolf Sharpe difference of core + k × overlay vs the core, one-sided, at k = 1.
+  - Costs: the overlay at a 1.0 bp round trip, the core at its booked costs.
+  - Floors: the overlay's net excess ≥ 3 %/yr; max DD(core + overlay) no deeper than the core's (`max_dd_vs_core`
+    1.0); edge ≥ 2 × cost.
+  - Coherence: over the variants.
+  - Variants (5): k 0.5 and 2; `core_bh` (core.variant `benchmark`: G2_core's constant 50/50 mix); `core_f1_4`
+    (core.family `G2_core4`: F1 on SPY / QQQ / IWM / DIA with F1's equal-risk weights); the overlay vol-targeted at
+    10 %.
+- `families/G3.yaml` (paired). G1's R₀ with `gate: {kind: vol_quantile, below: 0.2, sessions: 252}`, tested against
+  `reference: {family: G1}`.
+  - Test: Ledoit–Wolf Sharpe difference vs G1's headline, one-sided, both at 1.0 bp.
+  - Floors: net excess ≥ 0.9 × G1's on the same days (`min_net_ret_vs_reference`); edge ≥ 2 × cost.
+  - Coherence: over the variants.
+  - Variants (3): the bottom two quintiles; size ∝ the quintile; the revealed-gamma gate.
+  - Registered after G1's report was read. The gate is PLAN3's, written before that look; the user kept it over the
+    bottom three quintiles the split suggested, and dropped the band-width gate (it never fires: the 10:00 band is
+    ≥ 5.4 bp against a 2 bp threshold) and the VIX gate (until U26), all on 2026-10-11.
+- Both families are DIAGNOSTICS: G2's MDE is Δ Sharpe 0.53 against an expected 0.45; G3's is 0.28 against 0.2.
+
+**Cores and references are specs, not families.**
+- `core: {family, variant, k, sha}` (marginal) and `reference: {family, variant, sha}` (paired) name
+  `families/<id>.yaml` beside the spec. `families.run.ref_families` loads it and checks its registration when the
+  family's is checked.
+  - In a registered run, the block's `sha` must equal the file's registered sha, so a core or reference cannot be
+    edited and re-registered after the family's result. Without this, the reviewer's SEVERE finding: such a swap ran,
+    was accepted, and counted no new trial.
+  - G2 pins G2_core and G2_core4 at 4208d7b; G3 pins G1 at c168961.
+  - It must run over the family's window.
+- Its cells join the family's batch, deduplicated by (stage, spec). They are stage F rule cells with n_trials 0, and
+  no family-variant row is written for them. So a core or reference counts no trial and enters no Holm; G2_core and
+  G2_core4 are not in program.yaml.
+- `RefStreams` pools a core or reference with its own family weights. The label `benchmark` is the core family's
+  benchmark mix, which never trades and pays nothing.
+- A marginal variant's core is at its booked costs in every cost-curve column, so the cost curve re-prices the overlay
+  only. A paired reference is re-priced at the same cost as the stream in every column, so a gated stream and its
+  ungated reference are priced alike.
+- A core or reference whose cells fail gives a result with `error` and no test. A missing spec, or one with another
+  window, raises before anything runs.
+- Variants may change `core.k`, `core.variant` and `core.family`; each variant is tested against its own core and k.
+  No variant may change `reference`.
+- `FamilySpec.trial_key` adds the core block to the hash when one exists, so k variants are distinct trials.
+  Without a core the key is as before: G1's ledger keys are unchanged (pinned by a test).
+- This replaces U22's design, in which the core family was run first and its `streams.csv` read from the results
+  directory.
+
+**Statistics** (families/test.py).
+- `compare(r, bench, kind, test, rf, ref, k)`. `ref` is the core (marginal) or the reference (paired), raw; its
+  excess is taken inside.
+- Marginal adds `matched_vol`: the core levered to the portfolio's volatility, with its return and drawdown beside the
+  portfolio's (the gain is not leverage when the portfolio beats it), and the overlay–core correlation.
+- Paired gives the Δ Sharpe with its interval and p, both streams' Sharpe, net return, drawdown, their ratio, the
+  correlation, and `days_differ`, the sessions on which the two streams differ.
+- `floors(..., ref, k)` evaluates:
+  - `max_dd_vs_core x`: max DD of core + k × stream ≥ x × the core's, on excess returns over their common days;
+  - `min_net_ret_vs_reference x`: the stream's net excess return ≥ x × the reference's, on their common days.
+  Without a ref stream the floor fails, with a note.
+- `delta_common` (the coherence statistic) is now the kind's own statistic: Sharpe(core_v + k_v·r) − Sharpe(core_v) for
+  marginal, Sharpe(r) − Sharpe(ref) for paired. Before U25 it was the Sharpe difference vs the benchmark for every
+  non-alpha kind.
+- `evaluate(..., refs=label → stream, k_by_variant)`. The cost curve now carries every variant's statistic when the
+  kind has a core or reference.
+
+**Power** (families/power.py `mde_delta_sharpe`).
+- Formula: Var(ŜR_a − ŜR_b) = [2(1 − ρ) + SR²(1 − ρ²)] / n (Jobson & Korkie, corrected by Memmel; iid normal; per-day
+  Sharpe at the null SR_a = SR_b = SR_ref), annualized, and MDE = (z_{1−α/k} + z_power) · SE.
+- The spec records `{n_days, rho, sharpe_ref, families, mde_delta_sharpe, expected_delta_sharpe, diagnostic}`. The
+  loader checks it within 10 %, and an expected value below the MDE must declare a diagnostic.
+- A test checks the SE against 1,500 simulated Sharpe differences (within 8 %).
+- G2's ρ: σ_core / σ_portfolio for an uncorrelated overlay (13.5 % core, 8 % overlay).
+- G3's ρ: √(the share of the instruments' intraday variance on the sessions the gate keeps). It is 0.962, from the bars
+  only (SPY 0.932, QQQ 0.919).
+- `_power_realized` recomputes the line at the realized ρ and reference Sharpe (reported only).
+
+**The gate** (primaries/region.py, features/kernels.py).
+- `session_sigma` is the per-session σ of 5Min log returns, close to close.
+- `prior_rank` is the mid-rank percentile of the previous session's value among the k sessions ending with it (at
+  least k // 2 finite), NaN for the first k sessions. `families.run.vol_rank` now reads these two kernels and equals
+  U24's pandas implementation exactly (test).
+- `prior_lag1_autocorr` is the Pearson correlation of the pairs (r_{t−1}, r_t) inside one session over the k previous
+  sessions, from per-session moment sums, NaN with fewer than 20 pairs.
+- All three are known at the open; tests show today's bars do not move them.
+- `gate`:
+  - `vol_quantile` (0 below `below`);
+  - `vol_size` (⌈5 · rank⌉ / 5);
+  - `gamma` (0 when the autocorrelation < `min`).
+  Each is per instrument and per session, and 1 while its state is undefined.
+- `target_scale` = vol_scale × gate_scale. `rule` uses it, and so does `region_cells` (the parity stays exact). R₀
+  (gate null) is unchanged.
+
+**Account** (`_portfolio_account`). Per marginal variant, risk.account.check_account runs on:
+- the overlay members' positions × k × their weights;
+- plus the core members' positions × the core weights (a benchmark core: each instrument held at its weight from the
+  first session to the last);
+- on the portfolio's equity path.
+`plan3_2x` reports PLAN3's criterion, max gross ≤ 2 × equity. The account check itself applies 2× overnight and 4×
+intraday above the PDT floor.
+
+**Registry** (families/registry.py, `python -m families registry <id> [--freeze-date]`).
+- An entry in `families/registry.yaml` is written only when the program verdict passes the family: Holm over
+  program.yaml's families as `summary` computes it, plus floors, coherence and sign.
+- It records:
+  - the registered sha and the kind;
+  - whether the family is a diagnostic;
+  - the verdict's cost;
+  - the headline member hashes and the core / reference members;
+  - the run's git sha and code hash;
+  - the program verdict's numbers;
+  - the freeze date.
+- U27 reads it.
+
+**Smoke** (`scripts/u25_g2_g3.py smoke`). G2 and G3, with their cores and reference copied beside them, run on
+2016-01-04 → 2017-03-01 (the 252-session gate closes on some sessions), with no quasi cells, into scratch directories.
+It prints statuses, member counts, the region parity, `days_differ` and the account flag, and no performance
+statistic. looks.jsonl is unchanged.
+
+**U25 review (one adversarial pass, before registration; no dev-window statistic read).** No BREAKING finding. The
+reviewer could not break any of the following:
+- the gate's causality (whole-session perturbation and truncation at a session's first bar);
+- gated sessions being flat in the members (no trade, zero notional);
+- exact region parity under every gate kind;
+- R₀ and G1's trial keys staying unchanged;
+- vol_rank equal to U24's on ragged data;
+- the per-variant core and k;
+- the reference priced at each column's cost;
+- the MDE lines.
+
+Fixed:
+- SEVERE: a core or reference could be swapped after the result. It is now pinned by `sha`, and a test reproduces the
+  reviewer's scenario and shows the swap refused.
+- A paired stream identical to its reference crashed (ZeroDivisionError); it now gets p 1.
+- `min_net_ret_vs_reference` had the wrong sense for a losing reference; it now uses rc − (1 − x)·|rc|.
+- The paired line now prints both streams' first days.
+- The Region cells section now says the cells are ungated.
+- The registry now refuses unregistered results and records the Holm set.
+
+Deferred, with reasons:
+- A gate that delays a stream's first live day would drop reference days from the pair. Unreachable for the registered
+  specs: the gates are open in 2016, and G3's report prints the same first day for both streams.
+- The combined account path is raw core + k × excess overlay. Correct for an overlay financed by the core's cash; it
+  affects the PDT equity threshold only.
+- One failed core aborts the whole marginal test. Conservative, and the run says why.
+- A registry entry's Holm is frozen at entry time. Its Holm set is recorded.
+- Not raised by the reviewer: the loader's PLAN2 default (min_net_ret 0.02 when neither net floor is set) also applies
+  to a paired spec. So G3's run carried a 2 %/yr floor its spec does not state. It passed (5.2 %); left as registered.
+
+**Result (registered at e66c314, run once on the i9: G2 51 s, G3 42 s, budget 10 min).**
+- Process:
+  - The looks were recorded after the run: G2 n = 9 (6 trials and 3 core streams), G3 n = 4. K = 171.
+  - A status grep of the run logs matched report lines (MDE, floors, coherence, quasi slice) before the looks were
+    recorded. No p or headline statistic was read first. Both looks' notes say so.
+  - G1's headline re-run under U25's code (G3's reference, G2's overlay) equals U24's stream exactly over 2,436 days.
+- G2 (marginal, k = 1, 1.0 bp):
+  - Sharpe(core + overlay) 1.33 vs the core's 1.06: Δ +0.26, one-sided p 0.040, Holm 0.080.
+  - Matched volatility: the core levered ×1.10 earns 15.7 %/yr against the portfolio's 20.3 %, at drawdowns −21.2 %
+    and −20.5 %. Overlay–core correlation −0.03.
+  - The registered drawdown floor FAILS: −20.5 % vs the core's −19.4 %, difference interval −7.5 … +11.0 %. The
+    portfolio's worst drawdown is the 2020 crash (2020-02-19 → 03-23), in which the overlay lost 4.9 %; the core's
+    worst is 2022 (2021-12-27 → 2022-10-12), in which the overlay earned 19.5 %.
+  - Every variant has the headline's sign (k 0.5 +0.17, k 2 +0.28, buy-and-hold core +0.21, four-instrument core +0.28,
+    vol-targeted overlay +0.21). But the median variant (core_bh) fails the drawdown floor, so G2 is NOT coherent.
+  - The Δ is cost-bound: +0.07 at the booked costs, +0.04 at 2.3 bp, +0.38 at 0.3 bp.
+  - k = 2 and the vol-targeted overlay exceed PLAN3's 2× line (3.00× and 2.89× intraday). They stay inside the 4×
+    day-trading buying power: tradable on margin_30k.
+  - **G2 fails** (Holm p, floor, coherence).
+- G3 (paired vs G1, 1.0 bp):
+  - Sharpe 0.83 vs 0.80: Δ +0.03, p 0.31. Net 5.2 % vs 5.2 %; the streams differ on 630 days, correlation 0.975.
+  - Variants: bottom two quintiles +0.03; size ∝ quintile +0.01; gamma gate −0.45 (p 0.97). NOT coherent: the median
+    variant fails the 0.9 × return floor.
+  - Reported, not tested: the gate's Δ grows with the cost (+0.10 at the booked costs, +0.11 at 2.3 bp with p 0.055,
+    −0.01 at 0.3 bp). That fits the mechanism (calm sessions are below the cost), but it is a response, chosen by no one.
+  - **G3 fails.**
+- Program verdict (Holm over G1, G2, G3): G1 PASS (p_holm 0.010), G2 fail, G3 fail. `families/registry.yaml` holds G1
+  only, at its U24 run (code 2994b5e, members 64c27ca2…, e76a64a2…). Under U25's code (f840e01) the same cells hash to
+  6f97964d…, 67379d46… and reproduce it bit for bit.
