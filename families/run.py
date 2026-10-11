@@ -57,11 +57,14 @@ from families.spec import (
     HEADLINE,
     QUASI_WINDOW,
     ROOT,
+    TERCILE_SPLITS,
     FamilySpec,
     check_registered,
     load_family,
     make_cells,
 )
+from features.tf_state import COLUMNS as TF_COLUMNS
+from features.tf_state import tf_state_days
 
 PROGRAM = ROOT / "families" / "program.yaml"
 DEFAULT_OUT = ROOT / "results" / "families"
@@ -215,7 +218,9 @@ def load_state(source, start: str, end: str, instruments=(), timeframe: str | No
                need=()) -> pd.DataFrame | None:  # fmt: skip
     """Day state for the reported splits: the previous VIX close (`vix_prev`), the macro-day flag (FOMC, CPI,
     NFP), and (U24) the OPEX flag and, for an intraday family whose splits name vol_quintile, the instruments' mean
-    vol_rank. None for an input the source cannot give (tests' fake sources)."""
+    vol_rank; (U26) for the tercile splits `<column>_rank` (the trailing rank of the instruments' mean tf_state column,
+    or of the CBOE close, as of the open) and for gamma_sign `ac1`. None for an input the source cannot give (tests'
+    fake sources)."""
     days = pd.bdate_range(start, end, inclusive="left")
     out = pd.DataFrame(index=days)
     try:
@@ -240,7 +245,48 @@ def load_state(source, start: str, end: str, instruments=(), timeframe: str | No
             out["vol_rank"] = (mean_rank if len(ranks) == 1 else trailing_rank(mean_rank)).reindex(days)
         except Exception as e:  # noqa: BLE001 — a reported split only
             print(f"[FAM]  no vol_rank for the state splits ({type(e).__name__}: {e})")
+    # U26 (SPEC §24): tf_state columns (the instruments' mean, known at the open) and the previous CBOE closes; a
+    # tercile split reads the column's trailing rank, gamma_sign the mean lag-1 autocorrelation itself
+    cols = {TERCILE_SPLITS[k] for k in need if k in TERCILE_SPLITS}
+    ranked = set(cols)
+    if "gamma_sign" in need:
+        cols.add("ac1")
+    tf_cols = sorted(cols & set(TF_COLUMNS))
+    if tf_cols and instruments and timeframe not in (None, "1Day"):
+        try:
+            per = [tf_state_days(source.bars(s, timeframe, start, end, allow_holdout=False)) for s in instruments]
+            for c in tf_cols:
+                mean = pd.concat([p[c] for p in per], axis=1, sort=True).mean(axis=1)
+                if c == "ac1":
+                    out["ac1"] = mean.reindex(days)
+                if c in ranked:
+                    out[f"{c}_rank"] = trailing_rank(mean).reindex(days)
+        except Exception as e:  # noqa: BLE001 — a reported split only
+            print(f"[FAM]  no tf_state for the state splits ({type(e).__name__}: {e})")
+    for c in sorted(cols & {"skew", "vvix", "vvix_vix"}):
+        try:
+            out[f"{c}_rank"] = _as_of_open(trailing_rank(_cboe_close(source, c, start, end)), days)
+        except Exception as e:  # noqa: BLE001 — a reported split only
+            print(f"[FAM]  no {c} for the state splits ({type(e).__name__}: {e})")
     return out if out.shape[1] else None
+
+
+def _cboe_close(source, name: str, start: str, end: str) -> pd.Series:
+    """SKEW, VVIX or VVIX / VIX (on common dates) by observation date, from 400 days before `start` (so a trailing
+    rank exists on the window's first day)."""
+
+    def close(n: str) -> pd.Series:
+        lookback = str((pd.Timestamp(start) - pd.Timedelta(days=400)).date())
+        v = source.exo("cboe", n, lookback, end, allow_holdout=False)["value"]
+        v.index = pd.DatetimeIndex(v.index).normalize()
+        return v
+
+    return (close("VVIX") / close("VIX") if name == "vvix_vix" else close(name.upper())).dropna()
+
+
+def _as_of_open(v: pd.Series, days: pd.DatetimeIndex) -> pd.Series:
+    """The value of the last observation dated before each day (a 16:20 close is known at the next open; `vix_prev`)."""
+    return v.reindex(days.union(v.index)).ffill().shift(1).reindex(days)
 
 
 def load_rf(source, start: str, end: str, sessions: pd.DatetimeIndex) -> tuple[pd.Series | None, str]:
@@ -661,6 +707,59 @@ def run_family(
     frame = pd.concat({**{k: T.day_index(s) for k, s in streams.items()}, "benchmark": T.day_index(bench), **extra,
                        **({"rf": T.day_index(rf)} if rf is not None else {})}, axis=1, sort=True)  # fmt: skip
     return _save(result, frame, out_dir)
+
+
+SPLIT_PARITY_TOL = 1e-12
+
+
+def add_splits(family: str, splits, out_dir=DEFAULT_OUT, source=None, check=("year", "vol_quintile")) -> dict:
+    """
+    U26 (SPEC §24): add reported state splits to a family's stored result and re-render its report, without re-running
+    it (no cell, no ledger row, no trial). The headline's excess stream is rebuilt from the saved streams.csv (the
+    stream at the verdict's cost and the T-bill accrual describe() used); the stored splits named in `check` must be
+    reproduced from it to SPLIT_PARITY_TOL, or nothing is written. The verdict, the floors and every other stored
+    number are left as they are; `result["splits_added"]` records what was added, when and at which commit. A look
+    (families/looks.jsonl) is recorded before the call: the splits are read on the development window.
+    """
+    from experiments.runner import CachedBars, code_hash, git_sha
+    from families.report import load_result, stream_frame, write_family_report
+    from families.spec import STATE_SPLITS
+
+    out = Path(out_dir) / family
+    result = load_result(out / "result.json")
+    bad = [s for s in splits if s not in STATE_SPLITS]
+    if bad or not splits:
+        raise ValueError(f"unknown or no state split(s) {bad or splits}; expected {STATE_SPLITS}")
+    stored = result["described"]["state_splits"]
+    frame = stream_frame(out)
+    h = T.excess(frame[HEADLINE].dropna(), frame.get("rf", None))
+    bench = frame["benchmark"].dropna()
+    start, end = result["window"]
+    timeframe = result["spec"].get("timeframe")
+    check = [k for k in check if k in stored and not stored[k].get("unavailable")]
+    state = load_state(source or CachedBars(), start, end, result["instruments"], timeframe, [*splits, *check])
+    for k in check:
+        g = T._groups(k, h.index, state, bench)
+        again, before = T.split_table(h, g) if g is not None else [], stored[k]["groups"]
+        same = [a["group"] for a in again] == [b["group"] for b in before] and all(
+            a["n_days"] == b["n_days"] and abs(a["mean_bp"] - b["mean_bp"]) <= SPLIT_PARITY_TOL * 1e4
+            for a, b in zip(again, before, strict=True))  # fmt: skip
+        if not same:
+            raise ValueError(f"{family}: the stored split {k!r} is not reproduced from streams.csv; nothing written")
+    added = {}
+    for k in splits:
+        g = T._groups(k, h.index, state, bench)
+        added[k] = {"unavailable": True} if g is None else {"groups": T.split_table(h, g)}
+    result["described"]["state_splits"] = {**stored, **added}
+    result.setdefault("splits_added", []).append({
+        "at": datetime.now(UTC).isoformat(), "splits": list(splits), "checked": check, "git_sha": git_sha(),
+        "code_hash": code_hash()})  # fmt: skip
+    (out / "result.json").write_text(json.dumps(L.clean(result), indent=2, sort_keys=True, default=str),
+                                     encoding="utf-8")  # fmt: skip
+    result["paths"] = write_family_report(result, out)
+    print(f"[FAM]  {family}: {len(added)} split(s) added ({sum('groups' in v for v in added.values())} available); "
+          f"checked {check} → {out}")  # fmt: skip
+    return result
 
 
 def _curve_cost(ck: str, measured):

@@ -504,6 +504,10 @@ def family_markdown(result: dict) -> str:
         "",
     ]
     md += ["## State splits (headline; reported with 95 % Newey–West intervals, not tested)", ""]
+    for a in result.get("splits_added", []):  # U26: splits added to a stored result (families.run.add_splits)
+        md += [(f"*Added {str(a['at'])[:10]} at {str(a['git_sha'])[:7]} without re-running the family (the stored "
+               f"headline stream; {', '.join(a['checked']) or 'no'} stored split(s) reproduced): "
+               f"{', '.join(a['splits'])}.*"), ""]  # fmt: skip
     for k, s in d.get("state_splits", {}).items():
         if s.get("unavailable"):
             md += [f"- {k}: unavailable", ""]

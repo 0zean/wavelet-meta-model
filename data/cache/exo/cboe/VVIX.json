@@ -1,0 +1,15 @@
+{
+  "columns": [
+    "value",
+    "available_at"
+  ],
+  "coverage_end": "2026-10-11",
+  "coverage_start": "2006-03-06",
+  "fetched_at": "2026-10-11T02:24:05.453949-04:00",
+  "n_rows": 5122,
+  "name": "VVIX",
+  "schema_version": 1,
+  "sha256": "e07b7e252e805893094bfe0afbb7088f77ad98ad79bfe541eed4a363f51045ce",
+  "source": "cboe",
+  "url": "https://cdn-api.cboe.com/api/global/us_indices/daily_prices/VVIX_History.csv"
+}

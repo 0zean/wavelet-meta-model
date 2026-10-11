@@ -31,7 +31,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from families.spec import HEADLINE, FamilySpec
+from families.spec import HEADLINE, TERCILE_SPLITS, FamilySpec
 from families.stats import (
     TRADING_DAYS,
     circular_block_indices,
@@ -589,7 +589,21 @@ def _groups(kind: str, days: pd.DatetimeIndex, state: pd.DataFrame, bench: pd.Se
         if state is None or "opex" not in state:
             return None
         return pd.Series(np.where(state["opex"].reindex(days).fillna(False).astype(bool), "opex", "other"), index=days)
-    return None  # gamma_sign: no gamma proxy (PLAN2 U15 note; U26 adds the revealed-gamma proxy)
+    if kind == "gamma_sign":  # U26: the instruments' mean trailing 5-session lag-1 autocorrelation (G3's gamma gate)
+        if state is None or "ac1" not in state:
+            return None
+        v = state["ac1"].reindex(days).to_numpy()
+        return pd.Series(np.where(np.isnan(v), "n/a", np.where(v >= 0, "ac1 >= 0 (short gamma)",
+                                                               "ac1 < 0 (long gamma)")), index=days)  # fmt: skip
+    if kind in TERCILE_SPLITS:  # U26: the state's causal trailing rank (families.run.load_state), cut at 1/3, 2/3
+        col = f"{TERCILE_SPLITS[kind]}_rank"
+        if state is None or col not in state:
+            return None
+        v = state[col].reindex(days).to_numpy()
+        lab = np.minimum((np.nan_to_num(v, nan=0.0) * 3).astype(int), 2)
+        return pd.Series(np.where(np.isnan(v), "n/a", np.array(["t1 low", "t2", "t3 high"], dtype=object)[lab]),
+                         index=days)  # fmt: skip
+    return None
 
 
 def split_table(r: pd.Series, groups: pd.Series) -> list[dict]:
