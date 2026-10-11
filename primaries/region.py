@@ -12,6 +12,8 @@ Cells (G1's region R₀ with the defaults: 3 + 2 × 5 × 4 = 43):
                                  (2025) normalization, xmult = mean over N of 1 / sd(RMedV_N · √N)
     sgv    × N × θ               v = V_N / sd(V_N): Meyers' (2026) next-bar velocity of the degree-`sg_degree`
                                  least-squares polynomial over N bars (1 = the LS slope), times his Mult = 1 / SD
+    modwt  × J × θ               v = slope of the causal MODWT smooth S_J / its SD (U24, a G1 variant; J ∈
+                                 modwt_j_list, filter `modwt_filter`; db1: (x_t − x_{t−2^J}) / 2^J), not in R₀
 Each estimator keeps its own published normalization (features.kernels.rmedv_normalized / poly_normalized), so θ is
 in standard deviations of that estimator; the SDs are refit at every session over the `norm_sessions` previous
 sessions (a frozen scale fails across volatility regimes: the RMV repo). Velocity cells, vel_mode "sar"
@@ -27,8 +29,13 @@ auction (the `next_event` exit's MOC); "HH:MM": the mark at that time is a decis
 (flat from that bar's open) and no later mark exists. The state of a SAR cell runs over every scheduled decision of
 the session (schedule_events), whichever events the rule pass later keeps.
 
+Size (U24, a G1 variant): with `vol_target` σ* (annual), the target is the cells' mean × min(cap, σ*_d / σ̂_d) / cap
+and the config's SIZE is `vol_cap` (so the notional is SIZE · |target| = |mean| · min(cap, σ*_d / σ̂_d)); σ*_d =
+σ* / √252 and σ̂_d = features.kernels.session_rv_sigma over the `norm_sessions` previous sessions (known at the open).
+R₀ has no vol target (PLAN3 §3 G1: it would cut the profitable weeks).
+
     cells(df, X, cfg)   every cell's position at the events X.index (the specification curve's input)
-    rule(df, X, cfg)    (sign, |mean|) of the cells' mean position
+    rule(df, X, cfg)    (sign, |target|) of the target: the cells' mean position (× the vol scale)
 """
 
 from typing import ClassVar
@@ -42,7 +49,8 @@ from features.vol_profile import OPEN_MINUTE
 from primaries.base import primary
 from primaries.mechanism import CLOSE_MINUTE, MechanismPrimary, _check, _hhmm, _num
 
-ESTIMATORS = ("band", "rmedv", "sgv")
+ESTIMATORS = ("band", "rmedv", "sgv", "modwt")
+SESSION_BARS = 78  # 5Min bars in a full session: a MODWT window must fit in one
 VEL_MODES = ("sar", "flat_inside")
 CADENCES = (5, 15, 30, 60)
 
@@ -101,6 +109,10 @@ class RegionTrend(MechanismPrimary):
         "band_stop": "vwap",
         "vel_stop": None,
         "vel_mode": "sar",
+        "modwt_j_list": [3, 4],
+        "modwt_filter": "db1",
+        "vol_target": None,
+        "vol_cap": 2.0,
     }
 
     def validate(self):
@@ -136,6 +148,21 @@ class RegionTrend(MechanismPrimary):
         _check(self.name, p["band_stop"] in (None, "vwap"), "band_stop must be null or 'vwap'")
         _check(self.name, p["vel_stop"] in (None, "vwap"), "vel_stop must be null or 'vwap'")
         _check(self.name, p["vel_mode"] in VEL_MODES, f"vel_mode must be one of {VEL_MODES}")
+        js = p["modwt_j_list"]
+        _check(self.name, isinstance(js, list) and len(js) >= 1 and len(set(js)) == len(js)
+               and all(isinstance(j, int) and not isinstance(j, bool) and 1 <= j <= 6 for j in js),
+               "modwt_j_list must be a list of distinct integers in 1..6")  # fmt: skip
+        if "modwt" in est:
+            from features.kernels import modwt_slope_weights
+
+            try:
+                width = max(len(modwt_slope_weights(j, p["modwt_filter"])) for j in js)
+            except Exception as e:  # an unknown filter name
+                raise ValueError(f"primary {self.name!r}: modwt_filter {p['modwt_filter']!r}: {e}") from e
+            _check(self.name, width <= SESSION_BARS, f"the MODWT slope window ({width} bars) must fit in a session")
+        vt = p["vol_target"]
+        _check(self.name, vt is None or (_num(vt) and vt > 0), "vol_target must be null or an annual σ* > 0")
+        _check(self.name, _num(p["vol_cap"]) and p["vol_cap"] > 0, "vol_cap must be a number > 0")
 
     # ── the schedule ────────────────────────────────────────────────────────
 
@@ -151,8 +178,11 @@ class RegionTrend(MechanismPrimary):
         return [_hhmm(m) for m in out]
 
     def config_overrides(self, timeframe):
-        return {"EVENT_SAMPLER": "schedule", "EVENT_PARAMS": {"entry_times": self.marks()},
-                "EXIT_MODEL": "time", "EXIT_PARAMS": {"exit_time": "next_event"}, "SIZE_STEP": 0}  # fmt: skip
+        out = {"EVENT_SAMPLER": "schedule", "EVENT_PARAMS": {"entry_times": self.marks()},
+               "EXIT_MODEL": "time", "EXIT_PARAMS": {"exit_time": "next_event"}, "SIZE_STEP": 0}  # fmt: skip
+        if self.params["vol_target"] is not None:
+            out["SIZE"] = float(self.params["vol_cap"])  # the target is scaled into [−1, 1] by the cap (docstring)
+        return out
 
     def needs_groups(self):
         return ()  # the cells read bars only (the kernels); no feature group, so no event is dropped for a NaN
@@ -165,6 +195,8 @@ class RegionTrend(MechanismPrimary):
         for e in p["estimators"]:
             if e == "band":
                 out += [f"band_vm{vm:g}" for vm in p["vm_list"]]
+            elif e == "modwt":
+                out += [f"modwt_j{j}_t{th:g}" for j in p["modwt_j_list"] for th in p["theta_list"]]
             else:
                 out += [f"{e}_n{n}_t{th:g}" for n in p["n_list"] for th in p["theta_list"]]
         return out
@@ -180,6 +212,7 @@ class RegionTrend(MechanismPrimary):
         from data.timeframes import get_timeframe
         from features.kernels import (
             band_state,
+            modwt_slope_all,
             poly_normalized,
             rmedv_all,
             rmedv_normalized,
@@ -216,9 +249,11 @@ class RegionTrend(MechanismPrimary):
                         pos = np.where(wrong, 0.0, pos)
                     cols.append(np.where(flat, 0.0, pos)[:, None])
             else:
-                ns = np.asarray(p["n_list"], dtype=np.int64)
+                ns = np.asarray(p["modwt_j_list"] if e == "modwt" else p["n_list"], dtype=np.int64)
                 if e == "rmedv":
                     v = rmedv_normalized(rmedv_all(x, start, ns), ns, sess, p["norm_sessions"])
+                elif e == "modwt":  # the smooth's slope / its own SD per J, refit as the polynomial velocity
+                    v = poly_normalized(modwt_slope_all(x, start, ns, p["modwt_filter"]), sess, p["norm_sessions"])
                 else:
                     v = poly_normalized(sg_velocity_all(x, start, ns, p["sg_degree"]), sess, p["norm_sessions"])
                 v = np.ascontiguousarray(v[:, dec])
@@ -236,6 +271,24 @@ class RegionTrend(MechanismPrimary):
             raise ValueError(f"primary {self.name!r}: {int(row.isna().sum())} events are not scheduled decisions")
         return pd.DataFrame(m[row.to_numpy(dtype=int)], index=X.index, columns=self.cell_names())
 
+    def vol_scale(self, df: pd.DataFrame) -> np.ndarray:
+        """Per bar: the target's multiplier min(cap, σ*_d / σ̂_d) / cap (module docstring), 1 without a vol target and
+        0 while σ̂ is undefined (the first `norm_sessions` sessions, where every velocity cell is flat too)."""
+        p = self.params
+        if p["vol_target"] is None:
+            return np.ones(len(df))
+        from features.kernels import session_layout, session_rv_sigma
+
+        sess = session_layout(df.index, 5)[0]
+        sig = session_rv_sigma(df["open"].to_numpy(dtype=float), df["close"].to_numpy(dtype=float), sess,
+                               p["norm_sessions"])  # fmt: skip
+        cap = float(p["vol_cap"])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            m = np.minimum(cap, p["vol_target"] / np.sqrt(252.0) / sig) / cap
+        return np.where(np.isfinite(m), m, 0.0)
+
     def rule(self, df, X, cfg):
         target = self.cells(df, X, cfg).to_numpy().mean(axis=1)
+        if self.params["vol_target"] is not None:
+            target = target * self.vol_scale(df)[df.index.get_indexer(X.index)]
         return np.sign(target), np.abs(target)

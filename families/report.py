@@ -25,6 +25,11 @@ def _f(x, nd=3, pct=False) -> str:
     return f"{100 * x:.{max(nd - 2, 1)}f} %" if pct else f"{x:.{nd}f}"
 
 
+def _g(x) -> str:
+    """A residual in %g notation ("—" when absent)."""
+    return "—" if x is None or (isinstance(x, float) and not np.isfinite(x)) else f"{x:.3g}"
+
+
 def _table(rows: list[dict], cols: list[str]) -> str:
     out = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     out += ["| " + " | ".join(str(r.get(c, "")) for c in cols) + " |" for r in rows]
@@ -65,6 +70,132 @@ def spec_curve(result: dict, path: Path) -> Path | None:
     fig.savefig(path, dpi=120)
     plt.close(fig)
     return path
+
+
+ESTIMATOR_COLORS = {"band": "#15803d", "rmedv": "#1d4ed8", "sgv": "#7c3aed", "modwt": "#0891b2"}
+
+
+def _verdict_cost(result: dict) -> str:
+    return (result.get("evaluation") or {}).get("verdict", {}).get("at_cost") or "registered"
+
+
+def cells_curve(result: dict, path: Path) -> Path | None:
+    """U24: every (instrument, cell) of a region headline — mean daily excess return at the verdict's cost with its
+    Newey–West 95 % interval, sorted, coloured by estimator; the region per instrument in orange."""
+    reg = result.get("region")
+    if not reg or not reg.get("cells"):
+        return None
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    ck = _verdict_cost(result)
+    pts = [(k, v[ck]["alpha_bp"], v[ck]["ci_bp"]) for k, v in reg["cells"].items() if ck in v]
+    pts += [(f"{k}:REGION", v[ck]["alpha_bp"], v[ck]["ci_bp"]) for k, v in reg.get("region", {}).items()
+            if k != "pooled" and ck in v]  # fmt: skip
+    pts = [p for p in pts if p[1] is not None and np.isfinite(p[1])]
+    if not pts:
+        return None
+    pts.sort(key=lambda p: p[1])
+    fig, ax = plt.subplots(figsize=(max(8.0, 0.14 * len(pts) + 2), 4.2))
+    for i, (k, a, ci) in enumerate(pts):
+        est = k.split(":")[1].split("_")[0]
+        c = "#c2410c" if k.endswith(":REGION") else ESTIMATOR_COLORS.get(est, "#6b7280")
+        if ci and all(x is not None and np.isfinite(x) for x in ci):
+            ax.plot([i, i], ci, color=c, lw=1.0, alpha=0.6)
+        ax.plot(i, a, "o", color=c, ms=3.5)
+    ax.axhline(0, color="#6b7280", lw=0.8)
+    ax.set_xticks([])
+    ax.set_xlabel(f"{len(pts)} (instrument, cell) points, sorted; colours: "
+                  + ", ".join(f"{k} {v}" for k, v in ESTIMATOR_COLORS.items()) + "; region orange", fontsize=7)  # fmt: skip
+    ax.set_ylabel(f"alpha, bp/day (excess; cost {ck})")
+    ax.set_title(f"{result['id']}: region cells, 95 % Newey–West intervals (reported; no cell is selected)", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(path, dpi=120)
+    plt.close(fig)
+    return path
+
+
+def _region_md(result: dict) -> list[str]:
+    reg = result.get("region")
+    if not reg:
+        return []
+    ck = _verdict_cost(result)
+    md = ["## Region cells (the specification curve over every cell; reported, the region is the headline)", ""]
+    par = reg.get("parity") or {}
+    md.append("- Parity of the re-simulation (wfo.position_backtest) with the headline members at the booked costs: "
+              + "; ".join(f"{k} max |Δ daily return| {_g(v.get('max_abs_diff'))} over {v.get('common_days')} days"
+                          for k, v in par.items()))  # fmt: skip
+    rg = reg.get("region") or {}
+    rows = []
+    for k in [x for x in rg if x != "pooled"] + (["pooled"] if "pooled" in rg else []):
+        row = {"region": k}
+        for c in reg.get("costs", []):
+            e = rg[k].get(c)
+            row[c] = "—" if e is None else f"{_f(e['alpha_bp'], 2)} bp ({_f(e['sharpe'], 2)})"
+        rows.append(row)
+    md += ["", ("Region re-simulated at each cost: alpha bp/day (excess Sharpe). The headline test re-prices the "
+                "members' cost ledgers instead (first order); the two agree to the re-pricing error."), "",
+           _table(rows, ["region", *reg.get("costs", [])]), ""]  # fmt: skip
+    cells = reg.get("cells") or {}
+    syms = sorted({k.split(":")[0] for k in cells})
+    vals = [v[ck]["alpha_bp"] for v in cells.values() if ck in v]
+    coh = ((result.get("evaluation") or {}).get("variants", {}).get(HEADLINE, {}) or {}).get("cells") or {}
+    md.append(f"- {len(cells)} (instrument, cell) points at cost {ck}: share with the headline's sign "
+              f"{_f(coh.get('share'), 3)}, median cell {_f(coh.get('median_alpha'), 2)} bp/day; positive "
+              f"{int(np.sum(np.array(vals) > 0))} / {len(vals)}")  # fmt: skip
+    by_est: dict[str, list[float]] = {}
+    for k, v in cells.items():
+        if ck in v:
+            by_est.setdefault(k.split(":")[1].split("_")[0], []).append(v[ck]["alpha_bp"])
+    md.append("- By estimator: " + "; ".join(f"{e} {int(np.sum(np.array(a) > 0))}/{len(a)} positive, median "
+                                             f"{_f(float(np.median(a)), 2)} bp" for e, a in by_est.items()))  # fmt: skip
+    md += ["", "![region cells](cells_curve.png)", ""]
+    pc = reg.get("pooled_cells") or {}
+    rows = []
+    for name in reg.get("names", []):
+        row = {"cell": name}
+        for sym in syms:
+            e = cells.get(f"{sym}:{name}", {}).get(ck)
+            row[sym] = "—" if e is None else _f(e["alpha_bp"], 2)
+        e = pc.get(name, {}).get(ck)
+        if e is not None:
+            row["pooled"] = _f(e["alpha_bp"], 2)
+            row["CI (pooled)"] = f"{_f(e['ci_bp'][0], 2)} … {_f(e['ci_bp'][1], 2)}"
+            row["Sharpe (pooled)"] = _f(e["sharpe"], 2)
+            row["_k"] = e["alpha_bp"]
+        rows.append(row)
+    rows.sort(key=lambda r: -r.get("_k", -np.inf))
+    md += [f"Every cell at cost {ck}, alpha bp/day (excess), sorted by the pooled cell:", "",
+           _table(rows, ["cell", *syms, "pooled", "CI (pooled)", "Sharpe (pooled)"]), "", f"*{reg.get('note', '')}*",
+           ""]  # fmt: skip
+    return md
+
+
+def _trade_md(result: dict) -> list[str]:
+    md = []
+    ts = result.get("trade_stats") or {}
+    if ts.get("per_instrument"):
+        md += ["## Trade statistics (headline; booked costs)", ""]
+        rows = [{"instrument": k, **{c: _f(v.get(c), 3) for c in ("round_trips_per_day", "sessions_traded",
+                                                                  "long_pnl_bp_per_day", "short_pnl_bp_per_day")},
+                 "long / short trades": f"{v.get('long_trades', '—')} / {v.get('short_trades', '—')}"}
+                for k, v in ts["per_instrument"].items()]  # fmt: skip
+        rows.append({"instrument": "pooled", **{c: _f(ts["pooled"].get(c), 3) for c in (
+            "round_trips_per_day", "sessions_traded", "long_pnl_bp_per_day", "short_pnl_bp_per_day")}})  # fmt: skip
+        md += [_table(rows, ["instrument", "round_trips_per_day", "sessions_traded", "long_pnl_bp_per_day",
+                             "short_pnl_bp_per_day", "long / short trades"]), "",
+               ("Round trips per day: traded notional / the session's starting equity / 2, averaged over sessions. "
+                "Long / short: trading P&L by side (booked costs) per day of the member's starting cash."), ""]  # fmt: skip
+    pa = result.get("per_instrument_alpha") or {}
+    if pa:
+        md += [f"## Per-instrument headline alpha (cost {_verdict_cost(result)}; excess of the T-bill)", "",
+               _table([{"instrument": k, "days": v["n_days"], "alpha_bp": _f(v["alpha_bp"], 2),
+                        "CI (NW 95 %)": f"{_f(v['ci_bp'][0], 2)} … {_f(v['ci_bp'][1], 2)}",
+                        "sharpe": _f(v["sharpe"], 2)} for k, v in pa.items()],
+                      ["instrument", "days", "alpha_bp", "CI (NW 95 %)", "sharpe"]), ""]  # fmt: skip
+    return md
 
 
 def spec_diff(result: dict, repo: Path = ROOT) -> str:
@@ -112,6 +243,11 @@ def family_markdown(result: dict) -> str:
                   f"{pw['n_days']} days, vol {pw['vol_ann']:.1%}, {pw['families']} families; expected "
                   f"{_f(pw['expected_alpha_bp_per_day'], 2)} bp/day → "
                   f"{'a DIAGNOSTIC (below its MDE)' if pw.get('diagnostic') else 'a test'}")  # fmt: skip
+        pr = result.get("power_realized")
+        if pr:
+            md.append(f"- MDE at the realized excess volatility {pr['vol_ann']:.1%} over {pr['n_days']} days: "
+                      f"{_f(pr['mde_bp_per_day'], 2)} bp/day (Sharpe {_f(pr['mde_sharpe_ann'], 2)}; reported, the "
+                      "registered line is the one above)")  # fmt: skip
     acc = result.get("accounting", {})
     md.append(f"- Trials: family {acc.get('family_trials')} / budget {acc.get('family_budget')}; program "
               f"{acc.get('program_trials')} / {acc.get('max_trials')} trials, {acc.get('program_families')} / "
@@ -160,9 +296,15 @@ def family_markdown(result: dict) -> str:
     md.append("- Floors: " + ("; ".join(f"{k} {_f(x.get('value'), 3)} vs {_f(x.get('threshold'), 3)} → "
                                        f"{'ok' if x['ok'] else 'FAIL'}" for k, x in fl.items() if k != "ok")
                               or "none set"))  # fmt: skip
-    md.append(f"- Coherence: {coh.get('n_variants')} variants, share with the headline's sign {_f(coh.get('share'), 2)}"
-              f", median variant {coh.get('median_variant')} (floors {_f(coh.get('median_floors_ok'))}) → "
-              f"{'coherent' if coh['coherent'] else 'NOT coherent'}")  # fmt: skip
+    vcoh = v.get("variant_coherence") if v.get("coherence_kind") == "cells" else coh
+    if v.get("coherence_kind") == "cells":
+        md.append(f"- Coherence (cells, the verdict's): {coh.get('n_cells')} (instrument, cell) points, share with the "
+                  f"headline's sign {_f(coh.get('share'), 3)} (needs {_f(t.get('coherence_share'), 3)}), median cell "
+                  f"{_f(coh.get('median_alpha'), 2)} bp/day → {'coherent' if coh.get('coherent') else 'NOT coherent'}")  # fmt: skip
+    md.append(f"- Coherence ({'variants, reported' if v.get('coherence_kind') == 'cells' else 'variants'}): "
+              f"{vcoh.get('n_variants')} variants, share with the headline's sign {_f(vcoh.get('share'), 2)}"
+              f", median variant {vcoh.get('median_variant')} (floors {_f(vcoh.get('median_floors_ok'))}) → "
+              f"{'coherent' if vcoh['coherent'] else 'NOT coherent'}")  # fmt: skip
     md.append(f"- Before Holm across families: p {_f(v['p'], 4)}, floors {_f(v['floors_ok'])}, coherent "
               f"{_f(coh['coherent'])}, positive {_f(v['positive'])} (at cost {v.get('at_cost', 'registered')})")  # fmt: skip
     md.append("")
@@ -233,6 +375,8 @@ def family_markdown(result: dict) -> str:
             for kk, vv in d.items():
                 md.append(f"- {k}: {kk}: {vv}")
         md.append("")
+    md += _region_md(result)
+    md += _trade_md(result)
     md += ["## Specification curve (reported; no variant is selected)", "", "![spec curve](spec_curve.png)", ""]
     rows = []
     for k, x in ev["variants"].items():
@@ -344,6 +488,7 @@ def _html(title: str, md: str) -> str:
 def write_family_report(result: dict, out: Path) -> dict:
     out = Path(out)
     spec_curve(result, out / "spec_curve.png")
+    cells_curve(result, out / "cells_curve.png")
     md = family_markdown(result)
     (out / "report.md").write_text(md, encoding="utf-8")
     (out / "report.html").write_text(_html(f"Family {result['id']}", md), encoding="utf-8")

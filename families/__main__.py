@@ -48,7 +48,9 @@ def main() -> None:
     lk.add_argument("--note", default="")
     pw = sub.add_parser("power", help="the minimum detectable alpha of an overlay test (families/power.py)")
     pw.add_argument("rest", nargs=argparse.REMAINDER)
-    a = ap.parse_args()
+    a, extra = ap.parse_known_args()  # `power` passes its own flags through (families/power.py parses them)
+    if extra and a.cmd != "power":
+        ap.error(f"unrecognized arguments: {' '.join(extra)}")
 
     if a.cmd == "register":
         from families.spec import register
@@ -70,7 +72,7 @@ def main() -> None:
     elif a.cmd == "power":
         from families.power import main as power_main
 
-        power_main(a.rest)
+        power_main([*extra, *a.rest])
     else:
         from experiments.ledger import Ledger
         from families.report import program_summary

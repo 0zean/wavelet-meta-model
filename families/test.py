@@ -19,7 +19,8 @@ stream and the benchmark less the T-bill accrual `rf` per session, SPEC §22.7):
 stream at another one-way cost per fill class from its per-session cost ledger (risk.portfolio `daily_costs`), so
 the report shows every statistic at 0.3 / 1.0 / 2.3 bp round trip and at the measured profile; the verdict reads the
 stream at the spec's `test.at_cost`. Coherence over region cells (`cells_coherence`) reads each cell's alpha sign
-and the median cell's alpha (the region primary of U23 supplies the cells).
+and the median cell's alpha (the region primary of U23 supplies the cells); with `test.coherence: cells` (U24) it is
+the verdict's coherence and the §17 variant coherence is reported beside it.
 """
 
 import re
@@ -318,14 +319,20 @@ def delta_common(
 
 
 def headline_verdict(results: dict[str, dict], test: dict) -> dict:
-    """The family's decision inputs (before Holm across families): headline p, its floors, coherence."""
+    """The family's decision inputs (before Holm across families): headline p, its floors, coherence. With
+    `test.coherence` "cells" the coherence is the region cells' (PLAN3 §4.1) and the variants' is `variant_coherence`;
+    a region whose cells were not evaluated is not coherent."""
     h = results[HEADLINE]
     coh = coherence({k: {"delta_ann": v["compare"]["delta_ann"] if k == HEADLINE else v["delta_common"],
                          "floors_ok": v["floors"]["ok"]} for k, v in results.items()}, test["coherence_share"])  # fmt: skip
-    return {"p": h["compare"]["p"], "delta_ann": h["compare"]["delta_ann"], "ci_ann": h["compare"]["ci_ann"],
-            "floors_ok": h["floors"]["ok"], "coherence": coh, "positive": bool(h["compare"]["delta_ann"] > 0),
-            "kind": test.get("kind", "sharpe_vs_benchmark"), "sided": test.get("sided", "two"),
-            "cells": h.get("cells")}  # fmt: skip
+    out = {"p": h["compare"]["p"], "delta_ann": h["compare"]["delta_ann"], "ci_ann": h["compare"]["ci_ann"],
+           "floors_ok": h["floors"]["ok"], "coherence": coh, "positive": bool(h["compare"]["delta_ann"] > 0),
+           "kind": test.get("kind", "sharpe_vs_benchmark"), "sided": test.get("sided", "two"),
+           "cells": h.get("cells"), "coherence_kind": test.get("coherence", "variants")}  # fmt: skip
+    if out["coherence_kind"] == "cells":
+        out["variant_coherence"] = coh
+        out["coherence"] = h.get("cells") or {"coherent": False, "note": "the region's cells were not evaluated"}
+    return out
 
 
 def evaluate(
@@ -481,6 +488,17 @@ def _groups(kind: str, days: pd.DatetimeIndex, state: pd.DataFrame, bench: pd.Se
         return pd.Series(days.day_name(), index=days)
     if kind == "year":
         return pd.Series(days.year.astype(str), index=days)
+    if kind == "vol_quintile":  # U24: the instruments' mean causal percentile of the prior session's 5Min σ
+        if state is None or "vol_rank" not in state:
+            return None
+        v = state["vol_rank"].reindex(days).to_numpy()
+        lab = np.minimum((np.nan_to_num(v, nan=0.0) * 5).astype(int), 4)
+        return pd.Series(np.where(np.isnan(v), "n/a", np.array(["q1 low", "q2", "q3", "q4", "q5 high"],
+                                                                dtype=object)[lab]), index=days)  # fmt: skip
+    if kind == "opex_day":
+        if state is None or "opex" not in state:
+            return None
+        return pd.Series(np.where(state["opex"].reindex(days).fillna(False).astype(bool), "opex", "other"), index=days)
     return None  # gamma_sign: no gamma proxy (PLAN2 U15 note; U26 adds the revealed-gamma proxy)
 
 
